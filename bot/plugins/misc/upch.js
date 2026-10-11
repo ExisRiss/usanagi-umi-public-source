@@ -6,7 +6,6 @@ import { tmpdir } from 'os'
 import { downloadContentFromMessage } from '@rexxhayanasi/elaina-baileys'
 import { getFfmpegBinPath } from '../../lib/awang-ytdlp.js'
 
-const CH_ID = global.links?.channelId || ''
 let ffmpegPathReady = false
 
 async function streamToBuffer(stream) {
@@ -53,6 +52,61 @@ function safeErrorSummary(error) {
     .slice(0, 180)
 }
 
+function uploadChannelRole(metadata) {
+  return String(
+    metadata?.viewer_metadata?.role
+    || metadata?.viewerMetadata?.role
+    || metadata?.role
+    || ''
+  ).trim().toUpperCase()
+}
+
+async function uploadChannelFor(conn) {
+  const jadibot = conn?.botConfig?.type === 'jadibot'
+  const channelId = String(
+    jadibot
+      ? conn?.botConfig?.values?.links?.upchChannelId
+      : global.links?.channelId
+      || ''
+  ).trim()
+
+  if (!channelId.endsWith('@newsletter')) {
+    const error = new Error(
+      jadibot
+        ? 'Channel Utama belum diatur. Buka Website Jadibot → Settings → Channel Utama /upch, lalu simpan link Channel.'
+        : 'Channel utama bot belum dikonfigurasi oleh owner bot.'
+    )
+    error.userVisible = true
+    throw error
+  }
+
+  if (jadibot) {
+    if (typeof conn.newsletterMetadata !== 'function') {
+      const error = new Error('Koneksi Jadibot belum siap memeriksa status admin Channel. Coba lagi setelah bot terhubung.')
+      error.userVisible = true
+      throw error
+    }
+    let metadata
+    try {
+      metadata = await Promise.race([
+        conn.newsletterMetadata('jid', channelId),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 12000)),
+      ])
+    } catch {
+      const error = new Error('Status Channel Utama tidak dapat diverifikasi. Pastikan Jadibot masih mengikuti Channel tersebut.')
+      error.userVisible = true
+      throw error
+    }
+    if (!['OWNER', 'ADMIN'].includes(uploadChannelRole(metadata))) {
+      const error = new Error('Jadibot bukan admin Channel Utama. Jadikan bot admin Channel tersebut, lalu coba lagi.')
+      error.userVisible = true
+      throw error
+    }
+  }
+
+  return channelId
+}
+
 let handler = async (m, { conn, usedPrefix, command }) => {
   const quoted =
     m.message?.extendedTextMessage
@@ -66,8 +120,11 @@ let handler = async (m, { conn, usedPrefix, command }) => {
     )
   }
 
-  if (!CH_ID.endsWith('@newsletter')) {
-    return m.reply('❌ Channel tujuan belum dikonfigurasi oleh owner bot.')
+  let channelId
+  try {
+    channelId = await uploadChannelFor(conn)
+  } catch (error) {
+    return m.reply(`❌ ${error?.userVisible ? error.message : 'Channel tujuan belum siap. Coba lagi nanti.'}`)
   }
 
   let media = null
@@ -118,16 +175,16 @@ let handler = async (m, { conn, usedPrefix, command }) => {
 
     switch (type) {
       case 'image':
-        await conn.sendMessage(CH_ID, { image: buffer, caption })
+        await conn.sendMessage(channelId, { image: buffer, caption })
         break
       case 'video':
-        await conn.sendMessage(CH_ID, { video: buffer, caption })
+        await conn.sendMessage(channelId, { video: buffer, caption })
         break
       case 'ptv':
-        await conn.sendMessage(CH_ID, { video: buffer, ptv: true, caption })
+        await conn.sendMessage(channelId, { video: buffer, ptv: true, caption })
         break
       case 'sticker':
-        await conn.sendMessage(CH_ID, { sticker: buffer })
+        await conn.sendMessage(channelId, { sticker: buffer })
         break
       case 'audio': {
         // `audio/ogg` is not always Opus (it may be Vorbis), so only copy when
@@ -150,13 +207,13 @@ let handler = async (m, { conn, usedPrefix, command }) => {
         }
 
         if (sentAsVoiceNote) {
-          await conn.sendMessage(CH_ID, {
+          await conn.sendMessage(channelId, {
             audio: fs.readFileSync(opusPath),
             mimetype: 'audio/ogg; codecs=opus',
             ptt: true,
           })
         } else {
-          await conn.sendMessage(CH_ID, {
+          await conn.sendMessage(channelId, {
             audio: buffer,
             mimetype: mimetype || 'audio/mpeg',
             ptt: false,
