@@ -1,31 +1,56 @@
 import fs from 'fs'
 import path from 'path'
+import crypto from 'node:crypto'
 import ffmpeg from 'fluent-ffmpeg'
 import { tmpdir } from 'os'
 import { downloadContentFromMessage } from '@rexxhayanasi/elaina-baileys'
+import { getFfmpegBinPath } from '../../lib/awang-ytdlp.js'
 
 const CH_ID = global.links?.channelId || ''
+let ffmpegPathReady = false
 
 async function streamToBuffer(stream) {
-  let buffer = Buffer.from([])
-
-  for await (const chunk of stream) {
-    buffer = Buffer.concat([buffer, chunk])
-  }
-
-  return buffer
+  const chunks = []
+  for await (const chunk of stream) chunks.push(chunk)
+  return Buffer.concat(chunks)
 }
 
-function convertToOpus(input, output) {
+async function ensureFfmpegPath() {
+  if (ffmpegPathReady) return
+  const bin = await getFfmpegBinPath()
+  if (bin) ffmpeg.setFfmpegPath(bin)
+  ffmpegPathReady = true
+}
+
+async function convertToOpus(input, output) {
+  await ensureFfmpegPath()
+
   return new Promise((resolve, reject) => {
     ffmpeg(input)
+      .noVideo()
       .audioCodec('libopus')
-      .audioBitrate('')
-      .format('opus')
+      .audioFrequency(48000)
+      .audioChannels(1)
+      .audioBitrate('64k')
+      .format('ogg')
+      .outputOptions([
+        '-map 0:a:0?',
+        '-application audio',
+        '-vbr on',
+        '-compression_level 10',
+      ])
       .on('end', resolve)
       .on('error', reject)
       .save(output)
   })
+}
+
+function safeErrorSummary(error) {
+  return String(error?.message || error || 'unknown error')
+    .replace(/https?:\/\/\S+/gi, '<url>')
+    .replace(/\b\d{7,}\b/g, '<id>')
+    .replace(/\s+/g, ' ')
+    .slice(0, 180)
 }
 
 let handler = async (m, { conn, usedPrefix, command }) => {
@@ -39,6 +64,10 @@ let handler = async (m, { conn, usedPrefix, command }) => {
       `❌ Reply media terlebih dahulu!\n\n` +
       `Contoh:\n${usedPrefix + command}`
     )
+  }
+
+  if (!CH_ID.endsWith('@newsletter')) {
+    return m.reply('❌ Channel tujuan belum dikonfigurasi oleh owner bot.')
   }
 
   let media = null
@@ -55,124 +84,95 @@ let handler = async (m, { conn, usedPrefix, command }) => {
     media = quoted.imageMessage
     type = 'image'
     mimetype = media.mimetype
-
   } else if (quoted.videoMessage) {
     media = quoted.videoMessage
     type = media.ptv ? 'ptv' : 'video'
     mimetype = media.mimetype
-
   } else if (quoted.audioMessage) {
     media = quoted.audioMessage
     type = 'audio'
     mimetype = media.mimetype
-
   } else if (quoted.stickerMessage) {
     media = quoted.stickerMessage
     type = 'sticker'
     mimetype = 'image/webp'
   }
 
-  if (!media) {
-    return m.reply('❌ Media tidak didukung!')
-  }
+  if (!media) return m.reply('❌ Media tidak didukung!')
 
-  const ext =
-    mimetype?.split('/')[1]?.split(';')[0] ||
-    'bin'
-
-  const filename = `${Date.now()}`
-
+  const ext = mimetype?.split('/')[1]?.split(';')[0]?.replace(/[^a-z0-9]/gi, '') || 'bin'
+  const filename = `${Date.now()}-${crypto.randomBytes(5).toString('hex')}`
   const inputPath = path.join(tmpdir(), `${filename}.${ext}`)
-  const opusPath = path.join(tmpdir(), `${filename}.opus`)
+  const opusPath = path.join(tmpdir(), `${filename}.ogg`)
 
   try {
     await m.reply(`🔄 Sedang memproses ${type}...`)
 
     const stream = await downloadContentFromMessage(
       media,
-      type === 'image'
-        ? 'image'
-        : type === 'video' || type === 'ptv'
-        ? 'video'
-        : type === 'audio'
-        ? 'audio'
-        : 'sticker'
+      type === 'image' ? 'image' : type === 'video' || type === 'ptv' ? 'video' : type === 'audio' ? 'audio' : 'sticker'
     )
-
     const buffer = await streamToBuffer(stream)
-
+    if (!buffer.length) throw new Error('Media kosong atau tidak dapat diunduh.')
     fs.writeFileSync(inputPath, buffer)
 
     switch (type) {
       case 'image':
-        await conn.sendMessage(CH_ID, {
-          image: fs.readFileSync(inputPath),
-          caption
-        })
-      break
-
+        await conn.sendMessage(CH_ID, { image: buffer, caption })
+        break
       case 'video':
-        await conn.sendMessage(CH_ID, {
-          video: fs.readFileSync(inputPath),
-          caption
-        })
-      break
-
+        await conn.sendMessage(CH_ID, { video: buffer, caption })
+        break
       case 'ptv':
-        await conn.sendMessage(CH_ID, {
-          video: fs.readFileSync(inputPath),
-          ptv: true,
-          caption
-        })
-      break
-
+        await conn.sendMessage(CH_ID, { video: buffer, ptv: true, caption })
+        break
       case 'sticker':
-        await conn.sendMessage(CH_ID, {
-          sticker: fs.readFileSync(inputPath)
-        })
-      break
-
+        await conn.sendMessage(CH_ID, { sticker: buffer })
+        break
       case 'audio': {
-        const isOpus =
-          mimetype.includes('opus') ||
-          mimetype.includes('ogg')
+        // `audio/ogg` is not always Opus (it may be Vorbis), so only copy when
+        // the MIME explicitly says Opus. All other audio is normalized safely.
+        const isOpus = /opus/i.test(mimetype || '')
+        let sentAsVoiceNote = isOpus
 
         if (isOpus) {
           fs.copyFileSync(inputPath, opusPath)
         } else {
-          await convertToOpus(inputPath, opusPath)
+          try {
+            await convertToOpus(inputPath, opusPath)
+            sentAsVoiceNote = true
+          } catch (conversionError) {
+            // Do not fail the entire channel upload just because the server
+            // cannot encode this input. The original audio is still delivered.
+            sentAsVoiceNote = false
+            console.warn(`[upch] Opus conversion fallback: ${safeErrorSummary(conversionError)}`)
+          }
         }
 
-        await conn.sendMessage(CH_ID, {
-          audio: fs.readFileSync(opusPath),
-          mimetype: 'audio/ogg; codecs=opus',
-          ptt: true
-        })
+        if (sentAsVoiceNote) {
+          await conn.sendMessage(CH_ID, {
+            audio: fs.readFileSync(opusPath),
+            mimetype: 'audio/ogg; codecs=opus',
+            ptt: true,
+          })
+        } else {
+          await conn.sendMessage(CH_ID, {
+            audio: buffer,
+            mimetype: mimetype || 'audio/mpeg',
+            ptt: false,
+          })
+        }
+        break
       }
-      break
     }
 
     await m.reply(`✅ ${type} berhasil diupload ke channel!`)
-
-  } catch (e) {
-    console.error(e)
-
-    m.reply(
-      `❌ Error\n\n${e.message || e}`
-    )
-
+  } catch (error) {
+    console.warn(`[upch] upload failed: ${safeErrorSummary(error)}`)
+    await m.reply('❌ Gagal mengupload media ke channel. Pastikan media masih valid lalu coba lagi.')
   } finally {
-    try {
-      if (fs.existsSync(inputPath)) {
-        fs.unlinkSync(inputPath)
-      }
-    } catch {}
-
-    try {
-      if (fs.existsSync(opusPath)) {
-        fs.unlinkSync(opusPath)
-      }
-    } catch {}
+    await fs.promises.rm(inputPath, { force: true }).catch(() => {})
+    await fs.promises.rm(opusPath, { force: true }).catch(() => {})
   }
 }
 
