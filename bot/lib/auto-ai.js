@@ -2,7 +2,7 @@ import { chatGroq, getGroqSettings, redactProviderSecrets } from './groq-client.
 import { AUTO_AI_SYSTEM_PROMPT } from './auto-ai-prompt.js'
 
 const cooldowns = new Map(), locks = new Set(), seen = new Map()
-const DANGEROUS = /(?:^|[-_])(?:eval|exec|shell|bash|terminal|restartall|logout|delsession|clearsession|deleteall|resetdb|cleardb|addowner|delowner|setowner|setkey|setapikey|gettoken|apikey|credentials|secret|dumpsession|kickall|removeall|buy|pay|buypanel|orderpanel|buyvps|buydomain|topup|purchase|transfer|spam|bomb|crash|rvo|viewonce|fakepay)(?:$|[-_])/i
+const DANGEROUS = /(?:^|[-_])(?:eval|exec|shell|bash|terminal|restartall|logout|delsession|clearsession|deleteall|resetdb|cleardb|addowner|delowner|setowner|setkey|setapikey|gettoken|apikey|credentials|secret|dumpsession|kickall|removeall|buy|pay|buypanel|orderpanel|buyvps|buydomain|topup|purchase|transfer|spam\w*|bomb|crash|rvo|viewonce|fakepay)(?:$|[-_])/i
 const STOPWORDS = new Set('tolong tolonglah bot umi saya aku kamu ini itu yang untuk dong dan ke dari nya please the a an video'.split(' '))
 function jidId(value) { return String(value || '').replace(/:\d+(?=@)/, '').split('@')[0] }
 export function botIdentities(conn, bot = {}) {

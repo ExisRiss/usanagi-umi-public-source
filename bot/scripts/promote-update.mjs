@@ -17,5 +17,5 @@ try{
  // Tests and scripts are useful for future regression checks; original files are not replaced.
  for(const dir of ['tests','scripts']){const copy=(from,to)=>{fs.mkdirSync(to,{recursive:true});for(const entry of fs.readdirSync(from,{withFileTypes:true})){const src=path.join(from,entry.name),dst=path.join(to,entry.name);if(entry.isDirectory())copy(src,dst);else if(!fs.existsSync(dst))fs.copyFileSync(src,dst)}};copy(path.join(STAGE,dir),path.join(ROOT,dir))}
  fs.writeFileSync(path.join(BACKUP,'rollback-manifest.json'),JSON.stringify({changed,restore,added:['integrations','plugins/pelengkap'],runtime_data_modified:false},null,2),{mode:0o600})
- console.log(JSON.stringify({promoted:changed.length,addedPlugins:1096,rollback:'.umi-source-rollback-20261012',runtimeDataModified:false,restartRequired:true}))
+ console.log(JSON.stringify({promoted:changed.length,addedPlugins:JSON.parse(fs.readFileSync(path.join(ROOT,'FEATURE_MIGRATION_REPORT.json'),'utf8')).features.filter(row=>row.status==='installed-static').length,rollback:'.umi-source-rollback-20261012',runtimeDataModified:false,restartRequired:true}))
 }catch(error){for(const rel of restore)fs.copyFileSync(path.join(BACKUP,rel),path.join(ROOT,rel));throw error}

@@ -5,15 +5,16 @@
     "rimuru": {
       "plugin_files_analyzed": 1522,
       "statuses": {
-        "installed-static": 1093,
+        "installed-static": 1088,
         "deferred-dependency": 161,
         "requires-security-review": 78,
         "unsupported-export": 146,
-        "excluded-risk-category": 31,
-        "requires-hook-port": 13
+        "excluded-risk-category": 34,
+        "requires-hook-port": 13,
+        "requires-initialization-port": 2
       },
-      "installed_plugins": 1093,
-      "enabled_aliases": 6801
+      "installed_plugins": 1088,
+      "enabled_aliases": 6774
     },
     "ourin": {
       "plugin_files_analyzed": 821,
@@ -6949,24 +6950,15 @@
         "waifus"
       ],
       "normalizedSha256": "a0ffaf887c596c30d0291d06987b5aa3cdce03ba398c7088027132d9c5653900",
-      "status": "installed-static",
+      "status": "excluded-risk-category",
       "wrapper": "plugins/pelengkap/rimuru/anime/rimuru-mywaifu.js",
-      "enabled_aliases": [
-        "rimuru-anime-mywaifu",
-        "rimuru-mywaifu",
-        "rimuru-waifuim",
-        "rimuru-waifu",
-        "rimuru-waifus",
-        "mywaifu",
-        "waifuim",
-        "waifu",
-        "waifus"
-      ],
+      "enabled_aliases": [],
       "dependency_files": 1,
       "runtime_verified": false,
       "external_apis_verified": false,
       "primary_command": "rimuru-anime-mywaifu",
-      "import_verified": true
+      "import_verified": true,
+      "reason": "Second-pass semantic risk check: unsolicited spam/mass mention or mixed NSFW output"
     },
     {
       "source": "rimuru",
@@ -33284,18 +33276,15 @@
         "risetsider"
       ],
       "normalizedSha256": "579c85080f1f31ea09c6ef05b2a86cc19587a9a97c7de4812a1ce51dae2c5e80",
-      "status": "installed-static",
+      "status": "requires-initialization-port",
       "wrapper": "plugins/pelengkap/rimuru/group/rimuru-risetsider.js",
-      "enabled_aliases": [
-        "rimuru-group-risetsider",
-        "rimuru-risetsider",
-        "risetsider"
-      ],
+      "enabled_aliases": [],
       "dependency_files": 2,
       "runtime_verified": false,
       "external_apis_verified": false,
       "primary_command": "rimuru-group-risetsider",
-      "import_verified": true
+      "import_verified": true,
+      "reason": "Top-level filesystem initialization outside the per-bot compatibility boundary; deferred, not silently granted global runtime access"
     },
     {
       "source": "rimuru",
@@ -34135,18 +34124,15 @@
         "spamtag"
       ],
       "normalizedSha256": "67991b051ad75626c7cc155df22f377e36c4eddb311702a1c06021e755a8f1ef",
-      "status": "installed-static",
+      "status": "excluded-risk-category",
       "wrapper": "plugins/pelengkap/rimuru/group/rimuru-spamtag.js",
-      "enabled_aliases": [
-        "rimuru-group-spamtag",
-        "rimuru-spamtag",
-        "spamtag"
-      ],
+      "enabled_aliases": [],
       "dependency_files": 1,
       "runtime_verified": false,
       "external_apis_verified": false,
       "primary_command": "rimuru-group-spamtag",
-      "import_verified": true
+      "import_verified": true,
+      "reason": "Second-pass semantic risk check: unsolicited spam/mass mention or mixed NSFW output"
     },
     {
       "source": "rimuru",
@@ -43676,24 +43662,15 @@
         "adddarling"
       ],
       "normalizedSha256": "8a7ea858971ed22b93d2094f3bcc3cbe57099ca142b5542384b3c3ed04b616a5",
-      "status": "installed-static",
+      "status": "requires-initialization-port",
       "wrapper": "plugins/pelengkap/rimuru/owner/rimuru-addgacha.js",
-      "enabled_aliases": [
-        "rimuru-owner-addgacha",
-        "rimuru-addgacha",
-        "rimuru-add-gacha",
-        "rimuru-tambahgacha",
-        "rimuru-adddarling",
-        "addgacha",
-        "add-gacha",
-        "tambahgacha",
-        "adddarling"
-      ],
+      "enabled_aliases": [],
       "dependency_files": 1,
       "runtime_verified": false,
       "external_apis_verified": false,
       "primary_command": "rimuru-owner-addgacha",
-      "import_verified": true
+      "import_verified": true,
+      "reason": "Top-level filesystem initialization outside the per-bot compatibility boundary; deferred, not silently granted global runtime access"
     },
     {
       "source": "rimuru",
@@ -80957,18 +80934,15 @@
         "spamngl"
       ],
       "normalizedSha256": "f36ffd0fc7150907099d00361d211a6ed351dbea1ecfd4df21e4d2143e701a58",
-      "status": "installed-static",
+      "status": "excluded-risk-category",
       "wrapper": "plugins/pelengkap/rimuru/tools/rimuru-spamngl.js",
-      "enabled_aliases": [
-        "rimuru-tools-spamngl",
-        "rimuru-spamngl",
-        "spamngl"
-      ],
+      "enabled_aliases": [],
       "dependency_files": 3,
       "runtime_verified": false,
       "external_apis_verified": false,
       "primary_command": "rimuru-tools-spamngl",
-      "import_verified": true
+      "import_verified": true,
+      "reason": "Second-pass semantic risk check: unsolicited spam/mass mention or mixed NSFW output"
     },
     {
       "source": "rimuru",
@@ -125836,8 +125810,8 @@
   ],
   "verification": {
     "node_runtime": "v23.11.1",
-    "imports_passed": 1096,
-    "imports_checked": 1096,
+    "imports_passed": 1091,
+    "imports_checked": 1091,
     "native_unit_regressions": 27,
     "ui_viewports_passed": 7,
     "live_groq_planning_cases": 3,

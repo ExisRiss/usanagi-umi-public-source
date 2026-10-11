@@ -89,6 +89,7 @@ function sockAdapter(conn) {
   return new Proxy(conn,{get(t,k){if(k in fallback)return fallback[k];const value=t[k];return typeof value==='function'?value.bind(t):value}})
 }
 export async function runImportedFeature(source,file,meta,m,extra) {
+  if(/^(?:spam|bomb|crash|bugwa)/i.test(path.basename(file)))return {success:false}
   const key=`${extra.botScope || extra.conn.user?.id}:${source}:${file}`
   const coolKey=`${key}:${m.chat}:${m.sender}`
   const remaining=Number(meta.cooldown||0)*1000-(Date.now()-(cooldowns.get(coolKey)||0))

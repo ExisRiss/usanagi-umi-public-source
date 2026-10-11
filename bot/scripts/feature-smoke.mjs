@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')
-process.chdir(ROOT)
+if(process.cwd()!==ROOT)process.chdir(ROOT)
 global.db={data:{users:{},chats:{},settings:{},stats:{}},write:async()=>{}}
 global.owner=[];global.namebot='Usanagi Umi AI';global.packname='Usanagi Umi AI';global.author='AlzRiss';global.plugins={}
 const manifest=JSON.parse(fs.readFileSync(path.join(ROOT,'FEATURE_MIGRATION_REPORT.json'),'utf8'))

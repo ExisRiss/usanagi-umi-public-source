@@ -32,9 +32,9 @@ Copyright © 2026 Usanagi Umi contributors. All rights reserved. Public visibili
 
 - Auto-AI Groq pada mention/reply, melalui dispatcher native dengan izin, registrasi, premium dan kuota yang sama.
 - Isolasi koneksi main/Jadibot dan hook moderasi tetap dijalankan.
-- 1.096 handler pelengkap Rimuru/OURIN berhasil dimuat; 6.820 alias tambahan unik. Jumlah alias bukan jumlah fitur.
+- 1.091 handler pelengkap Rimuru/OURIN berhasil dimuat; 6.793 alias tambahan unik. Jumlah alias bukan jumlah fitur.
 - Rimuru adalah turunan/rename OURIN; fitur duplikat tidak dijumlahkan dua kali. Kredit asli tetap dipertahankan.
 - Provider Groq/OpenRouter website, penyimpanan key terenkripsi, UI responsif dan perbaikan 11 syntax error template lama.
 - Baca [panduan Groq](bot/AUTO_AI_GROQ.md), [kredit](bot/CREDITS_PELENGKAP.md) dan [audit lengkap](bot/FEATURE_MIGRATION_REPORT.json).
 - Private config, API key, database, session WhatsApp dan state produksi **tidak ada di repo ini**. Jangan menimpa server produksi dengan template sanitasi secara wholesale.
-- Verifikasi: 3.339 JS/CJS/MJS lolos syntax; 27 regresi; 7 viewport UI; 3 kasus planning Groq nyata. Seluruh API eksternal/aksi WhatsApp belum diuji satu-per-satu.
+- Verifikasi: 3.329 JS/CJS/MJS lolos syntax; 27 regresi; 7 viewport UI; 3 kasus planning Groq nyata. Seluruh API eksternal/aksi WhatsApp belum diuji satu-per-satu.
