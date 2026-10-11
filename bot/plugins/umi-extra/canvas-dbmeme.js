@@ -70,7 +70,7 @@ async function handler(m, ctx = {}) {
       `${API_BASE}?text1=${encodeURIComponent(text1)}` +
       `&text2=${encodeURIComponent(text2)}` +
       `&text3=${encodeURIComponent(text3)}` +
-      `&apikey=YOUR_API_KEY
+      `&apikey=YOUR_API_KEY`
 
     const res = await fetch(url, { method: "GET" });
     if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);

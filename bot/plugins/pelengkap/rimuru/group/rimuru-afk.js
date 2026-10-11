@@ -1,0 +1,21 @@
+/* Ported from rimuru; original author credits remain in integrations/rimuru/plugins/group/afk.js. */
+import { runImportedFeature } from '../../../../lib/imported-compat.js'
+const metadata = {"name": "afk", "category": "group", "aliasMap": {"rimuru-group-afk": "afk", "rimuru-afk": "afk", "rimuru-away": "away", "rimuru-brb": "brb"}, "description": "Set status AFK dengan alasan", "usage": ".afk <alasan>", "example": ".afk lagi makan", "cooldown": 5, "energi": 0}
+const handler = (m, extra) => runImportedFeature("rimuru", "plugins/group/afk.js", metadata, m, extra)
+handler.help = ["rimuru-group-afk <alasan>"]
+handler.command = ["rimuru-group-afk", "rimuru-afk", "rimuru-away", "rimuru-brb"]
+handler.tags = ["group"]
+handler.description = "Set status AFK dengan alasan"
+handler.importSource = "rimuru"
+handler.importConfig = {"name": "afk", "alias": ["away", "brb"], "category": "group", "description": "Set status AFK dengan alasan", "usage": ".afk <alasan>", "example": ".afk lagi makan", "isOwner": false, "isPremium": false, "isGroup": false, "isPrivate": false, "cooldown": 5, "energi": 0, "isEnabled": true}
+handler.owner = false
+handler.rowner = false
+handler.premium = false
+handler.group = false
+handler.private = false
+handler.admin = false
+handler.botAdmin = false
+handler.level = 0
+handler.limit = 0
+handler.importAliasMap = {"rimuru-group-afk": "afk", "rimuru-afk": "afk", "rimuru-away": "away", "rimuru-brb": "brb"}
+export default handler

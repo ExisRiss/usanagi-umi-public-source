@@ -1,0 +1,21 @@
+/* Ported from rimuru; original author credits remain in integrations/rimuru/plugins/cek/cekintrovert.js. */
+import { runImportedFeature } from '../../../../lib/imported-compat.js'
+const metadata = {"name": "cekintrovert", "category": "cek", "aliasMap": {"rimuru-cek-cekintrovert": "cekintrovert", "rimuru-cekintrovert": "cekintrovert", "rimuru-introvert": "introvert"}, "description": "Cek tingkat introvert kamu", "usage": ".cekintrovert <nama>", "example": ".cekintrovert Budi", "cooldown": 5, "energi": 0}
+const handler = (m, extra) => runImportedFeature("rimuru", "plugins/cek/cekintrovert.js", metadata, m, extra)
+handler.help = ["rimuru-cek-cekintrovert <nama>"]
+handler.command = ["rimuru-cek-cekintrovert", "rimuru-cekintrovert", "rimuru-introvert"]
+handler.tags = ["cek"]
+handler.description = "Cek tingkat introvert kamu"
+handler.importSource = "rimuru"
+handler.importConfig = {"name": "cekintrovert", "alias": ["introvert"], "category": "cek", "description": "Cek tingkat introvert kamu", "usage": ".cekintrovert <nama>", "example": ".cekintrovert Budi", "isOwner": false, "isPremium": false, "isGroup": false, "isPrivate": false, "cooldown": 5, "energi": 0, "isEnabled": true}
+handler.owner = false
+handler.rowner = false
+handler.premium = false
+handler.group = false
+handler.private = false
+handler.admin = false
+handler.botAdmin = false
+handler.level = 0
+handler.limit = 0
+handler.importAliasMap = {"rimuru-cek-cekintrovert": "cekintrovert", "rimuru-cekintrovert": "cekintrovert", "rimuru-introvert": "introvert"}
+export default handler

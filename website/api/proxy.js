@@ -6,6 +6,8 @@ const ALLOWED_PATHS = new Set([
   'health', 'sessions', 'session/pairing', 'session/status', 'session/restart',
   'session/logout', 'settings/get', 'settings/apply', 'settings/reset',
   'backup/list', 'backup/create', 'backup/restore', 'console/logs', 'console/run',
+  'agent/status', 'agent/chat',
+  'wallet/status', 'wallet/topup',
 ])
 
 function apiPath(req) {

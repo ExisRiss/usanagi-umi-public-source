@@ -54,8 +54,8 @@ async function link(email) {
     clientType: 'CLIENT_TYPE_ANDROID'
   };
   try {
-    await axios.post(`${cfg.idt}/createAuthUri?key=YOUR_API_KEY c1, { headers: sp(h1) });
-    const r = await axios.post(`${cfg.idt}/getOobConfirmationCode?key=YOUR_API_KEY c2, { headers: sp(h1) });
+    await axios.post(`${cfg.idt}/createAuthUri?key=YOUR_API_KEY`, c1, { headers: sp(h1) });
+    const r = await axios.post(`${cfg.idt}/getOobConfirmationCode?key=YOUR_API_KEY`, c2, { headers: sp(h1) });
     return { ok: true, r: r.data };
   } catch (e) {
     return { ok: false, why: bad(e) };
@@ -92,14 +92,14 @@ async function auth(email, raw) {
   const c = code(raw);
   if (!c) return { ok: false, why: 'Code tidak ditemukan' };
   try {
-    const a = await axios.post(`${cfg.idt}/emailLinkSignin?key=YOUR_API_KEY {
+    const a = await axios.post(`${cfg.idt}/emailLinkSignin?key=YOUR_API_KEY`, {
       email: email,
       oobCode: c,
       clientType: 'CLIENT_TYPE_ANDROID'
     }, { headers: sp(h1) });
     let u = null;
     try {
-      const b = await axios.post(`${cfg.idt}/getAccountInfo?key=YOUR_API_KEY {
+      const b = await axios.post(`${cfg.idt}/getAccountInfo?key=YOUR_API_KEY`, {
         idToken: a.data.idToken
       }, { headers: sp(h1) });
       u = b.data?.users?.[0] || null;
@@ -143,7 +143,7 @@ async function pro(id) {
 
 async function re(ref) {
   try {
-    const r = await axios.post(`${cfg.stk}?key=YOUR_API_KEY {
+    const r = await axios.post(`${cfg.stk}?key=YOUR_API_KEY`, {
       grant_type: 'refresh_token',
       refresh_token: ref
     });

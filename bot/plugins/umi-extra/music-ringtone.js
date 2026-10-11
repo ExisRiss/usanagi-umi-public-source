@@ -47,7 +47,7 @@ async function handler(m, { sock, text, prefix, command }) {
   await m.reply('✨cihuy otw cari ringtone...')
 
   try {
-    const ringtoneBase = String(global.umiExtraAPI?.ringtoneBaseUrl || 'https://anabot.my.id/api/download/ringtone'); const ringtoneKey = String(global.umiExtraAPI?.ringtoneApiKey || 'freeApikey'); let url = `${ringtoneBase}?query=${encodeURIComponent(text)}&apikey=YOUR_API_KEY
+    const ringtoneBase = String(global.umiExtraAPI?.ringtoneBaseUrl || 'https://anabot.my.id/api/download/ringtone'); const ringtoneKey = String(global.umiExtraAPI?.ringtoneApiKey || 'freeApikey'); let url = `${ringtoneBase}?query=${encodeURIComponent(text)}&apikey=YOUR_API_KEY`
     let res = await fetch(url)
     let json = await res.json()
 

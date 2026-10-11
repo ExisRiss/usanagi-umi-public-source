@@ -6,3 +6,14 @@ tmp/
 .env
 *.log
 cookies.txt
+
+.env.groq
+.env.groq.*
+.groq.env
+.groq.env.*
+feature-smoke-results.json
+
+!.env.groq.example
+# Public audited integration sources/data are not production runtime state.
+!integrations/
+!integrations/**

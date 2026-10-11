@@ -120,7 +120,7 @@ async function uploadToTermai(buffer, filename) {
   appendFile(form, 'file', buffer, filename)
   const req = withTimeout(120000)
   try {
-    const res = await fetch(`https://c.termai.cc/api/upload?key=YOUR_API_KEY { method: 'POST', body: form, signal: req.signal })
+    const res = await fetch(`https://c.termai.cc/api/upload?key=YOUR_API_KEY`, { method: 'POST', body: form, signal: req.signal })
     const data = await res.json()
     if (!res.ok || !data?.status || !data?.path) throw new Error('Termai gagal')
     return { host: 'Termai', url: data.path, expires: 'Tidak diketahui' }

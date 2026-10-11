@@ -46,7 +46,7 @@ Custom:
       `&textColor=${encodeURIComponent(textColor)}` +
       `&fontName=${encodeURIComponent(fontName)}` +
       `&signalName=${encodeURIComponent(signalName)}` +
-      `&apikey=YOUR_API_KEY
+      `&apikey=YOUR_API_KEY`
 
     let res = await fetch(url)
 

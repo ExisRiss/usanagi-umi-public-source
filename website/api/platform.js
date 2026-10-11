@@ -137,19 +137,26 @@ function consoleRelaySecret() {
   return secret
 }
 
-function consoleRelayTicket(user) {
-  const body = Buffer.from(JSON.stringify({ v: 1, sub: user.id, exp: Date.now() + 75 * 1000, nonce: crypto.randomBytes(12).toString('base64url') })).toString('base64url')
+function ownerRelayTicket(user, audience) {
+  const body = Buffer.from(JSON.stringify({ v: 1, aud: audience, sub: user.id, exp: Date.now() + 75 * 1000, nonce: crypto.randomBytes(12).toString('base64url') })).toString('base64url')
   const signature = crypto.createHmac('sha256', consoleRelaySecret()).update(body).digest('base64url')
   return `${body}.${signature}`
 }
 
-async function botConsoleRequest(path, user, { method = 'GET', body } = {}) {
+async function botOwnerRelayRequest(audience, path, user, { method = 'GET', body } = {}) {
   const botConfig = await getBotApiConfig()
-  const response = await fetch(`${botConfig.origin}/api/owner-console/${path}`, {
+  const ticketHeaders = {
+    'owner-console': 'X-UMI-Console-Ticket',
+    'owner-agent': 'X-UMI-Agent-Ticket',
+    'owner-panel': 'X-UMI-Panel-Ticket',
+  }
+  const ticketHeader = ticketHeaders[audience]
+  if (!ticketHeader) throw Object.assign(new Error('Audience relay owner tidak valid.'), { status: 500 })
+  const response = await fetch(`${botConfig.origin}/api/${audience}/${path}`, {
     method,
     headers: {
       Accept: 'application/json',
-      'X-UMI-Console-Ticket': consoleRelayTicket(user),
+      [ticketHeader]: ownerRelayTicket(user, audience),
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -157,8 +164,20 @@ async function botConsoleRequest(path, user, { method = 'GET', body } = {}) {
   })
   const raw = await response.text(); let data
   try { data = raw ? JSON.parse(raw) : {} } catch { data = { error: raw } }
-  if (!response.ok) throw Object.assign(new Error(data.error || 'Relay terminal bot gagal merespons.'), { status: response.status })
+  if (!response.ok) throw Object.assign(new Error(data.error || 'Relay owner bot gagal merespons.'), { status: response.status })
   return data
+}
+
+function botConsoleRequest(path, user, options = {}) {
+  return botOwnerRelayRequest('owner-console', path, user, options)
+}
+
+function botAgentRequest(path, user, options = {}) {
+  return botOwnerRelayRequest('owner-agent', path, user, options)
+}
+
+function botPanelRequest(path, user, options = {}) {
+  return botOwnerRelayRequest('owner-panel', path, user, options)
 }
 
 async function botRequest(path, user, { method = 'GET', body, headers = {} } = {}) {
@@ -357,6 +376,95 @@ export default async function handler(req, res) {
         headers: { Prefer: 'return=representation' },
       })
       return send(res, 201, { ok: true, feedback: created?.[0] || { action: 'feedback.submit', target: target === 'bot' ? `bot:${sessionId}` : 'website', metadata } })
+    }
+
+    // Agent owner operations never pass through the browser-to-bot proxy.
+    // This server has already verified the Supabase profile role, then mints
+    // a short-lived, audience-bound ticket for exactly one backend request.
+    if (path === 'agent/status' && req.method === 'GET') {
+      requireOwner(profile)
+      return send(res, 200, await botAgentRequest('status', user))
+    }
+    if (path === 'agent/chat' && req.method === 'POST') {
+      requireOwner(profile)
+      rateLimit(req, `platform:agent-chat:${user.id}`, 30, 10 * 60 * 1000)
+      const prompt = String(req.body?.prompt ?? '')
+      if (!prompt.trim() || prompt.length > 12000 || prompt.includes('\0')) return send(res, 400, { error: 'Prompt Agent tidak valid.' })
+      return send(res, 200, await botAgentRequest('chat', user, { method: 'POST', body: { prompt } }))
+    }
+    if (path === 'agent/settings' && req.method === 'POST') {
+      requireOwner(profile)
+      rateLimit(req, `platform:agent-settings:${user.id}`, 10, 60 * 60 * 1000)
+      const apiKey = String(req.body?.apiKey ?? req.body?.openrouterApiKey ?? '')
+      const provider = String(req.body?.provider || (req.body?.openrouterApiKey ? 'openrouter' : 'groq'))
+      const model = String(req.body?.model ?? '').trim()
+      if (!['groq','openrouter'].includes(provider) || (apiKey && apiKey.length < 16) || apiKey.length > 1000 || apiKey.includes('\0') || model.includes('\0') || model.length > 160) return send(res, 400, { error: 'Konfigurasi AI tidak valid.' })
+      await audit(user, 'agent.settings.update', user.id, { provider, model })
+      return send(res, 200, await botAgentRequest('settings', user, { method: 'POST', body: { apiKey, provider, model } }))
+    }
+    if (path === 'agent/shell' && req.method === 'POST') {
+      requireOwner(profile)
+      rateLimit(req, `platform:agent-shell:${user.id}`, 20, 10 * 60 * 1000)
+      const command = String(req.body?.command ?? '')
+      if (!command.trim() || command.length > 2000 || command.includes('\0')) return send(res, 400, { error: 'Command Agent tidak valid.' })
+      return send(res, 200, await botAgentRequest('shell', user, { method: 'POST', body: { command } }))
+    }
+
+    // Pterodactyl and payment credentials are accepted only by this owner-only
+    // relay and forwarded once to the encrypted bot-runtime vault. They are not
+    // persisted in Website audit rows, browser storage, or responses.
+    if (path === 'panel/status' && req.method === 'GET') {
+      requireOwner(profile)
+      return send(res, 200, await botPanelRequest('status', user))
+    }
+    if (path === 'panel/settings' && req.method === 'POST') {
+      requireOwner(profile)
+      rateLimit(req, `platform:panel-settings:${user.id}`, 10, 60 * 60 * 1000)
+      const fields = ['panelUrl', 'siteUrl', 'paymentMode', 'tripayChannel', 'plta', 'pltc', 'tripayMerchantCode', 'tripayApiKey', 'tripayPrivateKey']
+      const body = {}
+      for (const field of fields) {
+        if (!Object.prototype.hasOwnProperty.call(req.body || {}, field)) continue
+        const value = String(req.body?.[field] ?? '')
+        if (value.length > 1000 || value.includes('\0')) return send(res, 400, { error: 'Konfigurasi Panel tidak valid.' })
+        body[field] = value
+      }
+      for (const field of ['clearPlta', 'clearPltc', 'clearTripay']) {
+        if (Object.prototype.hasOwnProperty.call(req.body || {}, field)) body[field] = req.body[field] === true
+      }
+      const result = await botPanelRequest('settings', user, { method: 'POST', body })
+      await audit(user, 'panel.settings.update', 'auto-order', { panelUrlChanged: Object.prototype.hasOwnProperty.call(body, 'panelUrl'), pltaReplaced: Boolean(body.plta), pltcReplaced: Boolean(body.pltc), tripayReplaced: Boolean(body.tripayMerchantCode || body.tripayApiKey || body.tripayPrivateKey), credentialsCleared: Boolean(body.clearPlta || body.clearPltc || body.clearTripay) })
+      return send(res, 200, result)
+    }
+    if (path === 'panel/packages' && req.method === 'POST') {
+      requireOwner(profile)
+      rateLimit(req, `platform:panel-packages:${user.id}`, 20, 60 * 60 * 1000)
+      const packages = req.body?.packages
+      if (!Array.isArray(packages) || packages.length > 20) return send(res, 400, { error: 'Katalog paket tidak valid.' })
+      const result = await botPanelRequest('packages', user, { method: 'POST', body: { packages } })
+      await audit(user, 'panel.packages.update', 'auto-order', { count: packages.length })
+      return send(res, 200, result)
+    }
+    if (path === 'panel/test-connection' && req.method === 'POST') {
+      requireOwner(profile)
+      rateLimit(req, `platform:panel-test:${user.id}`, 10, 10 * 60 * 1000)
+      const result = await botPanelRequest('test-connection', user, { method: 'POST', body: {} })
+      await audit(user, 'panel.connection.test', 'auto-order', { pterodactyl: Boolean(result.pterodactyl), bridge: Boolean(result.bridge) })
+      return send(res, 200, result)
+    }
+
+    if (path === 'panel/manual-topups' && req.method === 'GET') {
+      requireOwner(profile)
+      return send(res, 200, await botPanelRequest('manual-topups', user))
+    }
+    if (path === 'panel/manual-topups/review' && req.method === 'POST') {
+      requireOwner(profile)
+      rateLimit(req, `platform:manual-topup-review:${user.id}`, 30, 10 * 60 * 1000)
+      const id = text(req.body?.id, 100)
+      const decision = text(req.body?.decision, 20).toLowerCase()
+      if (!/^tu_[a-z0-9_]+$/i.test(id) || !['approve', 'reject'].includes(decision)) return send(res, 400, { error: 'Permintaan verifikasi top up tidak valid.' })
+      const result = await botPanelRequest('manual-topups/review', user, { method: 'POST', body: { id, decision } })
+      await audit(user, `wallet.manual_topup.${decision}`, id, { amount: Number(result.topup?.amount) || 0 })
+      return send(res, 200, result)
     }
 
     if (path === 'main-console/status' && req.method === 'GET') {

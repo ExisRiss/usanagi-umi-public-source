@@ -1,7 +1,7 @@
 {
   "name": "usanagi-umi-ai",
-  "version": "10.0.2",
-  "description": "Usanagi Umi AI — WhatsApp multi-device bot with 792 integrated plugins and Usanagi Umi AI compatibility",
+  "version": "10.1.0",
+  "description": "Usanagi Umi AI \u2014 WhatsApp multi-device bot with 792 integrated plugins and Usanagi Umi AI compatibility",
   "main": "main.js",
   "type": "module",
   "directories": {
@@ -12,9 +12,10 @@
     "start": "node main.js",
     "tunnel-start": "set -a; [ -f ./.tunnel.env ] && . ./.tunnel.env; [ -f ./.backup-export.env ] && { chmod 600 ./.backup-export.env 2>/dev/null || true; . ./.backup-export.env; }; set +a; chmod 700 ./cloudflared; ./cloudflared tunnel --no-autoupdate run --token \"$CLOUDFLARE_TUNNEL_TOKEN\" & tunnel_pid=$!; node main.js & bot_pid=$!; trap 'kill \"$tunnel_pid\" \"$bot_pid\" 2>/dev/null; wait' INT TERM EXIT; wait \"$bot_pid\"",
     "format": "prettier --write .",
-    "lint": "eslint . --ext .js"
+    "lint": "eslint . --ext .js",
+    "test:auto-ai": "node --test tests/auto-ai.test.mjs tests/agent-settings.test.mjs && node --loader ./tests/mock-native-loader.mjs --test tests/native-dispatch.test.mjs"
   },
-  "author": "AlzRiss × Arena",
+  "author": "AlzRiss \u00d7 Arena",
   "license": "MIT",
   "dependencies": {
     "@babel/parser": "^7.29.7",

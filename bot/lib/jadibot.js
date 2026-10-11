@@ -770,7 +770,7 @@ export async function startSubBot(
         return m.reply(
             `❌ *Format nomor salah!*\n\n` +
             `Contoh:\n` +
-            `*.jadibot 628xxxxxxxxxx*`
+            `*.jadibot 628123456789*`
         );
     }
 

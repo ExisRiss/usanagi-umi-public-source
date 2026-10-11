@@ -23,7 +23,7 @@ let handler = async (m, {
     }
 
     try {
-        let api = `https://apiii-xrina.vercel.app/tools/rch?url=${encodeURIComponent(url)}&reaction=${encodeURIComponent(reaction)}&apikey=YOUR_API_KEY
+        let api = `https://apiii-xrina.vercel.app/tools/rch?url=${encodeURIComponent(url)}&reaction=${encodeURIComponent(reaction)}&apikey=YOUR_API_KEY`
 
         let res = await fetch(api)
         let json = await res.json()

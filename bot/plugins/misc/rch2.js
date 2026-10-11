@@ -1,3 +1,4 @@
+import { getMainConnection } from '../../lib/bot-connection-context.js'
 /**
  * React to a WhatsApp Channel post from the main bot and every connected
  * Jadibot session. Each WhatsApp account sends its own reaction directly.
@@ -60,7 +61,7 @@ function allReactionConnections() {
   }
 
   // The main connection reacts using the main bot number.
-  add(global.conn, 'main')
+  add(getMainConnection(), 'main')
   // Only currently connected sessions are used; offline sessions are never
   // woken or paired as a side-effect of an owner command.
   for (const [, conn] of getSubBots()) {

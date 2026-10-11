@@ -26,7 +26,7 @@ for(const path of ['/.env','/.git/config','/.git/HEAD','/vercel.json','/package.
 for(const method of ['TRACE','CONNECT','PUT']) await request(`Dangerous method ${method}`,'/api/platform/health',{method},{status:[400,404,405]})
 
 // Proxy auth bypass and endpoint allowlist
-for(const path of ['/api/sessions','/api/settings/get?session_id=628xxxxxxxxxx','/api/console/logs?session_id=628xxxxxxxxxx','/api/backup/list?session_id=628xxxxxxxxxx']){
+for(const path of ['/api/sessions','/api/settings/get?session_id=6280000000000','/api/console/logs?session_id=6280000000000','/api/backup/list?session_id=6280000000000']){
   await request(`Unauthenticated ${path}`,path,{}, {status:401})
 }
 for(const path of ['/api/internal/secrets','/api/admin','/api/../api/sessions','/api/%2e%2e/internal','/api/%252e%252e/internal','/api/session%2Fstatus']){
@@ -47,7 +47,7 @@ const injections=[
 ]
 for(const identifier of injections){
   await request(`Login injection ${identifier.slice(0,24)}`,'/api/platform/auth/login',{
-    method:'POST',headers:{Origin:BASE,'Content-Type':'application/json'},body:JSON.stringify({identifier,password:'YOUR_API_KEY'})
+    method:'POST',headers:{Origin:BASE,'Content-Type':'application/json'},body:JSON.stringify({identifier,password:'NotARealPassword123!'})
   },{status:[400,401],notContains:'syntax error'})
 }
 
@@ -55,7 +55,7 @@ for(const identifier of injections){
 const xss=['<script>alert(1)</script>','\"><img src=x onerror=alert(1)>','javascript:alert(document.domain)']
 for(const identifier of xss){
   await request('XSS reflection login','/api/platform/auth/login',{
-    method:'POST',headers:{Origin:BASE,'Content-Type':'application/json'},body:JSON.stringify({identifier,password:'YOUR_API_KEY'})
+    method:'POST',headers:{Origin:BASE,'Content-Type':'application/json'},body:JSON.stringify({identifier,password:'NotARealPassword123!'})
   },{status:[400,401],notContains:identifier})
 }
 
@@ -92,7 +92,7 @@ for(const id of ['javascript:alert(1)','..%2Fadmin','%0d%0aLocation:%20https://e
 const rateStatuses=[]
 for(let i=0;i<11;i++){
   const r=await request(`Rate limit login ${i+1}`,'/api/platform/auth/login',{
-    method:'POST',headers:{Origin:BASE,'Content-Type':'application/json'},body:JSON.stringify({identifier:'rate-limit-test-user',password:'YOUR_API_KEY'})
+    method:'POST',headers:{Origin:BASE,'Content-Type':'application/json'},body:JSON.stringify({identifier:'rate-limit-test-user',password:'DefinitelyWrong123!'})
   },{status:[400,429]});rateStatuses.push(r.status)
 }
 

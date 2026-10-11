@@ -1,4 +1,4 @@
-const handler = async (m, { text, participants, groupMetadata, command }) => {
+const handler = async (m, { conn, text, participants, groupMetadata, command }) => {
  const target = m.quoted ? m.quoted.sender : m.mentionedJid && m.mentionedJid[0] ? m.mentionedJid[0] : text ? text.replace(/[^0-9]/g, '') + '@s.whatsapp.net' : null;
 
  const cmd = ['add', 'kick', 'promote', 'demote'];

@@ -28,7 +28,7 @@ function normalize(relative) {
 
 function sourceFile(name) {
   if (name === 'config.js' || name.startsWith('.env') || /(?:^|\.)pem$/i.test(name) || /(?:^|\.)key$/i.test(name)) return false
-  return /\.(?:js|cjs|mjs|json|md|txt|ya?ml)$/i.test(name) || ['Dockerfile', 'Procfile', 'LICENSE'].includes(name)
+  return /\.(?:js|cjs|mjs|json|md|txt|ya?ml|ttf|otf|woff2?|png|jpe?g|webp)$/i.test(name) || ['Dockerfile', 'Procfile', 'LICENSE'].includes(name)
 }
 
 async function collectTree(directory, relativePrefix, output, filter) {
@@ -54,7 +54,7 @@ async function collectTree(directory, relativePrefix, output, filter) {
 
 async function collectBotSource() {
   const files = []
-  const allowedDirectories = new Set(['lib', 'plugins', 'core', 'database', 'commands', 'src', 'locales', 'language', 'languages'])
+  const allowedDirectories = new Set(['lib', 'plugins', 'integrations', 'tests', 'core', 'database', 'commands', 'src', 'locales', 'language', 'languages'])
   const entries = await fsp.readdir(ROOT, { withFileTypes: true })
   for (const entry of entries) {
     if (entry.isSymbolicLink()) continue
@@ -65,7 +65,7 @@ async function collectBotSource() {
       continue
     }
     if (!entry.isDirectory() || !allowedDirectories.has(entry.name)) continue
-    await collectTree(absolute, entry.name, files, item => item.type === 'directory' || sourceFile(item.name))
+    await collectTree(absolute, entry.name, files, item => item.type === 'directory' || sourceFile(item.name) || /^integrations\/(?:rimuru|ourin)\/config\.js$/.test(item.relative))
   }
   return files.sort((a, b) => a.relative.localeCompare(b.relative))
 }

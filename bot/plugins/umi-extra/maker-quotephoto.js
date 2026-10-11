@@ -46,7 +46,7 @@ async function handler(m, { sock, text }) {
   // Jika author tidak diisi, otomatis menggunakan pushname / nama pengirim
   const authorName = authorInput || m.pushName || 'Anonymous';
   const apiKey = "4ZtwE";
-  const apiUrl = `https://api.theresav.biz.id/canvas/reminder?teks=${encodeURIComponent(teksInput)}&author=${encodeURIComponent(authorName)}&apikey=YOUR_API_KEY
+  const apiUrl = `https://api.theresav.biz.id/canvas/reminder?teks=${encodeURIComponent(teksInput)}&author=${encodeURIComponent(authorName)}&apikey=YOUR_API_KEY`
 
   await m.react('⏳');
 

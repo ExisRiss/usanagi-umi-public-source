@@ -129,7 +129,7 @@ async function officialChat({ message, instruction, sessionId }) {
   }
 
   const model = encodeURIComponent(DEFAULT_MODEL)
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=YOUR_API_KEY
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=YOUR_API_KEY`
   let lastError = null
 
   for (let attempt = 0; attempt < 2; attempt++) {

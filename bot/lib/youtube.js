@@ -67,7 +67,7 @@ async function ytdlv2(url, type) {
 async function ytdlv3(url, resolution) {
   try {
     const { data } = await axios.get(
-      `https://anabot.my.id/api/download/ytmp4?url=${encodeURIComponent(url)}&quality=${resolution}&apikey=YOUR_API_KEY
+      `https://anabot.my.id/api/download/ytmp4?url=${encodeURIComponent(url)}&quality=${resolution}&apikey=YOUR_API_KEY`
     )
 
     if (data.success && data.data && data.data.result) {

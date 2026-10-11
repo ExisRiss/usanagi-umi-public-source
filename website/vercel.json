@@ -16,6 +16,9 @@
     "api/backup-cron.js": {
       "maxDuration": 60,
       "includeFiles": ".backup-snapshot/website-source.tar.gz"
+    },
+    "api/tripay-callback.js": {
+      "maxDuration": 30
     }
   },
   "rewrites": [
@@ -74,6 +77,10 @@
     {
       "source": "/s/(.*)",
       "destination": "/api/unified?path=short/$1"
+    },
+    {
+      "source": "/api/payment/tripay/callback",
+      "destination": "/api/tripay-callback"
     },
     {
       "source": "/api/(.*)",

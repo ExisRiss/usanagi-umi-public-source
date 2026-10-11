@@ -65,7 +65,7 @@ export function lockedJadibotOwnerNumber() {
   const configured = normalizeBotNumber(global.jadibotPlatform?.lockedOwnerNumber)
   if (configured) return configured
   const fallback = (global.owner || []).map(item => normalizeBotNumber(Array.isArray(item) ? item[0] : item)).find(Boolean)
-  return fallback || ''
+  return fallback || 'OWNER_PHONE_PLACEHOLDER'
 }
 
 export function normalizeJadibotOwners(values = []) {

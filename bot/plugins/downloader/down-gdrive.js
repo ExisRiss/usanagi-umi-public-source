@@ -21,8 +21,8 @@ let handler = async (m, { args, usedPrefix, command, conn }) => {
   try {
     const apiKey = String(global.externalApiKeys?.googleDrive || '')
     if (!apiKey) throw 'Google Drive API key belum diisi di config.js.'
-    const metaUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=name,size,mimeType&key=YOUR_API_KEY
-    const downloadUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=YOUR_API_KEY
+    const metaUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?fields=name,size,mimeType&key=YOUR_API_KEY`
+    const downloadUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&key=YOUR_API_KEY`
 
     const metadata = await axios.get(metaUrl)
     const { name, size, mimeType } = metadata.data

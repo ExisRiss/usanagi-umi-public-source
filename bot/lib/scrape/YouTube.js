@@ -276,7 +276,7 @@ function findVideoRenderer(node, out) {
 
 export async function searchYoutube(q) {
     if (/^((?:https?:)?\/\/)?((?:www|m|music)\.)?(?:youtube\.com|youtu\.be)\//.test(q)) return q;
-    const res = await fetch(`https://www.youtube.com/youtubei/v1/search?key=YOUR_API_KEY {
+    const res = await fetch(`https://www.youtube.com/youtubei/v1/search?key=YOUR_API_KEY`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

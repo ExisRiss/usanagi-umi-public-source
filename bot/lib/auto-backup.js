@@ -52,6 +52,7 @@ function localDateParts(timezone) {
 function excluded(relative, cfg) {
   const key = normalize(relative)
   if (!key) return false
+  if (['.env.groq','.groq.env'].includes(path.basename(key)) || key.startsWith('.umi-update-stage-') || key.startsWith('.umi-source-rollback-')) return true
   for (const item of cfg.exclude) {
     if (key === item || key.startsWith(`${item}/`)) return true
   }

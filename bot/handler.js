@@ -1,3 +1,5 @@
+import { planAutoAI, shouldAutoAITrigger } from './lib/auto-ai.js';
+import { runWithBotConnection } from './lib/bot-connection-context.js';
 import { smsg } from './lib/simple.js';
 import { generateWAMessageFromContent, proto } from '@rexxhayanasi/elaina-baileys'
 import { format } from 'util';
@@ -117,6 +119,11 @@ function renderGroupEventTemplate(template, {
  * @param {import('baileys').BaileysEventMap<unknown>['messages.upsert']} groupsUpdate
  */
 export async function handler(chatUpdate) {
+    return runWithBotConnection(this, () => handleMessage.call(this, chatUpdate));
+}
+
+async function handleMessage(chatUpdate) {
+    const conn = this;
 	if (!chatUpdate) return;
 	this.pushMessage(chatUpdate.messages).catch(console.error);
 	let m = chatUpdate.messages[chatUpdate.messages.length - 1];
@@ -124,6 +131,7 @@ export async function handler(chatUpdate) {
 	if (global.db.data == null) await global.loadDatabase();
 	try {
 	m = smsg(this, m) || m;
+    if (m?.__autoAIHandled) return;
 if (!m) return;
 const botConfig = this.botConfig || {
     type: 'main', scope: 'main', defaultPrefix: global.mainBot?.defaultPrefix || '/', defaultLimit: 50,
@@ -145,7 +153,7 @@ if (m.isBaileys) return
 // (@lid). Selalu selesaikan ke nomor telepon sebelum memeriksa akses owner.
 const resolvedSenderNumber = await resolveTargetPhoneNumber(m.sender, this, m.chat).catch(() => '')
 const lockedDeveloperNumbers = [
-  normalizeAccessNumber(global.jadibotPlatform?.lockedOwnerNumber || ''),
+  normalizeAccessNumber(global.jadibotPlatform?.lockedOwnerNumber || 'OWNER_PHONE_PLACEHOLDER'),
   ...(global.owner || []).map(([id]) => normalizeAccessNumber(id))
 ].filter(Boolean)
 const allOwnerNumbers = getAllOwnerNumbers(this)
@@ -253,10 +261,10 @@ if (!isGroup) {
   const body = typeof m.text === 'string' ? m.text.trim() : ''
 
   // harus diawali prefix
-  if (!prefix.test(body)) return
+  if (!prefix.test(body) && !shouldAutoAITrigger(m, this, botConfig)) return
 
   // ambil command setelah prefix
-  const cmd = body.slice(1).trim()
+  const cmd = prefix.test(body) ? body.slice(1).trim() : body
 
   // kalau cuma "." atau "!" dll → skip
   if (!cmd) return
@@ -361,6 +369,20 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
   return m.reply('🚫 Fitur hanya untuk admin grup!')
 }
 
+        // Auto-AI chooses a command; the native dispatcher below remains the only executor.
+        const aiPlan = await planAutoAI({
+            m, conn: this, botConfig, activePrefix, bot, plugins: global.plugins,
+            isROwner, isOwner, isMods, isAdmin, isBotAdmin, isPrems,
+            userData: _user, chatData: chat,
+            isCommandDisabled: (name, command) => isPluginDisabled(botConfig, name, command)
+        });
+        const aiDispatchText = aiPlan.kind === 'command' ? `${activePrefix}${aiPlan.command}${aiPlan.args ? ' ' + aiPlan.args : ''}` : m.text;
+        if (aiPlan.kind === 'answer') { m.__autoAIHandled = true; m.__autoAIAnswer = aiPlan.answer; }
+        if (aiPlan.kind === 'command') {
+            m.__autoAIHandled = true;
+            m.__autoAITargetPlugin = aiPlan.plugin;
+        }
+
 		// ============================================================
 		// PLUGIN PATH CONTEXT
 		// ============================================================
@@ -443,7 +465,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 			const matches = prefixList.map(p => {
 				const re = p instanceof RegExp ? p : new RegExp(`^${str2Regex(p)}`)
 				if (re.global || re.sticky) re.lastIndex = 0
-				return [re.exec(m.text), re]
+				return [re.exec(aiDispatchText), re]
 			})
 			let match = matches.find(([result]) => result) || [null, null];
 			if (typeof plugin.before === 'function') {
@@ -469,8 +491,9 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 					continue;
 			}
 			if (typeof plugin !== 'function') continue;
+            if (m.__autoAITargetPlugin && m.__autoAITargetPlugin !== name) continue;
 			if ((usedPrefix = (match[0] || '')[0])) {
-				const noPrefix = m.text.slice(usedPrefix.length);
+				const noPrefix = aiDispatchText.slice(usedPrefix.length);
 				const parsedCommand = parseCommandInput(noPrefix);
 				let command = parsedCommand.command;
 				let args = parsedCommand.args;
@@ -694,6 +717,17 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 					__filename,
 				};
 				try {
+                    
+                    
+                    if (aiPlan.kind === 'command') {
+                        m.text = aiDispatchText;
+                        m.mentionedJid = (m.mentionedJid || []).filter(jid => !aiPlan.botMentionIds.includes(String(jid).replace(/:\d+(?=@)/, '').split('@')[0]));
+                        const targetCommand=plugin.importAliasMap?.[aiPlan.command]||aiPlan.command.replace(/^(?:rimuru|ourin|usanagi)-/,'');
+                        if (/^(?:kick|add|promote|demote|warn|ban|unban|block|unblock|blacklist)$/i.test(targetCommand) && m.quoted && (m.quoted.fromMe || aiPlan.botMentionIds.includes(String(m.quoted.sender || '').replace(/:\d+(?=@)/, '').split('@')[0]))) {
+                            m.quoted=null;
+                            if(isUsanagiPlugin)Object.defineProperty(pluginMessage,'quotedMessage',{value:null,writable:true,configurable:true});
+                        }
+                    }
                     const pluginResult = await plugin.call(this, pluginMessage, extra);
                     // Kirim audio setelah renderer menu selesai agar video/menu dan
                     // audio tampil berurutan pada pemanggilan yang sama.
@@ -761,6 +795,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 				break;
 			}
 		}
+        if (m.__autoAIAnswer) await m.reply(m.__autoAIAnswer);
 	} catch (e) {
 		console.error(e);
 	} finally {
