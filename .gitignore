@@ -1,0 +1,31 @@
+# Dependencies and builds
+node_modules/
+.next/
+dist/
+build/
+coverage/
+
+# Production configuration and credentials
+.env
+.env.*
+!.env.example
+config.js
+!.config.example.js
+.vercel/
+
+# WhatsApp/session/runtime state
+sessions/
+session/
+auth/
+database.json
+*.sqlite
+*.sqlite3
+*.db
+logs/
+tmp/
+
+# Generated deployment copies and personal artifacts
+deploy-backups/
+deploy-patches/
+.backup-snapshot/
+*.log

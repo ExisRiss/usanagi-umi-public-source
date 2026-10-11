@@ -1,0 +1,8 @@
+node_modules/
+sessions/
+jadibot/
+database.json
+tmp/
+.env
+*.log
+cookies.txt
