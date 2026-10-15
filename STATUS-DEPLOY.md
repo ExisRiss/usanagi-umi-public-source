@@ -1482,3 +1482,93 @@ terbaca penuh, scroll mencapai toko/order) & live 200, deployment
   disimpan untuk pembeli valid. Urutan API dibuktikan ke panel2
   (buat→422→lookup→PATCH 200→bersih). Berkas diunggah ke bot
   `bf133872`, bot di-restart: 2.037 plugin, API 3854, health 200.
+
+---
+
+## 🧭 Sesi Baru 16 Oktober 2026 — Workspace Kosong, Sumber Dipulihkan dari Git
+
+### Yang terjadi
+
+Workspace `/home/user` dibuka dalam keadaan **kosong total** — hanya ada
+`uploads/PROMPT-SESI-BARU.md`. Semua yang disebut "lokal" di prompt pindah sesi
+hilang: `tools/`, `.secrets/`, `usanagi-umi-public-source/`, `restore/`, `backups/`.
+Penyebabnya sama seperti berulang kali sebelumnya: snapshot workspace me-revert.
+
+**Penyelamatnya: repo git ini.** `git clone` memulihkan `bot/`, `db-mirror/`,
+`tools/` (40 alat), `website/`, `portfolio/`, `deploy/`, dan log ini (1.484 baris).
+Pelajaran: **repo git adalah satu-satunya cadangan yang tahan revert** — setiap
+pekerjaan harus di-commit dan di-push, jangan ditinggal di workspace saja.
+
+### Status live yang diverifikasi ulang (bukan dari catatan lama)
+
+| Target | Hasil |
+|---|---|
+| `https://api.gwenna.my.id/` dan `/health` | **401** `{"error":"Silakan masuk terlebih dahulu."}` — API bot hidup di balik tunnel, butuh sesi owner. Catatan lama bilang `/health` 200; sekarang endpoint itu ikut dijaga auth |
+| `https://jadibot-alzriss.gwenna.my.id/` | **200** (43.353 B), marker `app.js?v=20261016-lg14` + `app.css?v=20261016-pages4` → tidak ada drift |
+| `https://alzriss.gwenna.my.id/` | **200** (14.986 B), penjaga `__UMI_JS_VER==='20261016-lg14'` ada |
+| `https://game.gwenna.my.id/` | **530** — origin tak terjangkau, mirror/game masih mati |
+| PLTA panel2 | **200** `/api/application/nodes` (Node 1 = node2.ikyhost.cloud, lokasi 1) |
+| PLTC beyy | **200** `/api/client` (3 server terlihat) |
+| `bf133872` BOT | **running** — 3.699 file, `config.js`, `scripts/boot.js`, `cloudflared` utuh |
+| `83595f4b` MIRROR | **offline**, uptime 0 — masih kosong |
+| `852f853e` cadangan | **offline** (sesuai rencana) |
+| Vercel | **200**, project `alzriss-comunity`, deployment `dpl_6jXxKEP2wdNAT1d7B2r1QNZsaemk` READY, 17 env |
+
+### 🔴 Drift repo-vs-server yang ditemukan (dan sudah dibereskan)
+
+`BACKUP-MANIFEST.json` di server **basi** (generasi `hourly_20261015060003136`,
+dibuat 15 Okt 06:00 UTC) sehingga tidak menampilkan perubahan setelahnya. Karena
+itu dibuat alat baru **`tools/drift-scan.mjs`** yang membaca daftar file langsung
+dari Client API per direktori lalu membandingkan ukuran byte dengan salinan lokal.
+
+Hasil pemindaian pertama — repo **tertinggal dari produksi**:
+
+| Berkas | Server | Repo lama | Keterangan |
+|---|---|---|---|
+| `bot/lib/panel-autoorder.js` | 48.387 B | 47.083 B | **fix adopsi akun panel (penambal 502) belum pernah di-commit** |
+| `bot/handler.js` | 46.655 B | 46.654 B | beda satu titik-koma di baris import |
+| `bot/lib/chat.json` | 13.293 B | 3 B | keadaan chat runtime — **sengaja tidak di-sync** |
+
+Kalau ada yang deploy ulang dari repo sebelum sesi ini, **fix 502 beli panel akan
+mundur lagi**. Kedua berkas source sudah ditarik dari server, `node --check` lolos,
+dan repo kini identik dengan produksi: **3.699 file, 0 selisih kode**.
+
+### Berkas lokal yang dibangun ulang
+
+- `.secrets/` (700/600): `beyy-new-panel-credentials.env` (nama variabel disesuaikan
+  ke yang dibaca `tools/ptero.mjs`: `PTERO_PANEL_URL` + `PTERO_CLIENT_API_KEY`),
+  `panel2-credentials.env`, `usanagi-credentials.env`, `cloudflare.env`, `github.env`.
+- `.secrets/upload/`: lima berkas env **diunduh langsung dari server** (bukan dari
+  prompt, supaya tidak basi) — `.main-bot.env`, `.tunnel.env`,
+  `.owner-console-relay.env`, `.backup-export.env`, `.error-report.env`.
+- `.secrets/sb-keys.json` + `supabase.env`: kunci Supabase **lengkap** (anon 208
+  karakter + service_role 219 karakter) dipulihkan dari env Vercel — salinan di
+  prompt pindah sesi terpotong di tengah token service_role.
+- `/home/user/tools` → symlink ke `usanagi-umi-public-source/tools` supaya perintah
+  `node tools/…` dari `/home/user` tetap jalan seperti sebelumnya.
+- Cadangan source: `/home/user/restore/bot-latest.tar.gz` — 24 MB, 3.862 berkas
+  (tanpa `node_modules`/`sessions`), sha256 `b14b421b…4554fcf`.
+
+### Log konsol bot (relay owner-console jalan, HTTP 200)
+
+- `⏳ Menyiapkan pairing code…` → `Koneksi terputus: Connection Failure` →
+  `❌ Pairing belum berhasil: Socket WhatsApp berubah saat pairing.`
+  **Tidak ada kode pairing yang sedang tampil sekarang.** Bot akan memunculkan
+  prompt lagi begitu koneksi siap; jalankan
+  `node tools/console-logs.mjs --grep "PAIRING CODE"` saat siap pairing.
+- `[JADIBOT-AUTH] 403 bad_jwt … token is expired` — token sesi website milik
+  pengunjung sudah kedaluwarsa (normal; `lib/jadibot-platform-api.js:355`). Bukan
+  kerusakan sistem, cukup login ulang di website.
+- `[VERCEL-BACKUP-SCHEDULER] Backup hourly selesai` + terjadwal berikutnya →
+  cron cadangan sehat.
+
+### Masih terbuka
+
+1. **Pairing bot utama `6282343823200`** — butuh kode terbaru dari log konsol lalu
+   dimasukkan pemilik ke WhatsApp.
+2. **Mirror `83595f4b` + `game.gwenna.my.id`** — sumber `db-mirror/` utuh di repo
+   (`server.js`, `game.js` port 3900 di 127.0.0.1, `game.html`, `tunnel-config.yml`).
+   Yang belum ada di mana pun: `plugins/game/game-webmultiplayer.js` dan
+   `lib/webgame.json` — keduanya harus ditulis ulang.
+3. **Rotate kunci** yang pernah lewat chat (panel2, beyy, Vercel, Cloudflare,
+   Supabase, dan token GitHub yang dipakai sesi ini).

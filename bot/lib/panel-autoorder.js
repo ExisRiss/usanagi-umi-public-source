@@ -699,10 +699,28 @@ async function ensurePanelAccount(raw, userId, user) {
   const suppliedEmail = safeText(user?.email, 160)
   const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(suppliedEmail) ? suppliedEmail : `${username}@users.umi.local`
   const password = crypto.randomBytes(10).toString('base64url')
-  const created = await pterodactylRequest(raw, '/users', { method: 'POST', body: { username, email, first_name: 'Umi', last_name: 'Panel', password } })
+  let created = null
+  try {
+    created = await pterodactylRequest(raw, '/users', { method: 'POST', body: { username, email, first_name: 'Umi', last_name: 'Panel', password } })
+  } catch (error) {
+    if (!/already been taken/i.test(String(error?.message || ''))) throw error
+    // Akun panel sudah pernah dibuat (mis. sebelum data wallet di-reset
+    // saat pindah server): adopsi akun lama, lalu reset password-nya
+    // supaya kredensial yang kami simpan tetap valid untuk pembeli.
+    let attrs = null
+    const byEmail = await pterodactylRequest(raw, `/users?filter[email]=${encodeURIComponent(email)}`).catch(() => null)
+    if (Array.isArray(byEmail?.data) && byEmail.data[0]?.attributes?.id) attrs = byEmail.data[0].attributes
+    if (!attrs) {
+      const byName = await pterodactylRequest(raw, `/users?filter[username]=${encodeURIComponent(username)}`).catch(() => null)
+      if (Array.isArray(byName?.data) && byName.data[0]?.attributes?.id) attrs = byName.data[0].attributes
+    }
+    if (!attrs?.id) throw error
+    await pterodactylRequest(raw, `/users/${attrs.id}`, { method: 'PATCH', body: { username: attrs.username, email: attrs.email, first_name: attrs.first_name || 'Umi', last_name: attrs.last_name || 'Panel', password } })
+    created = { attributes: { id: attrs.id, username: attrs.username, email: attrs.email } }
+  }
   const id = Number(created?.attributes?.id)
   if (!id) throw Object.assign(new Error('Panel tidak mengembalikan akun pengguna baru.'), { status: 502 })
-  const panelAccount = { id, username, email, passwordEnc: encrypt(password) }
+  const panelAccount = { id, username: safeText(created?.attributes?.username || username, 80), email: safeText(created?.attributes?.email || email, 160), passwordEnc: encrypt(password) }
   const fresh = readWallet()
   accountFor(fresh, userId).panelAccount = panelAccount
   writeWallet(fresh)
