@@ -26,6 +26,7 @@ const RUNTIME = new Set([
   'database.json',           // data pengguna & wallet (gitignored)
   'lib/chat.json',           // keadaan chat runtime (repo cuma punya placeholder "{}")
   'config.js',               // kredensial bot
+  'lib/webgame.json',        // token Umi Web Games (gitignored, hanya di server)
   'BACKUP-MANIFEST.json',    // manifes generasi backup terakhir
   'cloudflared',             // biner 40 MB
   '.main-bot.env', '.tunnel.env', '.owner-console-relay.env',
