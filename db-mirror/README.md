@@ -1,32 +1,40 @@
-# Umi DB Mirror — cermin cadangan di panel beyy
+# Umi DB Mirror + Umi Web Games — server beyy `83595f4b`
 
-Layanan penerima backup kecil (Node.js tanpa dependensi) yang berjalan di
-server Pterodactyl `serverbackuppVip` di `https://beyy.ikyhost.cloud`
-(alokasi publik `167.99.67.212:2016`). Fungsinya menyimpan **salinan cermin**
-dari backup produksi agar bisa dipulihkan bila server utama bermasalah.
-Produksi tidak bergantung pada layanan ini.
+Satu proses Node.js (tanpa dependensi) di server Pterodactyl **`83595f4b`**
+(`aaaaaaaaaVip`, panel `beyy.ikynebula.my.id`, alokasi `192.241.149.63:3348`)
+yang mengerjakan tiga hal sekaligus:
 
-## Yang disimpan
+| Bagian | Port | Alamat |
+|---|---|---|
+| Penerima cadangan (`server.js`) | `SERVER_PORT` = 3348 | `http://192.241.149.63:3348` |
+| Server game multiplayer (`game.js`) | 127.0.0.1:3900 | `https://game.gwenna.my.id` |
+| Supervisor `cloudflared` (tunnel `umi-games-gwenna`) | — | meneruskan port 3900 ke publik |
 
-Setiap jam, cron backup website (Vercel) menjalankan satu "generasi" backup
-dan — selain menyimpannya di Vercel Blob seperti sebelumnya — juga mengirim
-salinan ke layanan ini:
+Produksi **tidak bergantung** pada layanan cadangan ini; kehilangannya tidak
+mematikan bot maupun website.
 
-| kind         | isi                                                        |
-|--------------|------------------------------------------------------------|
-| `website`    | snapshot tar.gz kode website                               |
-| `website-db` | dump JSON.gz tabel database website (Supabase: profil, audit, katalog plugin, media, plugin API) + metadata pengguna Auth |
-| `bot`        | arsip tar.gz bot (termasuk `database.json`)                |
-| `jadibot`    | arsip tar.gz sesi jadibot (kredensial WhatsApp)            |
+## 1. Penerima cadangan
 
-Hash SHA-256 tiap arsip disimpan sebagai berkas pendamping `.json` dan
-dicocokkan otomatis oleh pengirim. Retensi: 48 generasi terbaru per jenis.
+Cron cadangan website (Vercel, tiap jam) membuat satu "generasi" dan — selain
+menyimpannya di Vercel Blob — mengirim salinan ke layanan ini:
 
-## API
+| kind | isi |
+|---|---|
+| `website` | snapshot tar.gz kode website |
+| `website-db` | dump JSON.gz tabel Supabase + metadata Auth |
+| `bot` | arsip tar.gz bot (termasuk `database.json`) |
+| `jadibot` | arsip tar.gz sesi jadibot |
 
-Semua selain `/health` wajib header `Authorization: Bearer <token>`
-(token ada di `service-token.txt` di container dan di berkas rahasia
-`.secrets/beyy-panel-credentials.env` milik pemilik, di luar repo).
+Hash SHA-256 tiap arsip disimpan sebagai berkas `.json` pendamping dan
+dicocokkan pengirim. Retensi: 48 generasi terbaru per jenis.
+
+Env Vercel yang dipakai: `UMI_MIRROR_URL` (kini `http://192.241.149.63:3348`)
+dan `UMI_MIRROR_TOKEN`. Nilai token yang sama disimpan di container sebagai
+`service-token.txt`.
+
+### API
+
+Semua selain `/health` wajib `Authorization: Bearer <token>`.
 
 - `GET /health` — status + jumlah arsip per jenis
 - `POST /mirror/:kind/:generation` — unggah arsip (body mentah .tar.gz/.json.gz)
@@ -34,33 +42,63 @@ Semua selain `/health` wajib header `Authorization: Bearer <token>`
 - `GET /mirror/:kind/:generation` — unduh arsip untuk restore
 - `DELETE /mirror/:kind/:generation` — hapus arsip
 
-## Restore singkat
+### Restore singkat
 
-1. Unduh arsip yang dibutuhkan dari `/mirror/:kind/:generation`.
-2. Verifikasi: `sha256sum` harus sama dengan nilai di `/mirror/list`.
-3. `jadibot`/`bot`: ekstrak kembali ke direktori bot lalu restart bot.
-   `website-db`: impor JSON ke tabel Supabase terkait. `website`: kode situs.
+1. Unduh arsip dari `/mirror/:kind/:generation`.
+2. Cocokkan `sha256sum` dengan nilai di `/mirror/list`.
+3. `bot`/`jadibot`: ekstrak ke direktori bot lalu restart. `website-db`: impor ke
+   tabel Supabase. `website`: kode situs.
+
+## 2. Umi Web Games
+
+Enam meja: `uno`, `unoflip`, `chess`, `snakes`, `monopoly`, `werewolf`.
+Realtime lewat SSE, tanpa dependensi, halaman tunggal `game.html`.
+
+- `GET /health` — jumlah room + daftar permainan
+- `GET /` dan `GET /:game/:roomId` — halaman room
+- `POST /api/rooms` — buat meja (**wajib token bot**)
+- `POST /api/rooms/:id/claim` — minta kursi (nomor WA → status pending)
+- `POST /api/rooms/:id/verify` — verifikasi WhatsApp (**token bot**) → kode masuk 6 digit
+- `POST /api/rooms/:id/enter` — tukar kode masuk dengan token kursi
+- `GET /api/rooms/:id/state?token=` — keadaan meja (tangan lawan disensor)
+- `GET /api/rooms/:id/events?token=` — SSE
+- `POST /api/rooms/:id/action` — aksi pemain (hanya kursi terverifikasi)
+
+Token bot dibaca dari `game-token.txt` di container atau env `UMI_GAME_TOKEN`.
+Sisi bot: plugin `bot/plugins/game/game-webmultiplayer.js` + konfigurasi
+`bot/lib/webgame.json` (berisi token; berkas itu di-gitignore). Perintah:
+`.uno`, `.unoflip`, `.caturweb`, `.utweb`, `.monopoli`, `.wwweb`, `.webgame`,
+plus `<perintah> join <id>` dan `<perintah> <id>` untuk verifikasi.
+
+Uji: `tools/test-webgame.mjs` (25 uji alur API) dan
+`tools/test-webmultiplayer-plugin.mjs` (15 uji plugin asli).
+
+## 3. Tunnel Cloudflare
+
+Tunnel **`umi-games-gwenna`** (`6f82f294-ff18-4966-9b8e-38edd97f8359`),
+**lokal-managed**: dibuat lewat API dengan `tunnel_secret` buatan sendiri, jadi
+berkas `tunnel-creds.json` bisa direkonstruksi kapan pun. Ingress ada di
+`tunnel-config.yml`. DNS: CNAME `game.gwenna.my.id` →
+`6f82f294-….cfargotunnel.com` (proxied).
+
+`server.js` mengutamakan konfigurasi lokal: bila `tunnel-config.yml` **dan**
+`tunnel-creds.json` ada, cloudflared dijalankan dengan `--config`. Bila salah
+satunya hilang, ia jatuh ke mode token dari `tunnel-token.txt`. Konektor mati →
+dicoba lagi tiap 10 detik. Bila biner `cloudflared` belum ada, diunduh sekali
+dari rilis resmi Cloudflare.
+
+> **Jangan** memakai tunnel lama `alzriss-okta` (`88438bb0-…`) dengan mode token
+> murni. Remote config-nya tidak bisa dibaca/ditulis lewat API token yang ada,
+> dan menjalankan mode token di sana terbukti mengosongkan ingress sehingga
+> semua hostname jadi 503. Arsip ingress lamanya: `tunnel-config.alzriss-okta.yml`.
 
 ## Menjalankan ulang
 
-Di panel: pastikan `server.js`, `package.json`, `service-token.txt` ada di
-root container, variabel `CMD_RUN` = `npm start`, lalu Start. egg generik
-Node.js akan memasang dependensi (tidak ada) dan menjalankan server pada
-port alokasi (`SERVER_PORT`).
+Di panel: pastikan `server.js`, `game.js`, `game.html`, `package.json`,
+`service-token.txt`, `game-token.txt`, `tunnel-config.yml`, `tunnel-creds.json`
+ada di root container, `CMD_RUN=npm start`, lalu Start. Egg generik Node.js
+menjalankan `npm install` (tanpa dependensi) lalu `npm start`.
 
-## Cloudflare Tunnel `alzriss-okta` (sejak 15 Okt 2026)
-
-Proses yang sama juga mengawasi **cloudflared** untuk tunnel
-`alzriss-okta` (88438bb0-…) agar domain `gwenna.my.id` dan subdomainnya
-tidak lagi error 1033:
-
-- Jalankan dari konfigurasi lokal `tunnel-config.yml` + `tunnel-creds.json`
-  di container (salinan config ada di repo sebagai `tunnel-config.yml`).
-  Mode token murni terbukti menimpa ingress Cloudflare dengan konfigurasi
-  kosong → semua hostname 503, jadi jangan dipakai.
-- Selama aplikasi deployer lama belum dipasang, port aplikasi
-  (3000/3200/3300/3500/3600/3700/3800) dijawab halaman penampung
-  "Layanan Sedang Disiapkan". Bila aplikasi aslinya sudah dipasang di
-  port-port itu, matikan placeholder dengan mengubah perintah start
-  menjadi `UMI_PLACEHOLDER=off npm start`.
-- cloudflared mati → supervisor menjalankannya lagi dalam 10 detik.
+Placeholder "Layanan Sedang Disiapkan" menjawab di port 3000/3200/3300/3500/
+3600/3700/3800 — sisa ingress aplikasi deployer lama. Matikan dengan
+`UMI_PLACEHOLDER=off`. Game bisa dimatikan dengan `UMI_GAMES=off`.

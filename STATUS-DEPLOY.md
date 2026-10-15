@@ -1572,3 +1572,103 @@ dan repo kini identik dengan produksi: **3.699 file, 0 selisih kode**.
    `lib/webgame.json` — keduanya harus ditulis ulang.
 3. **Rotate kunci** yang pernah lewat chat (panel2, beyy, Vercel, Cloudflare,
    Supabase, dan token GitHub yang dipakai sesi ini).
+
+---
+
+## 🎮 Mirror + Umi Web Games hidup kembali (16 Oktober 2026)
+
+### Yang dikerjakan
+
+Server mirror `83595f4b` di panel beyy (kosong, offline) diisi ulang dari repo,
+server game dinaikkan, tunnel baru dibuat, dan plugin bot yang hilang ditulis
+ulang. Hasil akhir: `https://game.gwenna.my.id` **200**, mirror **200**, cadangan
+website mengalir lagi ke cermin.
+
+| Berkas di container `83595f4b` | Ukuran | Status |
+|---|---|---|
+| `server.js` / `game.js` / `game.html` / `package.json` | 11.858 / 44.913 / 31.240 / 300 B | diunggah, HTTP 204 |
+| `tunnel-config.yml` + `tunnel-creds.json` | 202 / 210 B | tunnel lokal-managed |
+| `game-token.txt` | 48 karakter | **token baru** (yang lama bocor di repo publik) |
+| `service-token.txt` | 64 karakter | sama dengan `UMI_MIRROR_TOKEN` Vercel, cron tak perlu diubah |
+
+### Tunnel: kenapa bukan `alzriss-okta`
+
+Tunnel lama `88438bb0-…` statusnya `down`, 0 konektor, `config_src: cloudflare`.
+Endpoint `/cfd_tunnel/{id}/configs` **sudah tidak ada** di versi API sekarang
+(GET maupun PUT → HTTP 404 tanpa body), jadi ingress remote-nya tidak bisa
+dibaca apalagi diperbaiki. Ditambah catatan lama bahwa mode token murni di
+tunnel itu mengosongkan ingress (semua hostname 503), tunnel lama **tidak
+disentuh sama sekali**.
+
+Sebagai gantinya dibuat tunnel **`umi-games-gwenna`**
+(`6f82f294-ff18-4966-9b8e-38edd97f8359`) lewat API dengan `config_src: local`
+dan `tunnel_secret` buatan sendiri — sehingga `tunnel-creds.json` bisa
+direkonstruksi kapan pun dan ingress sepenuhnya di bawah kendali kita
+(`game.gwenna.my.id → http://localhost:3900`, sisanya `http_status:404`).
+DNS: CNAME baru `game.gwenna.my.id → 6f82f294-….cfargotunnel.com` (proxied).
+Ingress lama diarsipkan sebagai `tunnel-config.alzriss-okta.yml`.
+
+### Verifikasi (semuanya dijalankan, bukan diasumsikan)
+
+- `http://192.241.149.63:3348/health` → **200** `umi-db-mirror`
+- `https://game.gwenna.my.id/health` → **200** `umi-web-games`, 6 permainan
+  (`uno`, `unoflip`, `chess`, `snakes`, `monopoly`, `werewolf`)
+- `https://game.gwenna.my.id/` → **200**, 31.240 B, `<title>Umi Games — Multiplayer WhatsApp`
+- `tools/test-webgame.mjs` → **25 lolos, 0 gagal** di alamat live dengan token baru
+  (UNO 9, Catur 5, Ular Tangga 3, Monopoli 2, Werewolf 5, UNO Flip 1)
+- Cermin: `/mirror/list` 200 dengan token, **401** tanpa token, unggah uji 201
+- **Restart penuh** server `83595f4b` → mirror 200 + game 200 lagi dalam 45 detik
+  (cloudflared mengunduh binernya sendiri lalu tersambung)
+
+### Plugin bot ditulis ulang
+
+`bot/plugins/game/game-webmultiplayer.js` (8.364 B) + `bot/lib/webgame.json`
+(token, di-gitignore; contoh di `bot/lib/webgame.example.json`). Diunggah ke
+`bf133872` dan **hot-reload tanpa restart**: log konsol menunjukkan
+`reloaded plugin 'game/game-webmultiplayer.js'` tiga kali tanpa error.
+
+Nama perintah sengaja berakhiran `web` untuk catur/ular tangga/werewolf karena
+`catur`/`chess` dipakai `game-chess.js` + `usanagi-chess.js`, sedangkan
+`ulartangga`/`ut`/`werewolf`/`ww` dipakai portingan Rimuru
+(`plugins/pelengkap/rimuru/game/`). Dipetakan ke id server:
+`caturweb→chess`, `utweb→snakes`, `monopoli→monopoly`, `wwweb→werewolf`.
+
+Alat uji baru `tools/test-webmultiplayer-plugin.mjs` **memuat modul plugin yang
+sebenarnya** (bukan salinan logika) lalu memanggil handler-nya dengan `conn`/`m`
+tiruan terhadap server live: **15 lolos, 0 gagal** — bantuan, buat meja, join,
+verifikasi kode masuk 6 digit, intip meja, monopoli, catur, plus dua jalur galat.
+
+### Cadangan website tersambung lagi
+
+`UMI_MIRROR_URL` di Vercel masih menunjuk node lama yang mati
+(`http://167.99.67.212:2016`) → diganti `http://192.241.149.63:3348`.
+Sumber website dipastikan **byte-identik dengan live** dulu (md5 `index.html`
+`cb7b3e33`, `app.js` `8d6517dc`, `app.css` `ea487eee`) baru di-deploy:
+`dpl_8Zav7t8sZTQNPEyjiwDEMBMCg2za` READY, marker live tetap
+`app.js?v=20261016-lg14` + `app.css?v=20261016-pages4`, `index.html` live masih
+identik dengan repo.
+
+Cron dipicu manual → generasi `hourly_20261015185021524_036fdf06cde3c27a`:
+`website` 1.392.371 B, `bot` 12.809.592 B, `jadibot` 1.732 B, `website-db`
+31.170 B. Keempatnya **terbukti mendarat di cermin** dengan SHA-256 cocok
+(`website` `f1ade276…`, `bot` `6d37a387…`).
+
+### Yang berubah di repo
+
+- `db-mirror/tunnel-config.yml` → tunnel baru; yang lama jadi `tunnel-config.alzriss-okta.yml`
+- `db-mirror/README.md` ditulis ulang mengikuti keadaan sebenarnya
+- `.gitignore` += `bot/lib/webgame.json`, `db-mirror/tunnel-creds.json`,
+  `tunnel-token.txt`, `game-token.txt`, `service-token.txt`
+- `tools/test-webgame.mjs` tidak lagi menyimpan token game di kode (baca dari
+  `UMI_GAME_TOKEN` / `.secrets/game-token.env`)
+- `bot/plugins/game/game-webmultiplayer.js`, `bot/lib/webgame.example.json`,
+  `tools/test-webmultiplayer-plugin.mjs` baru
+
+### Sisa pekerjaan
+
+1. **Pairing bot utama `6282343823200`** — belum, menunggu pemilik memasukkan kode.
+2. **Rotate kunci**: token GitHub sesi ini, token game lama `7512d0bc…` (sudah
+   tidak dipakai lagi, tapi pernah terbuka di repo publik), panel2 PLTA/PLTC,
+   beyy PLTC, Vercel, Cloudflare, Supabase.
+3. Server `83595f4b` tidak auto-start bila node panel reboot — perlu dinyalakan
+   manual dari panel kalau panel-nya reboot.

@@ -38,3 +38,12 @@ panel-files.zip
 credentials*.env
 *-credentials.env
 *-keys-backup.txt
+
+# Token Umi Web Games — hanya ada di server bot
+bot/lib/webgame.json
+
+# Rahasia runtime server mirror — hanya ada di container
+db-mirror/tunnel-creds.json
+db-mirror/tunnel-token.txt
+db-mirror/game-token.txt
+db-mirror/service-token.txt

@@ -1,6 +1,14 @@
-// Smoke test Umi Web Games (lokal): buat room -> klaim -> verifikasi WA -> mulai -> aksi.
-const BASE = 'https://game.gwenna.my.id'
-const AUTH = { Authorization: 'Bearer 7512d0bc65d84368798c9449ce61fee262b9a6a239f0a72e', 'Content-Type': 'application/json' }
+// Smoke test Umi Web Games: buat room -> klaim -> verifikasi WA -> mulai -> aksi.
+// Token bot JANGAN di-hardcode di sini (repo ini publik). Dibaca dari env
+// UMI_GAME_TOKEN atau berkas /home/user/.secrets/game-token.env.
+import fs from 'node:fs'
+const BASE = process.env.UMI_GAME_BASE || 'https://game.gwenna.my.id'
+const TOKEN = process.env.UMI_GAME_TOKEN || (() => {
+  const file = process.env.UMI_GAME_TOKEN_FILE || '/home/user/.secrets/game-token.env'
+  try { return (fs.readFileSync(file, 'utf8').match(/^UMI_GAME_TOKEN=(.+)$/m) || [])[1]?.trim() || '' } catch { return '' }
+})()
+if (!TOKEN) { console.error('Token game tidak ditemukan: isi UMI_GAME_TOKEN atau /home/user/.secrets/game-token.env'); process.exit(1) }
+const AUTH = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }
 let pass = 0, fail = 0
 const ok = (cond, label) => { if (cond) { pass++; console.log('  ✔', label) } else { fail++; console.log('  ✘ GAGAL:', label) } }
 const post = async (path, body, headers) => {
