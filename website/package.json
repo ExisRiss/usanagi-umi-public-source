@@ -13,6 +13,7 @@
     "tar": "^7.5.22"
   },
   "scripts": {
-    "backup:snapshot": "node scripts/create-website-backup-snapshot.mjs"
+    "backup:snapshot": "node scripts/create-website-backup-snapshot.mjs",
+    "sync:public": "node scripts/sync-public.mjs"
   }
 }

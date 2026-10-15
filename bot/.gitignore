@@ -17,3 +17,7 @@ feature-smoke-results.json
 # Public audited integration sources/data are not production runtime state.
 !integrations/
 !integrations/**
+
+# Token tunnel Cloudflare - jangan pernah di-commit
+.tunnel.env
+.backup-export.env

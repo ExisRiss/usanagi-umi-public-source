@@ -2,6 +2,10 @@ import { searchYoutube, getYoutubeDirectUrl } from '../../lib/scrape/YouTube.js'
 import { randomUUID } from 'crypto';
 import axios from 'axios';
 
+// UA khusus untuk oEmbed YouTube (dipakai mengambil nama channel).
+const UA_OE =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36";
+
 function escapeHtmlJs(value) {
     return String(value ?? '')
         .replace(/\\/g, '\\\\')
@@ -804,19 +808,29 @@ startVideoStream(config);
 }
 
 let handler = async (m, { conn, text }) => {
+    const query = String(text || "").trim();
+
+    // Periksa input lebih dulu. Versi lama selalu mengirim "sedang memproses"
+    // sebelum memeriksa, jadi pengguna yang lupa menulis judul tetap melihat
+    // pesan "memproses" yang menyesatkan sebelum pesan contohnya muncul.
+    if (!query) {
+        return m.reply(
+            "🎬 *YT PLAY*\n\n" +
+            "Masukkan judul atau link YouTube.\n\n" +
+            "Contoh:\n" +
+            ".ytplay alan walker faded\n" +
+            ".ytp https://youtu.be/xxxxx"
+        );
+    }
+
+    // Umpan balik langsung: prosesnya butuh ~3 detik (cari → ambil link →
+    // susun player), jadi pengguna perlu tanda bahwa perintahnya diterima.
+    // Dibungkus try/catch supaya perangkat tanpa dukungan reaksi tidak gagal.
+    try { await m.react("⏳"); } catch {}
+
     await m.reply("⏳ Sedang memproses, mohon tunggu sebentar...");
 
     try {
-        const query = String(text || "").trim();
-
-        if (!query) {
-            return m.reply(
-                "Masukkan judul atau link YouTube.\n\n" +
-                "Contoh:\n" +
-                ".ytplay alan walker faded\n" +
-                ".ytp https://youtu.be/xxxxx"
-            );
-        }
 
         const youtubeUrl = await searchYoutube(query);
 
@@ -845,67 +859,126 @@ let handler = async (m, { conn, text }) => {
             }
         }
 
-        const wsUrl = "wss://stream.kanara.my.id/?url=" + encodeURIComponent(info.url);
+        // SaveTube hanya mengembalikan judul/durasi/thumbnail — tidak ada nama
+        // channel. Karena itu nama channel diambil dari oEmbed resmi YouTube
+        // (tanpa perlu API key). Ini juga memperbaiki bug lama: kode memakai
+        // info.author yang memang tidak pernah ada, sehingga label channel
+        // selalu jatuh ke "YouTube" untuk semua video.
+        let channelName = String(info.author || "").trim();
+        if (!channelName) {
+            try {
+                const oe = await axios.get("https://www.youtube.com/oembed", {
+                    params: { url: youtubeUrl, format: "json" },
+                    timeout: 8000,
+                    headers: { "user-agent": UA_OE }
+                });
+                channelName = String(oe.data?.author_name || "").trim();
+            } catch (e) {
+                channelName = "";
+            }
+        }
+        channelName = channelName || "YouTube";
 
         const duration = info.duration
             ? `${Math.floor(info.duration / 60)}:${String(info.duration % 60).padStart(2, "0")}`
             : "";
 
+        const playerTitle = info.title || "YouTube Video";
+        const wsUrl = "wss://stream.kanara.my.id/?url=" + encodeURIComponent(info.url);
+
         const htmlPayload = buildPlayerHtml({
-            title: info.title || "YouTube Video",
-            channel: info.author || "YouTube",
+            title: playerTitle,
+            channel: channelName,
             duration,
             videoUrl: info.url,
             wsUrl,
             posterBase64
         });
 
-        await conn.relayMessage(
-            m.chat,
-            {
-                botForwardedMessage: {
-                    message: {
-                        richResponseMessage: {
-                            messageType: 1,
-                            unifiedResponse: {
-                                data: Buffer.from(
-                                    JSON.stringify({
-                                        __typename: "GenAIUnifiedResponse",
-                                        response_id: randomUUID(),
-                                        sections: [
-                                            {
-                                                __typename: "GenAIUnifiedResponseSection",
-                                                view_model: {
-                                                    __typename: "GenAISingleLayoutViewModel",
-                                                    primitive: {
-                                                        __typename: "FOAHtmlPrimitiveDemoDONOTUSE",
-                                                        trusted_sources: [],
-                                                        payload: htmlPayload
-                                                    }
-                                                }
-                                            }
-                                        ]
-                                    })
-                                ).toString("base64")
-                            },
-                            contextInfo: {
-                                isForwarded: true,
-                                forwardOrigin: 4
-                            }
+        /* ------------------------------------------------------------------
+         * Pesan HTML "AI Rich" hanya dirender WhatsApp kalau amplopnya lengkap.
+         *
+         * Versi lama memakai primitif __typename "FOAHtmlPrimitiveDemoDONOTUSE"
+         * — nama itu sendiri berarti "jangan dipakai"; ia primitif DEMO, bukan
+         * primitif HTML yang benar-benar dirender. Selain itu amplopnya juga
+         * kehilangan messageContextInfo.botMetadata, submessages, dan
+         * forwardedAiBotMessageInfo, lalu memakai opsi relay yang salah
+         * (additionalAttributes, bukan messageId).
+         *
+         * Bentuk di bawah ini sama dengan plugins/music/play2.js dan
+         * plugins/main/usanagi-ping3.js — pola yang dipakai puluhan plugin lain
+         * di repo ini dan sudah terbukti dirender.
+         * ------------------------------------------------------------------ */
+        const responseId = randomUUID();
+        const unified = {
+            __typename: "GenAIUnifiedResponse",
+            response_id: responseId,
+            sections: [
+                {
+                    __typename: "GenAIUnifiedResponseSection",
+                    view_model: {
+                        __typename: "GenAISingleLayoutViewModel",
+                        primitive: {
+                            __typename: "GenAIaeacdsnwHtmlPrimitive",
+                            trusted_sources: [],
+                            payload: htmlPayload
                         }
                     }
                 }
-            },
-            {
-                additionalAttributes: {
-                    type: "text"
+            ]
+        };
+
+        try {
+            await conn.relayMessage(
+                m.chat,
+                {
+                    messageContextInfo: {
+                        deviceListMetadata: {},
+                        deviceListMetadataVersion: 2,
+                        botMetadata: {
+                            messageDisclaimerText: "",
+                            botResponseId: responseId
+                        }
+                    },
+                    botForwardedMessage: {
+                        message: {
+                            richResponseMessage: {
+                                messageType: 1,
+                                submessages: [{ messageType: 2, messageText: playerTitle }],
+                                unifiedResponse: {
+                                    data: Buffer.from(JSON.stringify(unified)).toString("base64")
+                                },
+                                contextInfo: {
+                                    forwardingScore: 1,
+                                    isForwarded: true,
+                                    forwardedAiBotMessageInfo: { botJid: "867051314767696@bot" },
+                                    forwardOrigin: 4
+                                }
+                            }
+                        }
+                    }
                 },
-                edit: false
-            }
-        );
+                { messageId: responseId }
+            );
+        } catch (relayErr) {
+            // Sebagian perangkat/versi WhatsApp belum mendukung pesan HTML.
+            // Perintahnya jangan digagalkan — kirim teks biasa supaya pengguna
+            // tetap mendapatkan judul dan tautannya.
+            console.warn("[ytplay] relayMessage gagal, memakai teks biasa:", relayErr?.message || relayErr);
+            await m.reply(
+                "🎬 *" + playerTitle + "*\n" +
+                "📺 " + channelName + "\n" +
+                (duration ? "⏱️ " + duration + "\n" : "") +
+                "\n▶️ " + youtubeUrl + "\n\n" +
+                "_Player interaktif tidak didukung di perangkat ini._"
+            );
+        }
+
+        try { await m.react("✅"); } catch {}
 
     } catch (err) {
         console.error("[ytplay error]", err);
+        try { await m.react("❌"); } catch {}
         await m.reply("Gagal memutar video YouTube.\nError: " + err.message);
     }
 };

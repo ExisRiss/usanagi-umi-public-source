@@ -16,11 +16,13 @@ import { Low, JSONFile } from 'lowdb';
 import { makeWASocket, protoType, serialize } from './lib/simple.js';
 import { installAutoTyping } from './lib/auto-typing.js';
 import { installBotConfigAccessors, getMainBotConfig } from './lib/bot-config.js';
+import { installRpgGlobals } from './lib/rpg/awang-rpg-globals.js';
 import { syncMainPrefix } from './core/awang-prefix.js';
 import { getExplicitlyEnabledWelcomeGroups } from './core/awang-welcome.js';
 import { startJadibotPlatformApi } from './lib/jadibot-platform-api.js';
 import { installAutoBackup, updateAutoBackupConnection } from './lib/auto-backup.js';
 import { startVercelBackupScheduler } from './lib/vercel-backup-scheduler.js';
+import { readMainBotState, writeMainBotState, normalizeMainBotNumber } from './lib/main-bot-config.js';
 import {
     useMultiFileAuthState,
     Browsers,
@@ -224,6 +226,62 @@ const connectionOptions = {
 };
 
 /* ============================================================
+ * SETTING BOT UTAMA
+ * ============================================================ */
+// Bot utama bisa dimatikan total dari website. Kalau nonaktif, bot tidak
+// mencoba menyambung, tidak memunculkan prompt pairing, dan tidak ikut
+// reconnect berulang. Jadibot serta API platform tetap berjalan normal.
+const mainBotState = readMainBotState();
+global.mainBotEnabled = mainBotState.enabled;
+if (mainBotState.pairingNumber) {
+    // Dipakai requestPairing() supaya tidak perlu prompt manual.
+    process.env.PAIRING_NUMBER = mainBotState.pairingNumber;
+}
+console.log(
+    mainBotState.enabled
+        ? chalk.green('⚙️ Bot utama: AKTIF')
+        : chalk.yellow('⚙️ Bot utama: NONAKTIF (diatur dari website > halaman Bot Utama)')
+);
+
+/** Simpan nomor pairing yang dipakai saat bot utama menyambung. */
+global.applyMainPairingNumber = function (number) {
+    const clean = normalizeMainBotNumber(number);
+    if (clean.length < 8 || clean.length > 15) {
+        throw Object.assign(new Error('Nomor bot utama tidak valid.'), { status: 400 });
+    }
+    writeMainBotState({ pairingNumber: clean });
+    process.env.PAIRING_NUMBER = clean;
+    global.pairingUnavailable = false;
+    global.pairingRequested = false;
+    console.log(chalk.cyan(`🔐 Nomor bot utama disimpan (${clean.slice(0, 4)}…${clean.slice(-3)}). Menunggu pairing code...`));
+    return clean;
+};
+
+/** Nyalakan/matikan bot utama tanpa restart panel. */
+global.setMainBotEnabled = async function (enabled) {
+    const next = Boolean(enabled);
+    writeMainBotState({ enabled: next });
+    global.mainBotEnabled = next;
+
+    if (!next) {
+        global.pairingUnavailable = true;
+        global.pairingInputShown = false;
+        global.mainPairingSocketReady = false;
+        try { global.mainPairingReadline?.close(); } catch {}
+        global.mainPairingReadline = null;
+        clearReconnectState();
+        try { await global.conn?.ws?.close(); } catch {}
+        console.log(chalk.yellow('⚙️ Bot utama dimatikan. Jadibot & API platform tetap jalan.'));
+        return { enabled: false };
+    }
+
+    global.pairingUnavailable = false;
+    console.log(chalk.green('⚙️ Bot utama diaktifkan. Menyambung ulang...'));
+    try { await global.reloadHandler(true); } catch (error) { console.log(chalk.red('Gagal mengaktifkan bot utama:'), error.message); }
+    return { enabled: true };
+};
+
+/* ============================================================
  * MAIN CONNECTION
  * ============================================================ */
 global.conn = installAutoTyping(makeWASocket(connectionOptions));
@@ -238,11 +296,18 @@ installAutoBackup(global.conn);
  * ============================================================ */
 const MAIN_PAIRING_SOCKET_WAIT_MS = 20000;
 const MAIN_PAIRING_REQUEST_DELAY_MS = 2500;
+const MAIN_PAIRING_REQUEST_COOLDOWN_MS = 45000;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 global.pairingRequested = false;
 global.pairingInputShown = false;
 global.mainPairingReadline = null;
+// Di-set true kalau nomor pairing tidak bisa didapat sama sekali, supaya
+// percobaan reconnect tidak menumpuk log error yang sama tanpa henti.
+global.pairingUnavailable = false;
+// Kapan terakhir kode pairing diminta (ms). WhatsApp membatasi permintaan
+// berulang, jadi ada jeda minimum antar percobaan.
+let lastPairingCodeRequestAt = 0;
 
 function normalizeMainPairingNumber(value) {
     let number = String(value || '').replace(/\D/g, '');
@@ -271,42 +336,72 @@ async function waitForMainPairingSocket(timeoutMs = MAIN_PAIRING_SOCKET_WAIT_MS)
 }
 
 global.requestPairing = async function() {
+    if (!global.mainBotEnabled) return;
     if (global.pairingRequested || global.conn?.authState?.creds?.registered || global.pairingInputShown) return;
+    if (global.pairingUnavailable) return;
+    if (Date.now() - lastPairingCodeRequestAt < MAIN_PAIRING_REQUEST_COOLDOWN_MS) return;
     global.pairingInputShown = true;
 
-    const readline = await import('node:readline');
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    global.mainPairingReadline = rl;
-    const ask = prompt => new Promise(resolve => {
-        let settled = false;
-        const onClose = () => done(null);
-        const done = value => {
-            if (settled) return;
-            settled = true;
-            rl.removeListener('close', onClose);
-            resolve(value);
-        };
-        rl.once('close', onClose);
-        rl.question(prompt, answer => done(answer));
-    });
+    // Nomor bisa diberikan lewat environment PAIRING_NUMBER.
+    //
+    // Ini penting di panel: perintah start menjalankan bot sebagai job latar
+    // pada shell non-interaktif, dan shell seperti itu memberikan /dev/null
+    // sebagai stdin. Akibatnya prompt readline langsung menerima EOF dan
+    // tertutup seketika, sehingga nomor yang diketik di konsol panel tidak
+    // pernah sampai. Kalau nomornya sudah ada di env, tidak perlu prompt.
+    const envPairingNumber = normalizeMainPairingNumber(process.env.PAIRING_NUMBER || '');
+    const canPrompt = !envPairingNumber && process.stdin.readable !== false;
+
+    let rl = null;
+    let ask = null;
+    if (canPrompt) {
+        const readline = await import('node:readline');
+        rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        global.mainPairingReadline = rl;
+        ask = prompt => new Promise(resolve => {
+            let settled = false;
+            const onClose = () => done(null);
+            const done = value => {
+                if (settled) return;
+                settled = true;
+                rl.removeListener('close', onClose);
+                resolve(value);
+            };
+            rl.once('close', onClose);
+            rl.question(prompt, answer => done(answer));
+        });
+    }
 
     try {
-        console.log(chalk.cyan('\n╭────────「 USANAGI UMI AI 」────────╮'));
-        console.log(chalk.cyan('│  🔐 MANUAL PAIRING MODE'));
-        console.log(chalk.cyan('│  Masukkan nomor internasional tanpa +'));
-        console.log(chalk.cyan('╰─────────────────────────────╯'));
+        let phoneNumber = envPairingNumber;
 
-        // Retry only the manual input locally. This never repeats a pairing-code
-        // request and keeps the entered number out of logs.
-        let phoneNumber = '';
-        while (!phoneNumber) {
-            const answer = await ask(chalk.yellow('📱 Masukkan nomor WhatsApp: '));
-            if (answer === null) throw new Error('Prompt pairing ditutup karena koneksi sedang dibuat ulang.');
-            const candidate = normalizeMainPairingNumber(answer);
-            if (candidate.length >= 8 && candidate.length <= 15) {
-                phoneNumber = candidate;
-            } else {
-                console.log(chalk.yellow('⚠️ Nomor tidak valid. Gunakan format 628xxxxxxxxxx, lalu coba lagi.'));
+        if (envPairingNumber) {
+            // Nomor sengaja tidak dicetak ke log.
+            console.log(chalk.cyan('🔐 Pairing: memakai nomor dari PAIRING_NUMBER.'));
+        } else if (!canPrompt) {
+            global.pairingUnavailable = true;
+            console.log(chalk.red('❌ Pairing dilewati: stdin tidak bisa dibaca (bukan terminal).'));
+            console.log(chalk.yellow('   Isi variabel PAIRING_NUMBER di panel (Startup → Variables),'));
+            console.log(chalk.yellow('   atau jalankan bot di latar depan agar konsol panel bisa dipakai.'));
+            console.log(chalk.yellow('   Bot tetap jalan tanpa WhatsApp sampai di-restart setelah diisi.'));
+            throw new Error('Nomor pairing tidak tersedia (stdin tidak bisa dibaca).');
+        } else {
+            console.log(chalk.cyan('\n╭────────「 USANAGI UMI AI 」────────╮'));
+            console.log(chalk.cyan('│  🔐 MANUAL PAIRING MODE'));
+            console.log(chalk.cyan('│  Masukkan nomor internasional tanpa +'));
+            console.log(chalk.cyan('╰─────────────────────────────╯'));
+
+            // Retry only the manual input locally. This never repeats a pairing-code
+            // request and keeps the entered number out of logs.
+            while (!phoneNumber) {
+                const answer = await ask(chalk.yellow('📱 Masukkan nomor WhatsApp: '));
+                if (answer === null) throw new Error('Prompt pairing ditutup karena koneksi sedang dibuat ulang.');
+                const candidate = normalizeMainPairingNumber(answer);
+                if (candidate.length >= 8 && candidate.length <= 15) {
+                    phoneNumber = candidate;
+                } else {
+                    console.log(chalk.yellow('⚠️ Nomor tidak valid. Gunakan format 628xxxxxxxxxx, lalu coba lagi.'));
+                }
             }
         }
 
@@ -319,6 +414,7 @@ global.requestPairing = async function() {
         }
 
         global.pairingRequested = true;
+        lastPairingCodeRequestAt = Date.now();
         const rawCode = await pairingConn.requestPairingCode(phoneNumber);
         const normalizedCode = String(rawCode || '').replace(/[^a-z0-9]/gi, '').toUpperCase();
         const code = normalizedCode.match(/.{1,4}/g)?.join('-') || normalizedCode;
@@ -332,8 +428,10 @@ global.requestPairing = async function() {
         console.log(chalk.red('❌ Pairing belum berhasil:'), error.message);
     } finally {
         global.pairingInputShown = false;
-        if (global.mainPairingReadline === rl) global.mainPairingReadline = null;
-        try { rl.close(); } catch {}
+        if (rl) {
+            if (global.mainPairingReadline === rl) global.mainPairingReadline = null;
+            try { rl.close(); } catch {}
+        }
     }
 };
 
@@ -437,6 +535,7 @@ function clearReconnectState() {
 }
 
 function scheduleReconnect(reason) {
+    if (!global.mainBotEnabled) return;
     if (reconnectTimer || reconnectInProgress) return;
     reconnectAttempts += 1;
     const reconnectBase = Number(runtimePerformance.reconnectBaseDelayMs) || 750;
@@ -595,13 +694,19 @@ global.reloadHandler = async function (restatConn) {
 
     /* ====================================================
      * ANTICALL
+     *
+     * Status dibaca dari SATU sumber kebenaran yang sama dengan yang ditulis
+     * perintah .anticall (core/awang-call.js -> SQLite anticall_status).
+     * Sebelumnya handler ini membaca global.db.data.settings[...].anticall
+     * yang tidak pernah diisi siapa pun, sehingga .anticall on melaporkan
+     * "aktif" tetapi panggilan tidak pernah ditolak.
      * ==================================================== */
     global.conn.ev.on('call', async calls => {
+        const anticall = await isAnticallActive().catch(() => false);
+        if (!anticall) return;
         for (const call of calls) {
             const { id, from, status } = call;
-            const settings = global.db.data.settings?.[global.conn.user?.jid];
-
-            if (status === 'offer' && settings?.anticall) {
+            if (status === 'offer') {
                 try {
                     await global.conn.rejectCall(id, from);
                     console.log('Menolak panggilan dari', from);
@@ -711,6 +816,12 @@ async function filesInit() {
         console.error('Error loading plugins:', e);
     }
 }
+
+// Dua belas plugin di plugins/rpg/rpg-*.js memakai `global.rpg.emoticon`, tetapi
+// fungsi itu tidak pernah didefinisikan di runtime ini — akibatnya `.bank` dan `.atm`
+// gagal seketika dengan TypeError, sebelum satu baris pun kode plugin berjalan.
+// Dipasang DI SINI, sebelum filesInit(), supaya sudah tersedia saat plugin dimuat.
+installRpgGlobals();
 
 await filesInit();
 
@@ -954,7 +1065,7 @@ function requestMainPairingWhenSocketReady(attempt = 0) {
     setTimeout(() => requestMainPairingWhenSocketReady(attempt + 1), 1000);
 }
 
-if (!global.conn.authState.creds.registered) {
+if (global.mainBotEnabled && !global.conn.authState.creds.registered) {
     setTimeout(async () => {
         // The first Baileys connection can emit `connecting` before this file has
         // finished binding its handlers. Recreate it once after handlers exist so

@@ -300,6 +300,100 @@ export default async function handler(req, res) {
       }
       return send(res, 201, { ok: true, message: 'Akun berhasil dibuat. Silakan masuk.' })
     }
+    /*
+     * Laporan error dari bot (server-to-server).
+     *
+     * Bot tidak punya akun Supabase, jadi rute ini tidak memakai sesi pengguna.
+     * Autentikasinya memakai rahasia bersama yang sudah tersedia di kedua sisi —
+     * nilai yang sama yang dipakai jalur backup ekspor, sehingga tidak ada kredensial
+     * baru yang perlu diprovisikan.
+     *
+     * Laporan disimpan ke tabel audit yang sama dengan formulir feedback halaman
+     * website (`action: 'feedback.submit'`), sehingga muncul di daftar RIWAYAT
+     * LAPORAN milik pemilik sesi yang bersangkutan. Rute ini harus berada SEBELUM
+     * `authUser(req)` di bawah — kalau tidak, permintaan bot akan ditolak 401.
+     */
+    if (path === 'feedback/bot' && req.method === 'POST') {
+      // Bot bisa mengirim beberapa laporan sekaligus saat satu plugin berulang kali
+      // gagal; batasnya lebih longgar daripada formulir pengguna, tetapi tetap ada.
+      rateLimit(req, 'platform:feedback:bot', 120, 60 * 60 * 1000)
+
+      const expected = String(process.env.UMI_ERROR_REPORT_SECRET || process.env.BOT_BACKUP_EXPORT_SECRET || '').trim()
+      if (!expected) return send(res, 503, { error: 'Penerimaan laporan bot belum dikonfigurasi.' })
+
+      const supplied = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
+      const expectedBuffer = Buffer.from(expected)
+      const suppliedBuffer = Buffer.from(supplied)
+      const secretOk = suppliedBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(suppliedBuffer, expectedBuffer)
+      if (!secretOk) return send(res, 401, { error: 'Rahasia laporan bot ditolak.' })
+
+      const title = text(req.body?.title, 160)
+      const description = text(req.body?.description, 5000)
+      const steps = text(req.body?.steps, 2500)
+      const plugin = text(req.body?.plugin, 160)
+      const command = text(req.body?.command, 120)
+      const severity = text(req.body?.severity, 20).toLowerCase() || 'error'
+      const sessionId = text(req.body?.session_id, 20).replace(/\D/g, '')
+      const occurrences = Math.max(1, Math.min(9999, Number(req.body?.occurrences) || 1))
+      if (!title || description.length < 10) return send(res, 400, { error: 'Judul dan penjelasan minimal 10 karakter diperlukan.' })
+
+      /*
+       * Tentukan penerima laporan.
+       *
+       * Halaman feedback hanya menampilkan laporan milik pengguna yang sedang masuk
+       * (GET memfilter `actor_id`), jadi satu baris audit hanya terlihat oleh satu
+       * orang. Error plugin bot perlu dibaca dua pihak: pengguna yang botnya
+       * bermasalah, dan operator platform yang harus memperbaiki pluginnya. Karena
+       * itu laporan ditulis untuk keduanya (satu baris per penerima; kalau sama,
+       * tidak digandakan).
+       */
+      const recipients = []
+      const requestedId = text(req.body?.actor_id, 64)
+      const requestedEmail = email(req.body?.actor_email)
+      if (/^[0-9a-fA-F-]{36}$/.test(requestedId)) recipients.push({ id: requestedId, email: requestedEmail || null })
+
+      try {
+        const owners = await dataRequest(`platform_profiles?select=auth_id,email&email=eq.${encodeURIComponent(FIXED_OWNER)}&limit=1`)
+        const owner = owners?.[0]
+        if (owner?.auth_id && !recipients.some(item => item.id === owner.auth_id)) {
+          recipients.push({ id: owner.auth_id, email: owner.email || FIXED_OWNER })
+        }
+      } catch {}
+
+      if (!recipients.length) return send(res, 202, { ok: true, stored: false, reason: 'Pemilik laporan tidak dapat ditentukan.' })
+
+      const metadata = {
+        target: sessionId ? 'bot' : 'bot-main',
+        session_id: sessionId || null,
+        title,
+        description,
+        steps: steps || null,
+        page: 'bot-error',
+        status: 'open',
+        source: 'bot',
+        severity,
+        plugin: plugin || null,
+        command: command || null,
+        occurrences,
+      }
+      const created = await dataRequest('platform_audit_logs', {
+        method: 'POST',
+        body: recipients.map(item => ({
+          actor_id: item.id,
+          actor_email: item.email,
+          action: 'feedback.submit',
+          target: sessionId ? `bot:${sessionId}` : 'bot-main',
+          metadata,
+        })),
+        headers: { Prefer: 'return=representation' },
+      })
+      return send(res, 201, {
+        ok: true,
+        deliveredTo: recipients.length,
+        feedback: created?.[0] || { action: 'feedback.submit', metadata },
+      })
+    }
+
     const user = await authUser(req)
     const profile = await ensureProfile(user)
 
@@ -431,6 +525,14 @@ export default async function handler(req, res) {
       for (const field of ['clearPlta', 'clearPltc', 'clearTripay']) {
         if (Object.prototype.hasOwnProperty.call(req.body || {}, field)) body[field] = req.body[field] === true
       }
+      if (req.body?.provisioning && typeof req.body.provisioning === 'object' && !Array.isArray(req.body.provisioning)) {
+        if (JSON.stringify(req.body.provisioning).length > 6000) return send(res, 400, { error: 'Konfigurasi provisioning terlalu besar.' })
+        body.provisioning = req.body.provisioning
+      }
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, 'products')) {
+        if (!Array.isArray(req.body.products) || req.body.products.length > 30 || JSON.stringify(req.body.products).length > 120000) return send(res, 400, { error: 'Katalog produk tidak valid.' })
+        body.products = req.body.products
+      }
       const result = await botPanelRequest('settings', user, { method: 'POST', body })
       await audit(user, 'panel.settings.update', 'auto-order', { panelUrlChanged: Object.prototype.hasOwnProperty.call(body, 'panelUrl'), pltaReplaced: Boolean(body.plta), pltcReplaced: Boolean(body.pltc), tripayReplaced: Boolean(body.tripayMerchantCode || body.tripayApiKey || body.tripayPrivateKey), credentialsCleared: Boolean(body.clearPlta || body.clearPltc || body.clearTripay) })
       return send(res, 200, result)
@@ -484,6 +586,28 @@ export default async function handler(req, res) {
       // Deliberately not audited: terminal input can contain a WhatsApp number
       // or pairing code and must never be persisted by the website.
       return send(res, 200, await botConsoleRequest('input', user, { method: 'POST', body: { input } }))
+    }
+
+    // Nomor bot utama disimpan permanen di server bot. Websitenya sendiri tidak
+    // pernah menyimpan nomor ini, dan audit tidak merekam nilainya.
+    if (path === 'main-console/pairing-number' && req.method === 'POST') {
+      requireOwner(profile)
+      rateLimit(req, `platform:main-bot-number:${user.id}`, 10, 60 * 1000)
+      const number = String(req.body?.number ?? '').replace(/\D/g, '')
+      if (number.length < 8 || number.length > 15) return send(res, 400, { error: 'Nomor bot utama tidak valid.' })
+      const result = await botConsoleRequest('pairing-number', user, { method: 'POST', body: { number } })
+      await audit(user, 'main_bot.pairing_number_set', null, { prefix: number.slice(0, 4) })
+      return send(res, 200, result)
+    }
+
+    if (path === 'main-console/main-bot' && req.method === 'POST') {
+      requireOwner(profile)
+      rateLimit(req, `platform:main-bot-toggle:${user.id}`, 20, 60 * 1000)
+      const enabled = req.body?.enabled
+      if (typeof enabled !== 'boolean') return send(res, 400, { error: 'Nilai enabled harus true atau false.' })
+      const result = await botConsoleRequest('main-bot', user, { method: 'POST', body: { enabled } })
+      await audit(user, `main_bot.${enabled ? 'enabled' : 'disabled'}`, null, {})
+      return send(res, 200, result)
     }
 
     if (path === 'admin/users' && req.method === 'GET') {
@@ -635,6 +759,81 @@ export default async function handler(req, res) {
         : `${DATA_URL()}/storage/v1${String(signed.url || '').startsWith('/') ? '' : '/'}${signed.url}`
       return send(res, 200, { path: objectPath, token: new URL(signedUrl).searchParams.get('token'), signed_url: signedUrl })
     }
+    // Owner-only ZIP file hosting: objects live in the private `umi-files`
+    // Supabase Storage bucket under the `owner/` prefix. Browsers upload
+    // directly via signed URLs (no serverless body limit); listing reads the
+    // bucket itself, so there is no separate metadata table to keep in sync.
+    if (path.startsWith('files/')) {
+      requireOwner(profile)
+      if (!DATA_URL() || !DATA_KEY()) throw Object.assign(new Error('Storage platform belum dikonfigurasi.'), { status: 503 })
+      const BUCKET = 'umi-files'
+      const storageHeaders = { apikey: DATA_KEY(), Authorization: `Bearer ${DATA_KEY()}`, 'Content-Type': 'application/json' }
+      const storageFetch = (suffix, init = {}) => fetch(`${DATA_URL()}/storage/v1${suffix}`, { headers: storageHeaders, signal: AbortSignal.timeout(20000), ...init })
+      const ensureBucket = async () => {
+        const check = await storageFetch(`/bucket/${BUCKET}`)
+        if (!check.ok) {
+          await storageFetch('/bucket', { method: 'POST', body: JSON.stringify({ id: BUCKET, name: BUCKET, public: false }) }).catch(() => {})
+        }
+      }
+      const safeObjectPath = (value) => {
+        const objectPath = text(value, 400)
+        if (!objectPath.startsWith('owner/') || objectPath.includes('..') || !/^[A-Za-z0-9_./-]+$/.test(objectPath)) throw Object.assign(new Error('Path file tidak diizinkan.'), { status: 403 })
+        return objectPath
+      }
+      if (path === 'files/list' && req.method === 'GET') {
+        await ensureBucket()
+        const response = await storageFetch(`/object/list/${BUCKET}`, { method: 'POST', body: JSON.stringify({ prefix: 'owner', limit: 100, offset: 0, sortBy: { column: 'created_at', order: 'desc' } }) })
+        const rows = await response.json().catch(() => [])
+        if (!response.ok) throw Object.assign(new Error(rows?.message || 'Gagal membaca daftar file.'), { status: response.status })
+        const files = (Array.isArray(rows) ? rows : []).filter(item => item?.name && item.name !== '.emptyFolderPlaceholder' && item.metadata)
+          .map(item => ({
+            path: `owner/${item.name}`,
+            name: item.name.replace(/^\d{10,}_[a-f0-9]{8}_/, ''),
+            size: Number(item.metadata?.size) || 0,
+            createdAt: item.created_at || item.updated_at || null,
+          }))
+        return send(res, 200, { files })
+      }
+      if (path === 'files/sign-upload' && req.method === 'POST') {
+        rateLimit(req, `platform:files-sign:${user.id}`, 20, 60 * 60 * 1000)
+        const rawName = text(req.body?.filename, 200).split(/[\\/]/).pop() || ''
+        const cleanName = rawName.replace(/[^A-Za-z0-9._-]+/g, '_').slice(0, 140)
+        const size = Number(req.body?.size)
+        if (!/\.zip$/i.test(cleanName) || cleanName.length < 5) return send(res, 400, { error: 'Hanya file .zip yang diterima.' })
+        if (!Number.isInteger(size) || size < 1 || size > 50 * 1024 * 1024) return send(res, 400, { error: 'Ukuran file harus 1 byte – 50 MB.' })
+        await ensureBucket()
+        const objectPath = `owner/${Date.now()}_${crypto.randomBytes(4).toString('hex')}_${cleanName}`
+        const response = await storageFetch(`/object/upload/sign/${BUCKET}/${objectPath}`, { method: 'POST', body: '{}' })
+        const signed = await response.json().catch(() => ({}))
+        if (!response.ok) throw Object.assign(new Error(signed.message || 'Gagal membuat izin upload.'), { status: response.status })
+        const signedUrl = /^https?:\/\//i.test(String(signed.url || '')) ? String(signed.url) : `${DATA_URL()}/storage/v1${String(signed.url || '').startsWith('/') ? '' : '/'}${signed.url}`
+        await audit(user, 'files.upload_sign', objectPath, { filename: cleanName, size })
+        return send(res, 200, { path: objectPath, signed_url: signedUrl })
+      }
+      if (path === 'files/download' && req.method === 'POST') {
+        rateLimit(req, `platform:files-download:${user.id}`, 60, 60 * 60 * 1000)
+        const objectPath = safeObjectPath(req.body?.path)
+        await ensureBucket()
+        const response = await storageFetch(`/object/sign/${BUCKET}/${objectPath}`, { method: 'POST', body: JSON.stringify({ expiresIn: 3600 }) })
+        const signed = await response.json().catch(() => ({}))
+        if (!response.ok) throw Object.assign(new Error(signed.message || 'Gagal membuat link unduh.'), { status: response.status })
+        const rawUrl = String(signed.signedURL || signed.signedUrl || signed.url || '')
+        const url = /^https?:\/\//i.test(rawUrl) ? rawUrl : `${DATA_URL()}/storage/v1${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`
+        await audit(user, 'files.download', objectPath, {})
+        return send(res, 200, { url, expiresIn: 3600 })
+      }
+      if (path === 'files/delete' && req.method === 'POST') {
+        rateLimit(req, `platform:files-delete:${user.id}`, 30, 60 * 60 * 1000)
+        const objectPath = safeObjectPath(req.body?.path)
+        const response = await storageFetch(`/object/${BUCKET}`, { method: 'DELETE', body: JSON.stringify({ prefixes: [objectPath] }) })
+        const result = await response.json().catch(() => [])
+        if (!response.ok) throw Object.assign(new Error(result?.message || 'Gagal menghapus file.'), { status: response.status })
+        await audit(user, 'files.delete', objectPath, {})
+        return send(res, 200, { ok: true, deleted: Array.isArray(result) ? result.length : 0 })
+      }
+      return send(res, 404, { error: 'Endpoint file tidak ditemukan.' })
+    }
+
     if (path === 'media/apply' && req.method === 'POST') {
       const sessionId = text(req.body?.session_id, 20).replace(/\D/g, '')
       const kind = text(req.body?.kind, 30)

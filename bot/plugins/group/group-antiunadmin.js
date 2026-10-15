@@ -109,12 +109,13 @@ let handler = async (m, { args, usedPrefix, command }) => {
 
 handler.help = [
   'antiunadmin on',
+  'antikudeta on',
   'antiunadmin off'
 ]
 
 handler.tags = ['group']
 
-handler.command = /^antiunadmin$/i
+handler.command = /^(antiunadmin|antikudeta)$/i
 
 handler.group = true
 handler.admin = true

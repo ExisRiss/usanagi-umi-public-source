@@ -89,6 +89,8 @@ function defaultSettings() {
     pterodactyl: { plta: null, pltc: null },
     tripay: { merchantCode: null, apiKey: null, privateKey: null },
     packages: DEFAULT_PACKAGES,
+    provisioning: { eggId: 0, locationId: 0, dockerImage: '', startup: '', environment: {} },
+    products: [],
     updatedAt: '',
     updatedBy: '',
   }
@@ -106,6 +108,8 @@ function readRaw() {
       pterodactyl: { ...defaults.pterodactyl, ...(data.pterodactyl || {}) },
       tripay: { ...defaults.tripay, ...(data.tripay || {}) },
       packages: Array.isArray(data.packages) ? data.packages : defaults.packages,
+      provisioning: { ...defaults.provisioning, ...(data.provisioning && typeof data.provisioning === 'object' ? data.provisioning : {}) },
+      products: Array.isArray(data.products) ? data.products : defaults.products,
     }
   } catch {
     return defaultSettings()
@@ -114,7 +118,7 @@ function readRaw() {
 
 function writeRaw(next) { writeJsonAtomic(SETTINGS_FILE, next) }
 
-function defaultWallet() { return { version: 1, accounts: {}, ledger: [], topups: {} } }
+function defaultWallet() { return { version: 1, accounts: {}, ledger: [], topups: {}, orders: {} } }
 
 function readWallet() {
   ensureDir()
@@ -126,6 +130,7 @@ function readWallet() {
       accounts: data.accounts && typeof data.accounts === 'object' ? data.accounts : {},
       ledger: Array.isArray(data.ledger) ? data.ledger : [],
       topups: data.topups && typeof data.topups === 'object' ? data.topups : {},
+      orders: data.orders && typeof data.orders === 'object' ? data.orders : {},
     }
   } catch {
     return defaultWallet()
@@ -162,8 +167,44 @@ function publicStatus(raw = readRaw()) {
     wallet: { enabled: paymentReady, mode: isManual ? 'manual_dana' : 'tripay', minimumTopupIdr: TOPUP_MIN_IDR, maximumTopupIdr: TOPUP_MAX_IDR },
     checkoutReady: pterodactylReady && Boolean(raw.pterodactyl?.pltc) && paymentReady,
     packages: publicPackages(raw.packages),
+    provisioning: {
+      eggId: Number(raw.provisioning?.eggId) || 0,
+      locationId: Number(raw.provisioning?.locationId) || 0,
+      dockerImage: safeText(raw.provisioning?.dockerImage, 200),
+      startup: safeText(raw.provisioning?.startup, 500),
+      ready: pterodactylReady && Number(raw.provisioning?.eggId) > 0 && Number(raw.provisioning?.locationId) > 0,
+    },
+    products: publicProducts(raw.products),
     updatedAt: raw.updatedAt || null,
   }
+}
+
+function publicProducts(value) {
+  return (Array.isArray(value) ? value : []).map(item => ({
+    id: safeText(item.id, 40), name: safeText(item.name, 80), description: safeText(item.description, 240),
+    price: Number(item.price) || 0, type: safeText(item.type, 20), days: Number(item.days) || 0,
+    enabled: item.enabled === true, inStock: item.type === 'digital' ? (Array.isArray(item.stock) ? item.stock.length : 0) : null,
+  })).filter(item => item.id && item.name)
+}
+
+function validateProducts(value) {
+  if (!Array.isArray(value) || value.length > 30) throw Object.assign(new Error('Katalog produk harus berisi maksimal 30 item.'), { status: 400 })
+  const seen = new Set()
+  return value.map((item) => {
+    const id = packageId(item?.id)
+    const name = safeText(item?.name, 80)
+    const type = safeText(item?.type, 20).toLowerCase()
+    const price = Number(item?.price)
+    if (!id || seen.has(id)) throw Object.assign(new Error('ID produk tidak valid atau duplikat.'), { status: 400 })
+    seen.add(id)
+    if (!name) throw Object.assign(new Error('Nama produk diperlukan.'), { status: 400 })
+    if (!['premium', 'digital'].includes(type)) throw Object.assign(new Error('Tipe produk harus premium atau digital.'), { status: 400 })
+    if (!Number.isSafeInteger(price) || price < 100) throw Object.assign(new Error('Harga produk minimal Rp100.'), { status: 400 })
+    const days = Number(item?.days)
+    if (type === 'premium' && (!Number.isInteger(days) || days < 1 || days > 365)) throw Object.assign(new Error('Durasi premium harus 1–365 hari.'), { status: 400 })
+    const stock = type === 'digital' ? (Array.isArray(item?.stock) ? item.stock.map(s => safeText(s, 300)).filter(Boolean).slice(0, 500) : []) : []
+    return { id, name, description: safeText(item?.description, 240), price, type, days: type === 'premium' ? days : 0, stock, enabled: item?.enabled === true }
+  })
 }
 
 function isPrivateIp(address) {
@@ -240,6 +281,24 @@ export async function updatePanelSettings(input, actor) {
     if (tripayApiKey) next.tripay.apiKey = encrypt(tripayApiKey)
     if (tripayPrivateKey) next.tripay.privateKey = encrypt(tripayPrivateKey)
   }
+
+  if (input.provisioning && typeof input.provisioning === 'object' && !Array.isArray(input.provisioning)) {
+    const prov = input.provisioning
+    const eggId = Number(prov.eggId), locationId = Number(prov.locationId)
+    if (prov.eggId !== undefined && (!Number.isInteger(eggId) || eggId < 0 || eggId > 100000)) throw Object.assign(new Error('ID Egg tidak valid.'), { status: 400 })
+    if (prov.locationId !== undefined && (!Number.isInteger(locationId) || locationId < 0 || locationId > 100000)) throw Object.assign(new Error('ID Lokasi tidak valid.'), { status: 400 })
+    if (prov.eggId !== undefined) next.provisioning.eggId = eggId
+    if (prov.locationId !== undefined) next.provisioning.locationId = locationId
+    if (prov.dockerImage !== undefined) next.provisioning.dockerImage = safeText(prov.dockerImage, 200)
+    if (prov.startup !== undefined) next.provisioning.startup = safeText(prov.startup, 500)
+    if (prov.environment !== undefined) {
+      if (!prov.environment || typeof prov.environment !== 'object' || Array.isArray(prov.environment)) throw Object.assign(new Error('Environment provisioning tidak valid.'), { status: 400 })
+      const env = {}
+      for (const [k, v] of Object.entries(prov.environment).slice(0, 30)) env[safeText(k, 60)] = safeText(v, 300)
+      next.provisioning.environment = env
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(input, 'products')) next.products = validateProducts(input.products)
 
   if (next.panelUrl && !next.pterodactyl.plta) throw Object.assign(new Error('PLTA diperlukan setelah URL Panel diatur.'), { status: 400 })
   next.updatedAt = nowIso()
@@ -544,6 +603,212 @@ export function debitWalletForPanel({ userId, amount, orderReference, descriptio
   return walletView(owner)
 }
 
+// ── Auto-order engine (Umi Usanagi AI) ─────────────────────────────────────
+// Wallet-funded instant fulfilment: Pterodactyl panel provisioning, bot
+// premium activation, and stocked digital delivery. Purchases debit the
+// wallet first (idempotent by order reference); any fulfilment failure
+// credits an automatic refund with the same reference guard.
+
+async function pterodactylRequest(raw, pathname, { method = 'GET', body } = {}) {
+  const token = decrypt(raw.pterodactyl?.plta)
+  if (!raw.panelUrl || !token) throw Object.assign(new Error('URL Panel dan PLTA belum dikonfigurasi.'), { status: 409 })
+  let response
+  try {
+    response = await fetch(`${raw.panelUrl}/api/application${pathname}`, {
+      method,
+      headers: { Accept: 'Application/vnd.pterodactyl.v1+json', Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      body: body ? JSON.stringify(body) : undefined,
+      redirect: 'error',
+      signal: AbortSignal.timeout(25_000),
+    })
+  } catch { throw Object.assign(new Error('Panel tidak dapat dihubungi. Dana tidak terpotong.'), { status: 502 }) }
+  if (!response.ok) {
+    let detail = ''
+    try { const parsed = await response.json(); detail = safeText(parsed?.errors?.[0]?.detail || parsed?.message || '', 220) } catch {}
+    throw Object.assign(new Error(`Panel menolak permintaan (HTTP ${response.status})${detail ? `: ${detail}` : ''}`), { status: 502 })
+  }
+  if (response.status === 204) return null
+  return response.json().catch(() => null)
+}
+
+function creditWalletOnce({ userId, amount, reference, type, description }) {
+  const owner = requireUserId(userId)
+  const credit = Number(amount)
+  if (!Number.isSafeInteger(credit) || credit < 1) return null
+  const wallet = readWallet()
+  if (wallet.ledger.some(item => item.userId === owner && item.type === type && item.reference === reference)) return walletView(owner)
+  const account = accountFor(wallet, owner)
+  account.balance += credit
+  account.updatedAt = nowIso()
+  wallet.ledger.push({ id: `wl_${crypto.randomUUID()}`, userId: owner, type, amount: credit, balanceAfter: account.balance, reference, description: safeText(description, 180), createdAt: nowIso() })
+  writeWallet(wallet)
+  return walletView(owner)
+}
+
+function saveOrder(order) {
+  const wallet = readWallet()
+  wallet.orders[order.reference] = order
+  writeWallet(wallet)
+  return order
+}
+
+function publicOrder(row) {
+  const out = {
+    reference: safeText(row.reference, 120), kind: safeText(row.kind, 20), itemId: safeText(row.itemId, 40),
+    itemName: safeText(row.itemName, 80), amount: Number(row.amount) || 0, status: safeText(row.status, 24),
+    createdAt: safeText(row.createdAt, 64),
+  }
+  if (row.panel) out.panel = { url: safeText(row.panel.url, 300), username: safeText(row.panel.username, 80), serverName: safeText(row.panel.serverName, 120), serverIdentifier: safeText(row.panel.serverIdentifier, 64) || null }
+  if (row.premium) out.premium = { whatsapp: safeText(row.premium.whatsapp, 24), premiumUntil: safeText(row.premium.premiumUntil, 64) }
+  if (row.deliveryEnc) { try { out.delivery = decrypt(row.deliveryEnc) } catch { out.delivery = null } }
+  if (row.passwordEnc) { try { out.password = decrypt(row.passwordEnc) } catch { out.password = null } }
+  return out
+}
+
+function panelProvisionReady(raw) {
+  return Boolean(raw.panelUrl && raw.pterodactyl?.plta && Number(raw.provisioning?.eggId) > 0 && Number(raw.provisioning?.locationId) > 0)
+}
+
+export function shopCatalog(user) {
+  const userId = requireUserId(user?.id)
+  const raw = readRaw()
+  const wallet = readWallet()
+  const account = accountFor(wallet, userId)
+  return {
+    balance: safeBalance(account.balance),
+    mode: manualMode(raw) ? 'manual_dana' : 'tripay',
+    panelReady: panelProvisionReady(raw),
+    panelUrl: raw.panelUrl || null,
+    packages: publicPackages(raw.packages).filter(item => item.enabled && item.price > 0),
+    products: publicProducts(raw.products).filter(item => item.enabled && item.price > 0),
+  }
+}
+
+export function walletOrders(user) {
+  const userId = requireUserId(user?.id)
+  const wallet = readWallet()
+  return Object.values(wallet.orders || {}).filter(row => row.userId === userId)
+    .sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, 30).map(publicOrder)
+}
+
+async function ensurePanelAccount(raw, userId, user) {
+  const wallet = readWallet()
+  const account = accountFor(wallet, userId)
+  if (account.panelAccount?.id) return account.panelAccount
+  const username = `umi${crypto.createHash('sha256').update(String(userId)).digest('hex').slice(0, 10)}`
+  const suppliedEmail = safeText(user?.email, 160)
+  const email = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(suppliedEmail) ? suppliedEmail : `${username}@users.umi.local`
+  const password = crypto.randomBytes(10).toString('base64url')
+  const created = await pterodactylRequest(raw, '/users', { method: 'POST', body: { username, email, first_name: 'Umi', last_name: 'Panel', password } })
+  const id = Number(created?.attributes?.id)
+  if (!id) throw Object.assign(new Error('Panel tidak mengembalikan akun pengguna baru.'), { status: 502 })
+  const panelAccount = { id, username, email, passwordEnc: encrypt(password) }
+  const fresh = readWallet()
+  accountFor(fresh, userId).panelAccount = panelAccount
+  writeWallet(fresh)
+  return panelAccount
+}
+
+export async function buyPanelPackage(user, packageIdRaw) {
+  const userId = requireUserId(user?.id)
+  const raw = readRaw()
+  if (!panelProvisionReady(raw)) throw Object.assign(new Error('Auto order panel belum aktif. Owner perlu mengatur URL Panel, PLTA, ID Egg, dan ID Lokasi di halaman Owner.'), { status: 409 })
+  const pkg = publicPackages(raw.packages).find(item => item.id === packageId(packageIdRaw) && item.enabled && item.price > 0)
+  if (!pkg) throw Object.assign(new Error('Paket panel tidak ditemukan atau belum dijual.'), { status: 404 })
+  const reference = `order_${crypto.randomUUID()}`
+  debitWalletForPanel({ userId, amount: pkg.price, orderReference: reference, description: `Beli panel ${pkg.name}` })
+  const order = { reference, userId, kind: 'panel', itemId: pkg.id, itemName: pkg.name, amount: pkg.price, status: 'processing', createdAt: nowIso() }
+  saveOrder(order)
+  try {
+    const panelAccount = await ensurePanelAccount(raw, userId, user)
+    const prov = raw.provisioning || {}
+    const serverName = `umi-${pkg.id}-${reference.slice(-6)}`
+    const created = await pterodactylRequest(raw, '/servers', {
+      method: 'POST',
+      body: {
+        name: serverName,
+        user: panelAccount.id,
+        egg: Number(prov.eggId),
+        ...(prov.dockerImage ? { docker_image: safeText(prov.dockerImage, 200) } : {}),
+        ...(prov.startup ? { startup: safeText(prov.startup, 500) } : {}),
+        environment: (prov.environment && typeof prov.environment === 'object') ? prov.environment : {},
+        limits: { memory: pkg.memoryMb, swap: 0, disk: pkg.diskMb, io: 500, cpu: pkg.cpuPercent },
+        feature_limits: { databases: 0, allocations: 1, backups: 0 },
+        deploy: { locations: [Number(prov.locationId)], dedicated_ip: false, port_range: [] },
+      },
+    })
+    const attrs = created?.attributes || {}
+    order.status = 'active'
+    order.panel = { url: raw.panelUrl, username: panelAccount.username, serverName, serverIdentifier: safeText(attrs.identifier, 64) }
+    order.passwordEnc = panelAccount.passwordEnc
+    saveOrder(order)
+    audit('wallet.panel.order', { userId, reference, package: pkg.id, amount: pkg.price })
+    return publicOrder(order)
+  } catch (error) {
+    creditWalletOnce({ userId, amount: pkg.price, reference, type: 'ORDER_REFUND', description: `Refund gagal buat panel ${pkg.name}` })
+    order.status = 'refunded'
+    order.error = safeText(error?.message, 240)
+    saveOrder(order)
+    audit('wallet.panel.order.failed', { userId, reference, package: pkg.id, message: order.error })
+    throw Object.assign(new Error(`Pembuatan server gagal (${order.error}). Saldo Rp${pkg.price.toLocaleString('id-ID')} sudah otomatis dikembalikan ke Wallet kamu.`), { status: 502 })
+  }
+}
+
+function applyPremiumDays(whatsappDigits, days) {
+  const jid = `${whatsappDigits}@s.whatsapp.net`
+  const db = global.db?.data
+  if (!db || Array.isArray(db.users)) throw Object.assign(new Error('Basis data bot sedang tidak tersedia. Saldo akan di-refund.'), { status: 503 })
+  db.users ||= {}
+  const target = db.users[jid] ||= { exp: 0, limit: 10, premiumTime: 0 }
+  const now = Date.now()
+  const base = Number(target.premiumTime) > now ? Number(target.premiumTime) : now
+  target.premiumTime = base + days * 86_400_000
+  try { Promise.resolve(global.db.write?.()).catch(() => {}) } catch {}
+  return { whatsapp: whatsappDigits, premiumUntil: new Date(target.premiumTime).toISOString() }
+}
+
+export async function buyProduct(user, productIdRaw, input = {}) {
+  const userId = requireUserId(user?.id)
+  const raw = readRaw()
+  const product = (Array.isArray(raw.products) ? raw.products : []).find(item => item.id === packageId(productIdRaw) && item.enabled === true && Number(item.price) > 0)
+  if (!product) throw Object.assign(new Error('Produk tidak ditemukan atau belum dijual.'), { status: 404 })
+  const reference = `order_${crypto.randomUUID()}`
+
+  if (product.type === 'premium') {
+    const digits = String(input.whatsapp || '').replace(/\D/g, '')
+    if (!/^\d{10,16}$/.test(digits)) throw Object.assign(new Error('Nomor WhatsApp tujuan premium tidak valid (10–16 digit, awali kode negara).'), { status: 400 })
+    debitWalletForPanel({ userId, amount: product.price, orderReference: reference, description: `Beli ${product.name}` })
+    try {
+      const premium = applyPremiumDays(digits, Number(product.days) || 0)
+      const order = { reference, userId, kind: 'premium', itemId: product.id, itemName: product.name, amount: product.price, status: 'active', premium, createdAt: nowIso() }
+      saveOrder(order)
+      audit('wallet.product.premium', { userId, reference, product: product.id, days: product.days })
+      return publicOrder(order)
+    } catch (error) {
+      creditWalletOnce({ userId, amount: product.price, reference, type: 'ORDER_REFUND', description: `Refund gagal aktivasi ${product.name}` })
+      audit('wallet.product.premium.failed', { userId, reference, message: safeText(error?.message, 200) })
+      throw Object.assign(new Error(`Aktivasi premium gagal dan saldo sudah di-refund otomatis. (${safeText(error?.message, 160)})`), { status: 502 })
+    }
+  }
+
+  // digital: stock pop is synchronous with the debit so a race cannot over-sell
+  const stock = Array.isArray(product.stock) ? product.stock : []
+  if (!stock.length) throw Object.assign(new Error('Stok produk ini sedang habis. Coba lagi nanti.'), { status: 409 })
+  debitWalletForPanel({ userId, amount: product.price, orderReference: reference, description: `Beli ${product.name}` })
+  const nextRaw = readRaw()
+  const live = (nextRaw.products || []).find(item => item.id === product.id)
+  const delivery = live && Array.isArray(live.stock) && live.stock.length ? live.stock.shift() : null
+  if (!delivery) {
+    creditWalletOnce({ userId, amount: product.price, reference, type: 'ORDER_REFUND', description: `Refund stok kosong ${product.name}` })
+    throw Object.assign(new Error('Stok baru saja habis. Saldo sudah di-refund otomatis.'), { status: 409 })
+  }
+  writeRaw(nextRaw)
+  const order = { reference, userId, kind: 'digital', itemId: product.id, itemName: product.name, amount: product.price, status: 'active', deliveryEnc: encrypt(String(delivery)), createdAt: nowIso() }
+  saveOrder(order)
+  audit('wallet.product.digital', { userId, reference, product: product.id })
+  return publicOrder(order)
+}
+
 export function panelAutoOrderStatus() { return publicStatus() }
 
 export function startPanelAutoOrder(secretSource) {
@@ -551,4 +816,4 @@ export function startPanelAutoOrder(secretSource) {
   ensureDir()
 }
 
-export default { startPanelAutoOrder, panelAutoOrderStatus, updatePanelSettings, updatePanelPackages, testPanelConnection, walletStatus, createWalletTopup, manualTopupRequests, reviewManualTopup, handleTripayCallback, debitWalletForPanel }
+export default { startPanelAutoOrder, panelAutoOrderStatus, updatePanelSettings, updatePanelPackages, testPanelConnection, walletStatus, createWalletTopup, manualTopupRequests, reviewManualTopup, handleTripayCallback, debitWalletForPanel, shopCatalog, buyPanelPackage, buyProduct, walletOrders }

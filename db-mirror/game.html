@@ -1,0 +1,446 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Umi Games — Multiplayer WhatsApp</title>
+<meta name="description" content="Main UNO, Catur, Ular Tangga, Monopoli & Werewolf bareng teman — room dari WhatsApp, verifikasi nomor, isi bot AI kalau pemain kurang.">
+<style>
+  :root{color-scheme:dark;--ink:#e8efff;--muted:#9aaaca;--cyan:#62d8ff;--blue:#526dff;--violet:#8057ed;--lime:#52e0b3;--red:#ff7185;
+    --glass:linear-gradient(145deg,rgba(255,255,255,.13),rgba(255,255,255,.05));--line:1px solid rgba(255,255,255,.20);
+    --shadow:0 8px 32px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.20)}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);line-height:1.55;min-height:100vh;
+    background:linear-gradient(180deg,rgba(5,10,26,.70),rgba(5,10,26,.82)),#07111f}
+  body::before{content:"";position:fixed;inset:0;z-index:-1;background:radial-gradient(60rem 30rem at 85% -10%,rgba(128,87,237,.35),transparent 60%),radial-gradient(50rem 28rem at -10% 30%,rgba(82,109,255,.35),transparent 60%),radial-gradient(44rem 26rem at 55% 110%,rgba(82,224,179,.14),transparent 60%),#07111f}
+  a{color:var(--cyan)}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 16px 60px}
+  header.top{position:sticky;top:0;z-index:20;backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);background:rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.16)}
+  .top-in{max-width:1080px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+  .brand{font-weight:800;letter-spacing:.04em;color:#fff;text-decoration:none}
+  .brand small{display:block;font-size:10px;letter-spacing:.24em;color:var(--muted);font-weight:600}
+  .glass{background:var(--glass);border:var(--line);border-radius:24px;box-shadow:var(--shadow);backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%)}
+  .card{padding:22px}
+  h1{font-size:clamp(30px,5.4vw,50px);line-height:1.05;letter-spacing:-.03em;margin:26px 0 8px}
+  h2{margin:0 0 8px;font-size:22px}
+  .sub{color:#b7c5e0;max-width:65ch}
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0}
+  .gcard{padding:18px;cursor:pointer;transition:transform .15s,border-color .15s}
+  .gcard:hover{transform:translateY(-3px);border-color:rgba(98,216,255,.5)}
+  .gcard.sel{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(98,216,255,.35),var(--shadow)}
+  .gcard .em{font-size:34px}
+  .gcard b{display:block;margin:6px 0 2px;font-size:17px}
+  .gcard span{color:var(--muted);font-size:13px}
+  label{display:grid;gap:6px;font-size:13px;font-weight:600;margin:10px 0}
+  input,select{width:100%;min-height:44px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.25);background:rgba(7,17,34,.6);color:#edf3ff;font:inherit}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:11px 18px;border-radius:12px;font-weight:700;border:1px solid rgba(255,255,255,.22);color:#fff;background:rgba(255,255,255,.10);cursor:pointer;font:inherit;transition:transform .15s,filter .15s}
+  .btn:hover{transform:translateY(-1px);filter:brightness(1.12)}
+  .btn-pri{background:linear-gradient(135deg,var(--blue),var(--violet));border-color:transparent}
+  .btn-lime{background:linear-gradient(135deg,#12b981,#0ea5a3);border-color:transparent}
+  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .cols{display:grid;grid-template-columns:1.5fr 1fr;gap:16px;align-items:start}
+  .seats{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+  .seat{padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);font-size:13px}
+  .seat.turn{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(98,216,255,.35)}
+  .seat.dead{opacity:.45;text-decoration:line-through}
+  .log{max-height:240px;overflow:auto;font-size:13.5px;color:#c9d6ef}
+  .log div{padding:3px 0;border-bottom:1px dashed rgba(255,255,255,.08)}
+  .chatbox{max-height:200px;overflow:auto;font-size:13.5px;margin-bottom:8px}
+  .chatbox div{padding:2px 0}
+  .notice{padding:12px 14px;border-radius:14px;background:rgba(98,216,255,.12);border:1px solid rgba(98,216,255,.35);font-size:14px}
+  .warn{background:rgba(255,213,79,.12);border-color:rgba(255,213,79,.4)}
+  .err{background:rgba(255,113,133,.14);border-color:rgba(255,113,133,.45);padding:10px 14px;border-radius:12px;font-size:14px;display:none}
+  code.cmd{display:inline-block;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.25);padding:8px 12px;border-radius:10px;font-size:16px;color:#a7f3d8}
+  /* UNO */
+  .unocard{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:64px;height:92px;border-radius:12px;margin:4px;border:2px solid rgba(255,255,255,.55);font-weight:800;font-size:15px;cursor:pointer;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.6);transition:transform .12s;vertical-align:top;text-align:center;padding:4px}
+  .unocard:hover{transform:translateY(-6px)}
+  .unocard.no{opacity:.45;cursor:not-allowed}
+  .c-red{background:#e5484d}.c-yellow{background:#f5b90d;color:#231a00;text-shadow:none}.c-green{background:#30a46c}.c-blue{background:#3e63dd}
+  .c-purple{background:#8e4ec6}.c-pink{background:#e93d82}.c-orange{background:#f76b15}.c-teal{background:#12a594}.c-wild{background:linear-gradient(135deg,#e5484d,#f5b90d,#30a46c,#3e63dd)}
+  .topcard{transform:scale(1.15);cursor:default}
+  .colorpick{width:38px;height:38px;border-radius:50%;border:2px solid #fff;cursor:pointer}
+  /* Catur */
+  .board{display:grid;grid-template-columns:repeat(8,1fr);max-width:520px;margin:10px auto;border:2px solid rgba(255,255,255,.4);border-radius:10px;overflow:hidden}
+  .sq{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:clamp(20px,5.4vw,36px);cursor:pointer;user-select:none}
+  .sq.dk{background:rgba(62,99,221,.45)}.sq.lt{background:rgba(232,239,255,.85)}
+  .sq.sel{outline:3px solid var(--lime);outline-offset:-3px}.sq.hint{outline:3px solid rgba(82,224,179,.55);outline-offset:-6px}.sq.last{background-color:rgba(245,185,13,.45)}
+  .pw{color:#fff;text-shadow:0 0 3px #000,0 2px 2px #000}.pb{color:#141821;text-shadow:0 0 3px #fff}
+  /* Ular tangga & monopoli */
+  .snakeboard{display:grid;grid-template-columns:repeat(10,1fr);max-width:520px;margin:10px auto;gap:2px}
+  .cell{aspect-ratio:1;border-radius:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);font-size:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
+  .cell.lad{background:rgba(82,224,179,.22)}.cell.snk{background:rgba(255,113,133,.22)}
+  .pawn{font-size:13px;line-height:1}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}
+  .tile{padding:10px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);font-size:12px;min-height:74px}
+  .tile.here{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(98,216,255,.3)}
+  .hidden{display:none!important}
+  @media(max-width:860px){.grid{grid-template-columns:1fr 1fr}.cols{grid-template-columns:1fr}.tiles{grid-template-columns:1fr 1fr}}
+  @media(max-width:540px){.grid{grid-template-columns:1fr}.unocard{width:54px;height:78px;font-size:13px}}
+</style>
+</head>
+<body>
+<header class="top"><div class="top-in">
+  <a class="brand" href="/">🎮 UMI GAMES<small>MULTIPLAYER · WHATSAPP</small></a>
+  <a class="btn" href="https://jadibot-alzriss.gwenna.my.id" target="_blank" rel="noopener">Jadibot Studio ↗</a>
+</div></header>
+
+<main class="wrap">
+  <!-- ================= LOBI ================= -->
+  <section id="lobby">
+    <h1>Main bareng teman,<br>mejanya di website — verifikasinya di WhatsApp.</h1>
+    <p class="sub">Pilih game, buat room, lalu bagikan tautannya. Setiap pemain wajib verifikasi nomor WhatsApp ke bot Umi sebelum duduk. Pemain kurang? Isi bot AI saja — bisa 1vs1, bertiga, berempat, sampai 10 orang (UNO).</p>
+    <div class="grid" id="gameGrid"></div>
+    <div class="cols">
+      <div class="glass card">
+        <h2>➕ Buat Room Baru</h2>
+        <label>Nama kamu <input id="crName" maxlength="24" placeholder="mis. Alzriss"></label>
+        <label>Nomor WhatsApp (untuk verifikasi) <input id="crNumber" inputmode="numeric" placeholder="628xxxxxxxxxx"></label>
+        <div class="err" id="crErr"></div>
+        <button class="btn btn-pri" id="crBtn">Buat Room &amp; Minta Verifikasi</button>
+        <p class="sub" style="font-size:13px">Setelah room dibuat, kamu diarahkan ke halaman meja dan diminta kirim pesan verifikasi ke bot. Atau buat room langsung dari WhatsApp: ketik <b>.uno</b>, <b>.monopoli</b>, <b>.caturweb</b> di bot Umi.</p>
+      </div>
+      <div class="glass card">
+        <h2>🔑 Masuk Meja</h2>
+        <label>ID / tautan room <input id="jnRoom" placeholder="tempel tautan atau ID room"></label>
+        <label>Kode masuk 6 digit (dari balasan bot) <input id="jnCode" inputmode="numeric" maxlength="6" placeholder="123456"></label>
+        <div class="err" id="jnErr"></div>
+        <button class="btn btn-lime" id="jnBtn">Masuk Meja</button>
+        <p class="sub" style="font-size:13px">Belum punya kode? Buka tautan room yang dibagikan temanmu, lalu ikuti instruksi verifikasi WhatsApp di sana.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ROOM ================= -->
+  <section id="roomView" class="hidden">
+    <h1 id="rmTitle">Room</h1>
+    <p class="sub" id="rmSub"></p>
+    <div class="glass card" id="verifyBox"></div>
+    <div class="cols" style="margin-top:16px">
+      <div class="glass card" id="gameArea"></div>
+      <div>
+        <div class="glass card">
+          <h2>🪑 Meja</h2>
+          <div class="seats" id="seatList"></div>
+          <div id="hostControls"></div>
+          <h2 style="margin-top:18px">📜 Kejadian</h2>
+          <div class="log" id="logBox"></div>
+        </div>
+        <div class="glass card" style="margin-top:16px">
+          <h2>💬 Chat</h2>
+          <div class="chatbox" id="chatBox"></div>
+          <form id="chatForm" class="row"><input id="chatInput" maxlength="300" placeholder="Tulis pesan…" style="flex:1"><button class="btn" type="submit">Kirim</button></form>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const BOT_WA = '6282343823200'
+const GAME_INFO = {
+  uno:      { label:'UNO', emoji:'🃏', desc:'2–10 pemain · kartu +2, skip, wild', min:2, max:10, cmd:'.uno' },
+  unoflip:  { label:'UNO Flip', emoji:'🔄', desc:'2–10 pemain · kartu bisa dibalik gelap/terang', min:2, max:10, cmd:'.unoflip' },
+  chess:    { label:'Catur', emoji:'♟️', desc:'2 pemain · klasik, ada skakmat & rokade', min:2, max:2, cmd:'.caturweb' },
+  snakes:   { label:'Ular Tangga', emoji:'🐍', desc:'2–6 pemain · balapan ke kotak 100', min:2, max:6, cmd:'.utweb' },
+  monopoly: { label:'Monopoli', emoji:'🏠', desc:'2–4 pemain · versi ringkas 16 petak', min:2, max:4, cmd:'.monopoli' },
+  werewolf: { label:'Werewolf', emoji:'🐺', desc:'5–12 pemain · peran rahasia, voting siang hari', min:5, max:12, cmd:'.wwweb' },
+}
+const parts = location.pathname.split('/').filter(Boolean)
+const isRoom = parts.length === 2 && GAME_INFO[parts[0]]
+let roomId = isRoom ? parts[1] : null
+let gameKey = isRoom ? parts[0] : 'uno'
+let token = roomId ? (localStorage.getItem('umi-game-' + roomId) || '') : ''
+let myState = null
+let selColor = 'red'
+let chessSel = -1
+
+const $ = (id) => document.getElementById(id)
+async function api(path, body) {
+  const res = await fetch(path, body ? { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) } : {})
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status))
+  return json
+}
+function showErr(id, msg) { const el = $(id); el.textContent = msg; el.style.display = msg ? 'block' : 'none' }
+
+/* ---------- LOBI ---------- */
+if (!isRoom) {
+  const grid = $('gameGrid')
+  for (const [key, g] of Object.entries(GAME_INFO)) {
+    const d = document.createElement('div')
+    d.className = 'glass gcard' + (key === gameKey ? ' sel' : '')
+    d.innerHTML = '<div class="em">' + g.emoji + '</div><b>' + g.label + '</b><span>' + g.desc + '<br>Dari WA: <b>' + g.cmd + '</b></span>'
+    d.onclick = () => { gameKey = key; document.querySelectorAll('.gcard').forEach(x => x.classList.remove('sel')); d.classList.add('sel') }
+    grid.appendChild(d)
+  }
+  $('crBtn').onclick = async () => {
+    showErr('crErr', '')
+    try {
+      const out = await api('/api/rooms', { game: gameKey, name: $('crName').value.trim(), number: $('crNumber').value.trim() })
+      localStorage.setItem('umi-game-' + out.roomId, out.token)
+      location.href = out.url
+    } catch (e) { showErr('crErr', e.message) }
+  }
+  $('jnBtn').onclick = async () => {
+    showErr('jnErr', '')
+    try {
+      const raw = $('jnRoom').value.trim()
+      const m = raw.match(/([A-Za-z0-9]{10})(?:\/?$|\/?#)/) || raw.match(/rooms?\/([A-Za-z0-9]{10})/) || raw.match(/\/([A-Za-z0-9]{10})/)
+      const id = m ? m[1] : raw
+      const gm = (raw.match(/\/(uno|unoflip|chess|snakes|monopoly|werewolf)\//) || [])[1]
+      const out = await api('/api/rooms/' + id + '/enter', { entryCode: $('jnCode').value.trim() })
+      localStorage.setItem('umi-game-' + id, out.token)
+      location.href = '/' + (gm || 'uno') + '/' + id
+    } catch (e) { showErr('jnErr', e.message) }
+  }
+}
+
+/* ---------- ROOM ---------- */
+if (isRoom) {
+  $('lobby').classList.add('hidden')
+  $('roomView').classList.remove('hidden')
+  $('rmTitle').textContent = GAME_INFO[gameKey].emoji + ' ' + GAME_INFO[gameKey].label + ' — Room ' + roomId
+  $('rmSub').innerHTML = 'Bagikan tautan ini ke temanmu: <b>' + location.href + '</b>'
+
+  const es = new EventSource('/api/rooms/' + roomId + '/events?token=' + encodeURIComponent(token))
+  es.onmessage = (ev) => { try { myState = JSON.parse(ev.data); render() } catch {} }
+  es.onerror = async () => { try { myState = await api('/api/rooms/' + roomId + '/state?token=' + encodeURIComponent(token)); render() } catch {} }
+
+  async function act(action) {
+    try { await api('/api/rooms/' + roomId + '/action', { token, action }) }
+    catch (e) { alert(e.message) }
+  }
+  window.act = act
+
+  $('chatForm').onsubmit = async (e) => {
+    e.preventDefault()
+    const text = $('chatInput').value.trim()
+    if (!text) return
+    $('chatInput').value = ''
+    await act({ type:'chat', text })
+  }
+
+  function verifyPanel(me) {
+    const box = $('verifyBox')
+    const slug = { uno:'uno', unoflip:'unoflip', chess:'catur', snakes:'ulartangga', monopoly:'monopoli', werewolf:'werewolf' }[gameKey]
+    const cmd = '/' + slug + ' ' + roomId
+    const waLink = 'https://wa.me/' + BOT_WA + '?text=' + encodeURIComponent(cmd)
+    if (me && me.status === 'verified') {
+      box.innerHTML = '<h2>✅ Kamu sudah duduk</h2><p class="sub">Sebagai <b>' + esc(me.name) + '</b>. Tunggu pemain lain terverifikasi, lalu host menekan MULAI GAME.</p>'
+      return
+    }
+    if (me && me.status === 'pending') {
+      box.innerHTML = '<h2>⏳ Kursimu menunggu verifikasi</h2><p>Kirim pesan ini ke bot Umi di WhatsApp:</p><p><code class="cmd">' + cmd + '</code></p>'
+        + '<p><a class="btn btn-lime" target="_blank" rel="noopener" href="' + waLink + '">Buka WhatsApp &amp; Kirim Otomatis ↗</a></p>'
+        + '<p class="sub">Setelah bot membalas, halaman ini otomatis aktif (tidak perlu refresh).</p>'
+      return
+    }
+    box.innerHTML = '<h2>🔐 Verifikasi WhatsApp dulu untuk duduk</h2>'
+      + '<p>1) Kirim pesan ini ke bot Umi:</p><p><code class="cmd">' + cmd + '</code></p>'
+      + '<p><a class="btn btn-lime" target="_blank" rel="noopener" href="' + waLink + '">Buka WhatsApp &amp; Kirim Otomatis ↗</a></p>'
+      + '<p>2) Bot membalas <b>kode masuk 6 digit</b>. Isi di sini:</p>'
+      + '<div class="row"><input id="codeIn" inputmode="numeric" maxlength="6" placeholder="kode masuk" style="max-width:180px"><button class="btn btn-pri" id="codeBtn">Duduk di Meja</button></div>'
+      + '<div class="err" id="codeErr"></div>'
+      + '<p class="sub">Atau isi nomor WA-mu untuk minta kursi (lalu tetap kirim pesan verifikasi di atas):</p>'
+      + '<div class="row"><input id="clName" placeholder="nama" maxlength="24" style="max-width:170px"><input id="clNum" placeholder="628xxxxxxxxxx" inputmode="numeric" style="max-width:190px"><button class="btn" id="claimBtn">Minta Kursi</button></div><div class="err" id="claimErr"></div>'
+    $('codeBtn').onclick = async () => {
+      showErr('codeErr', '')
+      try {
+        const out = await api('/api/rooms/' + roomId + '/enter', { entryCode: $('codeIn').value.trim() })
+        token = out.token
+        localStorage.setItem('umi-game-' + roomId, token)
+        location.reload()
+      } catch (e) { showErr('codeErr', e.message) }
+    }
+    $('claimBtn').onclick = async () => {
+      showErr('claimErr', '')
+      try {
+        const out = await api('/api/rooms/' + roomId + '/claim', { name: $('clName').value.trim(), number: $('clNum').value.trim() })
+        token = out.token
+        localStorage.setItem('umi-game-' + roomId, token)
+        location.reload()
+      } catch (e) { showErr('claimErr', e.message) }
+    }
+  }
+
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+
+  function render() {
+    const s = myState
+    if (!s) return
+    const me = s.viewer >= 0 ? s.seats[s.viewer] : null
+    verifyPanel(me)
+    const turnIdx = s.state ? (s.game === 'werewolf' ? -1 : s.state.turn) : -1
+    $('seatList').innerHTML = s.seats.length ? s.seats.map(seat => {
+      let extra = ''
+      if (s.game === 'monopoly' && s.state) extra = ' · Rp' + s.state.cash[seat.i]
+      if ((s.game === 'uno' || s.game === 'unoflip') && s.state) extra = ' · ' + s.state.counts[seat.i] + ' kartu'
+      if (s.game === 'snakes' && s.state) extra = ' · kotak ' + s.state.pos[seat.i]
+      const alive = !(s.state && s.state.alive && !s.state.alive[seat.i])
+      return '<span class="seat' + (turnIdx === seat.i && s.status === 'playing' ? ' turn' : '') + (alive ? '' : ' dead') + '">'
+        + (seat.kind === 'ai' ? '🤖 ' : seat.status === 'verified' ? '✅ ' : '⏳ ') + esc(seat.name) + (seat.you ? ' (kamu)' : '') + extra + '</span>'
+    }).join('') : '<span class="sub">Belum ada yang duduk.</span>'
+
+    const hc = $('hostControls')
+    if (s.viewer === 0 && s.status === 'lobby') {
+      const g = GAME_INFO[s.game]
+      hc.innerHTML = '<div class="notice warn" style="margin:10px 0">Kamu host meja ini. Pemain terverifikasi: <b>' + s.seats.filter(x => x.status === 'verified').length + '</b> (minimal ' + g.min + ').</div>'
+        + '<label>Jumlah pemain kalau diisi bot AI <select id="tgtPlayers">' + Array.from({length: g.max - g.min + 1}, (_, k) => g.min + k).map(n => '<option value="' + n + '"' + (n === Math.max(g.min, 3) ? ' selected' : '') + '>' + n + ' orang</option>').join('') + '</select></label>'
+        + '<div class="row"><button class="btn btn-pri" id="startFill">▶ MULAI (isi bot AI)</button><button class="btn" id="startPure">Mulai tanpa bot</button><button class="btn" id="addBotBtn">+1 Bot AI</button></div>'
+      $('startFill').onclick = () => act({ type:'start', fillBots:true, targetPlayers:Number($('tgtPlayers').value) })
+      $('startPure').onclick = () => act({ type:'start', fillBots:false })
+      $('addBotBtn').onclick = () => act({ type:'addbot' })
+    } else if (s.status === 'lobby') {
+      hc.innerHTML = '<p class="sub">Menunggu host memulai game…</p>'
+    } else if (s.status === 'finished') {
+      hc.innerHTML = '<div class="notice">🏁 Game selesai! Buat room baru dari <a href="/">lobi</a> atau ketik <b>' + GAME_INFO[s.game].cmd + '</b> di bot.</div>'
+    } else hc.innerHTML = ''
+
+    $('logBox').innerHTML = s.log.map(esc).map(t => '<div>' + t + '</div>').join('')
+    $('logBox').scrollTop = $('logBox').scrollHeight
+    $('chatBox').innerHTML = s.chat.map(c => '<div><b>' + esc(c.name) + ':</b> ' + esc(c.text) + '</div>').join('')
+    $('chatBox').scrollTop = $('chatBox').scrollHeight
+    renderGame(s, me)
+  }
+
+  function renderGame(s, me) {
+    const A = $('gameArea')
+    if (s.status === 'lobby') { A.innerHTML = '<h2>🎲 ' + GAME_INFO[s.game].label + '</h2><p class="sub">Game belum dimulai. Undang teman lewat tautan room, pastikan semua sudah ✅ terverifikasi, lalu host menekan MULAI. Kursi kosong bisa diisi bot AI.</p>'; return }
+    if (s.game === 'uno' || s.game === 'unoflip') return renderUno(A, s, me)
+    if (s.game === 'chess') return renderChess(A, s, me)
+    if (s.game === 'snakes') return renderSnakes(A, s, me)
+    if (s.game === 'monopoly') return renderMonopoly(A, s, me)
+    if (s.game === 'werewolf') return renderWerewolf(A, s, me)
+  }
+
+  const COLOR_NAME = { red:'Merah', yellow:'Kuning', green:'Hijau', blue:'Biru', purple:'Ungu', pink:'Pink', orange:'Oranye', teal:'Toska', wild:'Wild' }
+  function renderUno(A, s, me) {
+    const st = s.state
+    const myTurn = st.turn === s.viewer && st.winner === null
+    const top = st.top
+    const sideKey = st.side === 'dark' ? 1 : 0
+    const topC = top ? (sideKey ? top.d : top.l) : null
+    let html = '<h2>' + GAME_INFO[s.game].emoji + ' ' + GAME_INFO[s.game].label + (s.game === 'unoflip' ? ' — sisi ' + (st.side === 'dark' ? '🌙 GELAP' : '☀️ TERANG') : '') + '</h2>'
+    if (st.winner !== null) html += '<div class="notice">🏆 <b>' + esc(s.seats[st.winner].name) + '</b> menang!</div>'
+    else html += '<p class="sub">Giliran: <b>' + esc(s.seats[st.turn].name) + '</b> · Warna aktif: <b>' + (COLOR_NAME[st.color] || st.color) + '</b> · Sisa deck: ' + st.deckCount + '</p>'
+    html += '<p>Kartu atas:</p><div>' + (top ? '<span class="unocard topcard c-' + topC[0] + '">' + topC[1] + '<br><small>' + (COLOR_NAME[topC[0]] || '') + '</small></span>' : '-') + '</div>'
+    if (s.viewer >= 0) {
+      html += '<h3 style="margin:16px 0 4px">Kartumu (' + st.hand.length + ')</h3>'
+      if (myTurn) {
+        html += '<div class="row" style="margin:8px 0"><span class="sub">Warna untuk wild:</span>' + ['red','yellow','green','blue','purple','pink','orange','teal'].filter(c => s.game === 'unoflip' || ['red','yellow','green','blue'].includes(c)).map(c => '<button class="colorpick c-' + c + '" data-color="' + c + '" title="' + COLOR_NAME[c] + '"></button>').join('') + '<b>' + (COLOR_NAME[selColor] || selColor) + '</b></div>'
+      }
+      html += '<div>' + st.hand.map((card, i) => {
+        const cd = sideKey ? card.d : card.l
+        return '<button class="unocard c-' + cd[0] + (myTurn ? '' : ' no') + '" data-card="' + i + '">' + cd[1] + '<br><small>' + (COLOR_NAME[cd[0]] || '') + '</small></button>'
+      }).join('') + '</div>'
+      if (myTurn) html += '<div class="row" style="margin-top:12px"><button class="btn" id="drawBtn">🃏 Ambil Kartu &amp; Lewati</button></div>'
+    } else html += '<p class="sub">Kamu penonton. Verifikasi untuk ikut main di room berikutnya.</p>'
+    A.innerHTML = html
+    A.querySelectorAll('[data-color]').forEach(b => b.onclick = () => { selColor = b.dataset.color; render() })
+    A.querySelectorAll('[data-card]').forEach(b => b.onclick = () => { if (myTurn) act({ type:'play', card:Number(b.dataset.card), color: selColor }) })
+    const d = $('drawBtn'); if (d) d.onclick = () => act({ type:'draw' })
+  }
+
+  const CH = { k:'♚', q:'♛', r:'♜', b:'♝', n:'♞', p:'♟' }
+  function renderChess(A, s, me) {
+    const st = s.state
+    const myColor = s.viewer === 0 ? 'w' : s.viewer === 1 ? 'b' : null
+    const myTurn = myColor && st.turn === myColor && !st.winner
+    const hints = {}
+    if (chessSel >= 0 && st.legal) st.legal.filter(m => m.from === chessSel).forEach(m => hints[m.to] = true)
+    let html = '<h2>♟️ Catur</h2>'
+    if (st.winner === 'draw') html += '<div class="notice">🤝 Seri!</div>'
+    else if (st.winner !== null && st.winner !== undefined) html += '<div class="notice">🏆 <b>' + esc(s.seats[st.winner].name) + '</b> menang skakmat!</div>'
+    else html += '<p class="sub">Giliran: <b>' + (st.turn === 'w' ? '⚪ Putih — ' + esc(s.seats[0].name) : '⚫ Hitam — ' + esc(s.seats[1].name)) + '</b>' + (myTurn ? ' · <span style="color:var(--lime)">giliranmu, klik bidak lalu kotak tujuan</span>' : '') + '</p>'
+    html += '<div class="board">'
+    for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
+      const i = y * 8 + x
+      const p = st.board[i]
+      const last = st.lastMove && (st.lastMove[0] === i || st.lastMove[1] === i)
+      html += '<div class="sq ' + ((x + y) % 2 ? 'dk' : 'lt') + (chessSel === i ? ' sel' : '') + (hints[i] ? ' hint' : '') + (last ? ' last' : '') + '" data-sq="' + i + '">'
+        + (p ? '<span class="' + (p.c === 'w' ? 'pw' : 'pb') + '">' + CH[p.t] + '</span>' : '') + '</div>'
+    }
+    html += '</div>'
+    html += '<div class="log" style="max-height:130px">' + st.history.map(esc).map(t => '<div>' + t + '</div>').join('') + '</div>'
+    A.innerHTML = html
+    A.querySelectorAll('[data-sq]').forEach(el => el.onclick = () => {
+      if (!myTurn) return
+      const sq = Number(el.dataset.sq)
+      const p = st.board[sq]
+      if (chessSel >= 0 && hints[sq]) { act({ type:'move', from: chessSel, to: sq }); chessSel = -1; return }
+      if (p && p.c === myColor) { chessSel = sq; render() }
+    })
+  }
+
+  function renderSnakes(A, s, me) {
+    const st = s.state
+    const myTurn = st.turn === s.viewer && st.winner === null
+    let html = '<h2>🐍 Ular Tangga</h2>'
+    if (st.winner !== null) html += '<div class="notice">🏆 <b>' + esc(s.seats[st.winner].name) + '</b> menang!</div>'
+    else html += '<p class="sub">Giliran: <b>' + esc(s.seats[st.turn].name) + '</b>' + (st.dice ? ' · dadu terakhir: 🎲 ' + st.dice : '') + '</p>'
+    html += '<div class="snakeboard">'
+    for (let cell = 100; cell >= 1; cell--) {
+      const pawns = st.pos.map((p, i) => p === cell ? i : -1).filter(i => i >= 0)
+      const cls = st.ladders[cell] ? 'lad' : st.snakes[cell] ? 'snk' : ''
+      const icon = st.ladders[cell] ? '🪜' : st.snakes[cell] ? '🐍' : ''
+      html += '<div class="cell ' + cls + '"><span>' + cell + ' ' + icon + '</span><span class="pawn">' + pawns.map(i => ['🔴','🔵','🟢','🟣','🟠','🟡'][i] || '⚪').join('') + '</span></div>'
+    }
+    html += '</div><p class="sub">Posisi: ' + s.seats.map((seat, i) => ['🔴','🔵','🟢','🟣','🟠','🟡'][i] + ' ' + esc(seat.name) + ' = ' + st.pos[i]).join(' · ') + '</p>'
+    if (myTurn) html += '<button class="btn btn-pri" id="rollBtn">🎲 Lempar Dadu</button>'
+    A.innerHTML = html
+    const r = $('rollBtn'); if (r) r.onclick = () => act({ type:'roll' })
+  }
+
+  function renderMonopoly(A, s, me) {
+    const st = s.state
+    const myTurn = (st.turn === s.viewer || st.pendingBuy === s.viewer) && st.winner === null
+    let html = '<h2>🏠 Monopoli <small style="color:var(--muted)">(ringkas)</small></h2>'
+    if (st.winner !== null) html += '<div class="notice">🏆 <b>' + esc(s.seats[st.winner].name) + '</b> menang!</div>'
+    else html += '<p class="sub">Giliran: <b>' + esc(s.seats[st.turn].name) + '</b> · Uangmu: <b>Rp' + (s.viewer >= 0 ? st.cash[s.viewer] : '-') + '</b>' + (st.dice ? ' · 🎲 ' + st.dice : '') + '</p>'
+    html += '<div class="tiles">' + st.tiles.map((tile, i) => {
+      const here = st.pos.map((p, pi) => p === i && st.solvent[pi] ? pi : -1).filter(x => x >= 0)
+      const owner = st.owners[i]
+      return '<div class="tile' + (here.length ? ' here' : '') + '"><b>' + (i + 1) + '. ' + esc(tile.name) + '</b><br>'
+        + (tile.type === 'prop' ? 'Rp' + tile.price + ' · sewa Rp' + tile.rent + (owner >= 0 ? '<br>👤 ' + esc(s.seats[owner].name) : '<br><i>belum ada pemilik</i>') : tile.type)
+        + (here.length ? '<br>' + here.map(pi => ['🔴','🔵','🟢','🟣'][pi]).join(' ') : '') + '</div>'
+    }).join('') + '</div>'
+    if (st.pendingBuy === s.viewer) {
+      const tile = st.tiles[st.pos[s.viewer]]
+      html += '<div class="notice warn">Kamu mendarat di <b>' + esc(tile.name) + '</b> (Rp' + tile.price + '). Beli?</div><div class="row" style="margin-top:10px"><button class="btn btn-lime" id="buyBtn">🏠 Beli</button><button class="btn" id="passBtn">Lewati</button></div>'
+    } else if (myTurn) html += '<button class="btn btn-pri" id="rollBtn">🎲 Lempar Dadu</button>'
+    A.innerHTML = html
+    const r = $('rollBtn'); if (r) r.onclick = () => act({ type:'roll' })
+    const b = $('buyBtn'); if (b) b.onclick = () => act({ type:'buy' })
+    const p = $('passBtn'); if (p) p.onclick = () => act({ type:'pass' })
+  }
+
+  const ROLE_ID = { werewolf:'🐺 Werewolf', seer:'🔮 Peramal (Seer)', doctor:'💉 Dokter', villager:'🧑‍🌾 Warga' }
+  function renderWerewolf(A, s, me) {
+    const st = s.state
+    let html = '<h2>🐺 Werewolf — Hari ke-' + st.day + ' · ' + (st.phase === 'night' ? '🌙 Malam' : '☀️ Siang') + '</h2>'
+    if (st.winner) html += '<div class="notice">🏆 ' + (st.winner === 'werewolf' ? 'WEREWOLF menang!' : 'WARGA menang!') + '</div>'
+    if (st.myRole) html += '<div class="notice">Peran rahasiamu: <b>' + ROLE_ID[st.myRole] + '</b>' + (st.alive[s.viewer] ? '' : ' — kamu sudah mati, hanya bisa menonton & chat.') + '</div>'
+    if (st.peeked) html += '<div class="notice warn">🔮 Hasil terawanganmu: <b>' + esc(s.seats[st.peeked.target].name) + '</b> adalah <b>' + ROLE_ID[st.peeked.role] + '</b>.</div>'
+    html += '<p class="sub">' + esc(st.lastNews || '') + '</p>'
+    const iAmAlive = s.viewer >= 0 && st.alive[s.viewer]
+    const needNight = st.phase === 'night' && iAmAlive && ['werewolf','seer','doctor'].includes(st.myRole) && !st.winner
+    const needVote = st.phase === 'day' && iAmAlive && !st.winner
+    if (needNight) html += '<h3>Pilih target malam ini' + (st.nightActed ? ' ✅ (sudah memilih, tunggu yang lain)' : '') + ':</h3>'
+    if (needVote) html += '<h3>Voting: siapa yang digantung?' + (st.voted !== undefined ? ' ✅ (sudah memilih)' : '') + '</h3>'
+    if (needNight || needVote) {
+      html += '<div class="row">' + s.seats.map((seat, i) => {
+        if (!st.alive[i] || i === s.viewer) return ''
+        const cnt = st.phase === 'day' && st.voteCounts ? ' (' + (st.voteCounts[i] || 0) + ' suara)' : ''
+        return '<button class="btn" data-target="' + i + '">' + (st.phase === 'night' ? '🎯 ' : '⚖️ ') + esc(seat.name) + cnt + '</button>'
+      }).join('') + '</div>'
+    }
+    if (st.phase === 'night' && iAmAlive && st.myRole === 'villager') html += '<p class="sub">😴 Kamu warga biasa — tidur nyenyak, tunggu pagi.</p>'
+    if (st.roles) html += '<h3>Peran semua pemain:</h3><p>' + s.seats.map((seat, i) => esc(seat.name) + ' = ' + ROLE_ID[st.roles[i]]).join('<br>') + '</p>'
+    A.innerHTML = html
+    A.querySelectorAll('[data-target]').forEach(b => b.onclick = () => act({ type: st.phase === 'night' ? 'night' : 'vote', target: Number(b.dataset.target) }))
+  }
+}
+</script>
+</body>
+</html>

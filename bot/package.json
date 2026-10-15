@@ -9,8 +9,8 @@
     "plugins": "plugins"
   },
   "scripts": {
-    "start": "node main.js",
-    "tunnel-start": "set -a; [ -f ./.tunnel.env ] && . ./.tunnel.env; [ -f ./.backup-export.env ] && { chmod 600 ./.backup-export.env 2>/dev/null || true; . ./.backup-export.env; }; set +a; chmod 700 ./cloudflared; ./cloudflared tunnel --no-autoupdate run --token \"$CLOUDFLARE_TUNNEL_TOKEN\" & tunnel_pid=$!; node main.js & bot_pid=$!; trap 'kill \"$tunnel_pid\" \"$bot_pid\" 2>/dev/null; wait' INT TERM EXIT; wait \"$bot_pid\"",
+    "start": "node scripts/boot.js",
+    "tunnel-start": "set -a; [ -f ./.tunnel.env ] && . ./.tunnel.env; [ -f ./.backup-export.env ] && { chmod 600 ./.backup-export.env 2>/dev/null || true; . ./.backup-export.env; }; [ -f ./.error-report.env ] && { chmod 600 ./.error-report.env 2>/dev/null || true; . ./.error-report.env; }; set +a; chmod 700 ./cloudflared; ./cloudflared tunnel --no-autoupdate run --token \"$CLOUDFLARE_TUNNEL_TOKEN\" & tunnel_pid=$!; trap 'kill \"$tunnel_pid\" 2>/dev/null; wait' INT TERM EXIT; node scripts/boot.js",
     "format": "prettier --write .",
     "lint": "eslint . --ext .js",
     "test:auto-ai": "node --test tests/auto-ai.test.mjs tests/agent-settings.test.mjs && node --loader ./tests/mock-native-loader.mjs --test tests/native-dispatch.test.mjs"

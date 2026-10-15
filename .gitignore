@@ -29,3 +29,12 @@ deploy-backups/
 deploy-patches/
 .backup-snapshot/
 *.log
+
+# Jangan pernah push rahasia / arsip lokal
+PROMPT-SESI-BARU.md
+panel-files.zip
+*.tar.gz
+.secrets/
+credentials*.env
+*-credentials.env
+*-keys-backup.txt

@@ -7,6 +7,7 @@ import crypto from 'crypto'
 import { ButtonV2 } from '../../lib/awang-tombol.js'
 import { ytDlpExtractAudio, ytDlpDownloadVideo } from '../../lib/awang-ytdlp.js'
 import { sendRemoteMediaFast } from '../../lib/awang-media-transfer.js'
+import { downloadWithFallback } from '../../lib/scrape/YouTube.js'
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
 const YT = 'https://www.youtube.com'
@@ -261,6 +262,37 @@ async function getPlayer(videoId) {
   if (best) return setCache(`player:${videoId}`, best)
 
   throw new Error(clean(last))
+}
+
+/**
+ * Metadata cadangan dari oEmbed resmi YouTube.
+ *
+ * Laporan Feedback: getPlayer() melempar "Login untuk mengonfirmasi bahwa Anda
+ * bukan bot" (LOGIN_REQUIRED) dari IP server, dan karena action() memanggilnya
+ * SEBELUM sendMedia(), unduhan langsung gagal total — padahal jalur SaveTube di
+ * sendMedia() tidak butuh InnerTube sama sekali dan videonya terbukti bisa
+ * diunduh. oEmbed tidak kena bot-check, jadi metadata dasar (judul, channel,
+ * sampul) tetap bisa didapat dan unduhan bisa lanjut ke SaveTube/yt-dlp.
+ */
+async function oembedInfo(videoId) {
+  const r = await request(`${YT}/oembed?url=${encodeURIComponent(WATCH + videoId)}&format=json`)
+  const j = await r.json()
+  return info(null, {
+    videoId,
+    title: j?.title,
+    channel: j?.author_name,
+    thumbnail: j?.thumbnail_url,
+  })
+}
+
+/** info() dari InnerTube bila bisa; kalau diblokir, turun ke oEmbed. */
+async function playerInfo(videoId) {
+  try {
+    return info(await getPlayer(videoId), { videoId })
+  } catch (error) {
+    console.warn(`[usanagi-play] InnerTube gagal untuk ${videoId} (${clean(error?.message || error)}), memakai metadata oEmbed.`)
+    return oembedInfo(videoId)
+  }
 }
 
 function walk(obj, fn, seen = new Set()) {
@@ -689,8 +721,25 @@ async function sendMedia(m, conn, data, type) {
     // SaveTube uses a separate converter/CDN path, so it remains usable when
     // YouTube blocks direct InnerTube URLs from a datacenter IP.
     if (!result) {
+      let saveTubeCandidate = null
       try {
-        const saveTubeCandidate = await saveTube(data.videoId, type)
+        saveTubeCandidate = await saveTube(data.videoId, type)
+      } catch (error) {
+        rememberError('savetube-resolver', error)
+        // Resolver lokal plugin ini membaca global.youtubeDownloader.saveTubeBaseUrl
+        // yang tidak pernah disetel di konfigurasi mana pun ("Resolver SaveTube
+        // belum dikonfigurasi"). Scraper bersama lib/scrape/YouTube.js memakai
+        // layanan + kunci SaveTube yang sama dan sudah terkonfigurasi, jadi
+        // pakai itu sebagai cadangan sebelum menyerah ke yt-dlp.
+        try {
+          const shared = await downloadWithFallback(`${WATCH}${data.videoId}`, isAudio ? 'mp3' : '360')
+          if (shared?.url) saveTubeCandidate = { url: shared.url, needsTranscode: false }
+          else if (shared?._buffer) result = { buf: shared._buffer, needsTranscode: false }
+        } catch (sharedError) {
+          rememberError('savetube-shared', sharedError)
+        }
+      }
+      if (saveTubeCandidate) {
         try {
           await sendRemoteCandidate(saveTubeCandidate)
           return
@@ -702,8 +751,6 @@ async function sendMedia(m, conn, data, type) {
             rememberError('savetube-download', downloadError)
           }
         }
-      } catch (error) {
-        rememberError('savetube-resolver', error)
       }
     }
 
@@ -790,7 +837,7 @@ async function play(m, { conn, usedPrefix }) {
     let data
 
     if (id) {
-      data = info(await getPlayer(id), { videoId: id })
+      data = await playerInfo(id)
     } else {
       data = (await searchYouTube(query))[0]
     }
@@ -821,7 +868,7 @@ async function action(m, { conn }, type) {
 
   try {
     const cached = getCache(`video:${id}`, 600000)
-    const data = cached || info(await getPlayer(id), { videoId: id })
+    const data = cached || (await playerInfo(id))
 
     await conn.sendMessage(
       m.chat,

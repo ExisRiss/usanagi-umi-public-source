@@ -1,9 +1,9 @@
-// Compatibility adapter for plugins ported from Usanagi Umi AI.
+// Compatibility adapter for plugins ported from Umi Usanagi AI.
 // Main AlzRiss configuration remains in ../config.js.
 
 export const settings = {
-  botName: global.namebot || 'Usanagi Umi AI',
-  botAlias: 'Usanagi Umi',
+  botName: global.namebot || 'Umi Usanagi AI',
+  botAlias: 'Umi Usanagi',
   ownerName: global.ownerName || global.author || 'AlzRiss',
   ownerNumbers: (global.owner || []).map(item => Array.isArray(item) ? item[0] : item),
   links: {
@@ -16,12 +16,12 @@ export const settings = {
   },
   defaultPrefix: '.',
   timezone: 'Asia/Makassar',
-  footerText: global.namebot || 'Usanagi Umi AI',
+  footerText: global.namebot || 'Umi Usanagi AI',
   footerYear: '2026',
   botVersion: '7.1',
   botMode: 'Public',
   sticker: {
-    pack: global.stickpack || global.namebot || 'Usanagi Umi AI',
+    pack: global.stickpack || global.namebot || 'Umi Usanagi AI',
     author: global.stickauth || global.author || 'AlzRiss'
   },
   messageRouting: {

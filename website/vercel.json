@@ -19,6 +19,9 @@
     },
     "api/tripay-callback.js": {
       "maxDuration": 30
+    },
+    "api/panel.js": {
+      "maxDuration": 60
     }
   },
   "rewrites": [
@@ -226,5 +229,5 @@
       ]
     }
   ],
-  "buildCommand": "npm run backup:snapshot"
+  "buildCommand": "npm run backup:snapshot && npm run sync:public"
 }

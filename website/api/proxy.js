@@ -7,7 +7,7 @@ const ALLOWED_PATHS = new Set([
   'session/logout', 'settings/get', 'settings/apply', 'settings/reset',
   'backup/list', 'backup/create', 'backup/restore', 'console/logs', 'console/run',
   'agent/status', 'agent/chat',
-  'wallet/status', 'wallet/topup',
+  'wallet/status', 'wallet/topup', 'wallet/shop', 'wallet/buy-panel', 'wallet/buy-product', 'wallet/orders',
 ])
 
 function apiPath(req) {

@@ -100,9 +100,16 @@ export async function runImportedFeature(source,file,meta,m,extra) {
     const message=Object.create(m)
     const command=meta.aliasMap?.[extra.command]||String(extra.command||'').replace(new RegExp('^'+source+'-'),'')
     for(const [key,value] of Object.entries({text:extra.text||'',body:m.text,command,args:extra.args||[],prefix:extra.usedPrefix,isOwner:Boolean(extra.isOwner),isAdmin:Boolean(extra.isAdmin),isBotAdmin:Boolean(extra.isBotAdmin),isPremium:Boolean(extra.isPrems),pushName:m.pushName||m.name||'User'})) Object.defineProperty(message,key,{value,writable:true,configurable:true,enumerable:true})
-    message.reply=async(text,opts)=>{if(typeof text==='string'&&/^(?:❌|☢|Error:|Gagal)/i.test(text.trim()))failed=true;return extra.conn.reply(m.chat,text,opts?.quoted===false?null:m,opts||{})}
-    message.react=async emoji=>{if(/[❌☢⚠]/u.test(String(emoji)))failed=true;try{return await extra.conn.sendMessage(m.chat,{react:{text:String(emoji),key:m.key}})}catch{return null}}
-    message.limit={active:Number(meta.energi||meta.limit||0)>0,success(){return true},fail(){failed=true;return true}}
+    // PENTING: `message` dibuat dengan Object.create(m), sehingga mewarisi properti
+    // dari prototype WebMessageInfo (lib/simple.js) yang didefinisikan TANPA
+    // `writable` — alias read-only. Penugasan biasa (`message.reply = ...`) melempar
+    // "Cannot assign to read only property 'reply'" di strict mode dan membunuh
+    // SEMUA plugin impor sebelum handler-nya sempat jalan. Karena itu ketiga
+    // properti ini wajib dipasang dengan Object.defineProperty, sama seperti
+    // properti text/body/command di atas.
+    Object.defineProperty(message,'reply',{value:async(text,opts)=>{if(typeof text==='string'&&/^(?:❌|☢|Error:|Gagal)/i.test(text.trim()))failed=true;return extra.conn.reply(m.chat,text,opts?.quoted===false?null:m,opts||{})},writable:true,configurable:true,enumerable:true})
+    Object.defineProperty(message,'react',{value:async emoji=>{if(/[❌☢⚠]/u.test(String(emoji)))failed=true;try{return await extra.conn.sendMessage(m.chat,{react:{text:String(emoji),key:m.key}})}catch{return null}},writable:true,configurable:true,enumerable:true})
+    Object.defineProperty(message,'limit',{value:{active:Number(meta.energi||meta.limit||0)>0,success(){return true},fail(){failed=true;return true}},writable:true,configurable:true,enumerable:true})
     try {
       let loaded=modules.get(key)
       if(!loaded){const url=new URL(`../integrations/${source}/${file}`,import.meta.url);url.searchParams.set('scope',String(extra.botScope||extra.conn.user?.id));loaded=await import(url.href);modules.set(key,loaded)}

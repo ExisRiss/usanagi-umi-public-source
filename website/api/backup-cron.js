@@ -3,6 +3,7 @@ import { createReadStream } from 'node:fs'
 import { access, stat } from 'node:fs/promises'
 import path from 'node:path'
 import { Readable } from 'node:stream'
+import { gzipSync } from 'node:zlib'
 import { del, list, put } from '@vercel/blob'
 import { getBotApiConfig } from './_bot-config.js'
 import { securityHeaders } from './_security.js'
@@ -30,6 +31,57 @@ function generationId() {
 function archivePath(generation, kind) {
   if (!ARCHIVE_KINDS.includes(kind)) throw new Error('Invalid backup archive kind.')
   return `generations/${generation}/${kind}.tar.gz`
+}
+
+function mirrorConfig() {
+  const url = String(process.env.UMI_MIRROR_URL || '').replace(/\/+$/, '')
+  const token = String(process.env.UMI_MIRROR_TOKEN || '').trim()
+  return url && token ? { url, token } : null
+}
+
+async function mirrorUpload(kind, generation, body, contentLength) {
+  const mirror = mirrorConfig()
+  if (!mirror) return null
+  const isStream = Boolean(body && typeof body.getReader === 'function')
+  const response = await fetch(`${mirror.url}/mirror/${kind}/${encodeURIComponent(generation)}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${mirror.token}`, 'Content-Type': 'application/gzip', ...(contentLength ? { 'Content-Length': String(contentLength) } : {}) },
+    body,
+    ...(isStream ? { duplex: 'half' } : {}),
+    signal: AbortSignal.timeout(120_000),
+  })
+  if (!response.ok) throw new Error(`Mirror ${kind} upload failed (${response.status}).`)
+  return response.json()
+}
+
+async function buildWebsiteDbDump() {
+  const base = String(process.env.UMI_DATA_SUPABASE_URL || '').replace(/\/+$/, '')
+  const key = String(process.env.UMI_DATA_SERVICE_ROLE_KEY || '')
+  if (!base || !key) return null
+  const headers = { apikey: key, Authorization: `Bearer ${key}` }
+  const tables = {}
+  for (const [name, query] of [
+    ['platform_profiles', 'platform_profiles?select=*&limit=5000'],
+    ['platform_audit_logs', 'platform_audit_logs?select=*&order=created_at.desc&limit=5000'],
+    ['plugin_catalog', 'plugin_catalog?select=*&limit=5000'],
+    ['media_assets', 'media_assets?select=*&limit=5000'],
+    ['api_plugins', 'api_plugins?select=*&limit=5000'],
+  ]) {
+    try {
+      const response = await fetch(`${base}/rest/v1/${query}`, { headers, signal: AbortSignal.timeout(30_000) })
+      if (response.ok) tables[name] = await response.json()
+    } catch {}
+  }
+  let authUsers = null
+  try {
+    const response = await fetch(`${base}/auth/v1/admin/users?per_page=1000`, { headers, signal: AbortSignal.timeout(30_000) })
+    if (response.ok) {
+      const parsed = await response.json()
+      authUsers = (parsed.users || []).map(item => ({ id: item.id, email: item.email, created_at: item.created_at, last_sign_in_at: item.last_sign_in_at }))
+    }
+  } catch {}
+  if (!Object.keys(tables).length && !authUsers) return null
+  return gzipSync(Buffer.from(JSON.stringify({ exportedAt: new Date().toISOString(), tables, authUsers })))
 }
 
 async function removeGeneration(generation) {
@@ -170,6 +222,27 @@ export default async function handler(req, res) {
       cacheControlMaxAge: 60,
     })
     uploaded = true
+
+    // Mirror the same generation to the panel-beyy database service: website
+    // source snapshot, a JSON dump of the website database (Supabase tables),
+    // and the bot + jadibot session archives. Mirror failures never fail the
+    // primary backup above.
+    try {
+      if (mirrorConfig()) {
+        const snapshotInfo = await stat(SNAPSHOT)
+        await mirrorUpload('website', generation, Readable.toWeb(createReadStream(SNAPSHOT)), snapshotInfo.size)
+        const dump = await buildWebsiteDbDump()
+        if (dump) await mirrorUpload('website-db', generation, dump, dump.length)
+        for (const kind of ['bot', 'jadibot']) {
+          const meta = exports.get(kind)
+          const response = await requestBot(botOrigin, exportSecret, `/api/internal/backup/export/${generation}/${kind}`, { headers: { Accept: 'application/gzip' }, signal: AbortSignal.timeout(120_000) })
+          if (response.ok && response.body) await mirrorUpload(kind, generation, response.body, meta.bytes)
+        }
+        console.info('[HOURLY-BACKUP] Mirrored generation', generation, 'to panel beyy')
+      }
+    } catch (error) {
+      console.warn('[HOURLY-BACKUP] Mirror to panel beyy failed:', error?.message || 'unknown')
+    }
     await removePreviousGenerations(generation)
     console.info('[HOURLY-BACKUP] Completed generation', generation, manifest.archives.map(item => `${item.kind}:${item.bytes}`).join(', '))
     return res.status(200).json({ ok: true, generation, archives: manifest.archives.map(item => ({ kind: item.kind, bytes: item.bytes, sha256: item.sha256 })) })

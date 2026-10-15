@@ -2,7 +2,8 @@ import { planAutoAI, shouldAutoAITrigger } from './lib/auto-ai.js';
 import { runWithBotConnection } from './lib/bot-connection-context.js';
 import { smsg } from './lib/simple.js';
 import { generateWAMessageFromContent, proto } from '@rexxhayanasi/elaina-baileys'
-import { format } from 'util';
+import { format } from 'util'
+import { reportPluginError } from './lib/error-report.js';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import fs, { unwatchFile, watchFile } from 'fs';
@@ -768,6 +769,20 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 					console.error(e);
 					if (e) {
 						let text = format(e);
+						// Kirim juga ke halaman Feedback di website supaya jejaknya tidak hilang
+						// bersama log container. Dijalankan lebih dulu (tanpa menunggu) agar tidak
+						// menahan balasan ke pengguna; laporan yang sama digabung dalam 10 menit.
+						reportPluginError({
+							error: e,
+							plugin: m.plugin,
+							command,
+							prefix: usedPrefix,
+							args: Array.isArray(args) ? args : [],
+							sender: m.sender,
+							chat: m.chat,
+							scope: botConfig?.scope,
+							isGroup: /@g\.us$/i.test(String(m.chat || '')),
+						}).catch(() => {});
 						if (e.name)
 							for (let [jid] of global.owner.filter(([number, _, isDeveloper]) => isDeveloper && number)) {
 								let data = (await conn.onWhatsApp(jid))[0] || {};
