@@ -29,6 +29,41 @@ function keep(name, command, args, env = process.env, delay = 5000) {
 
 const has = (p) => { try { fs.accessSync(path.join(ROOT, p)); return true } catch { return false } }
 
+/* Berkas rahasia di root container. Sebelumnya hanya dibaca oleh `npm run
+ * tunnel-start` (lewat `set -a; . ./.backup-export.env`), sehingga kalau
+ * container dijalankan dengan `node scripts/companion.js` (CMD_RUN sekarang)
+ * variabelnya kosong: ekspor backup balas 503, scheduler backup nonaktif,
+ * dan laporan error tidak terkirim. Sekarang dibaca di sini supaya perilakunya
+ * sama pada kedua cara menjalankan bot. */
+const ENV_FILES = ['.tunnel.env', '.backup-export.env', '.error-report.env']
+
+function loadDotEnv() {
+  const collected = {}
+  for (const name of ENV_FILES) {
+    const file = path.join(ROOT, name)
+    let source = ''
+    try { source = fs.readFileSync(file, 'utf8') } catch { continue }
+    try { fs.chmodSync(file, 0o600) } catch {}
+    let count = 0
+    for (const line of source.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const index = trimmed.indexOf('=')
+      if (index < 1) continue
+      const key = trimmed.slice(0, index).trim()
+      const value = trimmed.slice(index + 1).trim().replace(/^["']|["']$/g, '')
+      if (!key || !value) continue
+      // Nilai dari environment asli tidak ditimpa (env panel tetap menang).
+      if (process.env[key] === undefined) collected[key] = value
+      count += 1
+    }
+    bump(`${name}: ${count} variabel dimuat`)
+  }
+  return collected
+}
+
+const fileEnv = loadDotEnv()
+
 /* Token bersama bot <-> game: dipakai endpoint internal /api/trading/credit
  * supaya konversi saldo Rp -> $AS hanya bisa dilakukan bot, bukan dari luar. */
 const gameToken = (() => {
@@ -40,6 +75,7 @@ const gameToken = (() => {
 if (has('game/game.js')) {
   keep('game', process.execPath, ['game/game.js'], {
     ...process.env,
+    ...fileEnv,
     GAME_PORT: process.env.GAME_PORT || '3900',
     ...(gameToken ? { GAME_TOKEN: gameToken } : {}),
   })
@@ -56,6 +92,7 @@ const bot = spawn(process.execPath, ['scripts/boot.js'], {
   stdio: 'inherit',
   env: {
     ...process.env,
+    ...fileEnv,
     ...(gameToken ? { UMI_GAME_TOKEN: gameToken, GAME_TOKEN: gameToken } : {}),
     UMI_GAME_INTERNAL_URL: process.env.UMI_GAME_INTERNAL_URL || 'http://127.0.0.1:3900',
     UMI_GAME_VERIFY_URL: process.env.UMI_GAME_VERIFY_URL || 'https://jadibot-alzriss.gwenna.my.id/api/platform/verify-token',

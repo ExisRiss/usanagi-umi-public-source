@@ -2,7 +2,7 @@
 
 **Log lengkap:** [repo `STATUS-DEPLOY.md`](./usanagi-umi-public-source/STATUS-DEPLOY.md)
 
-Terakhir diperbarui: **2026-10-16 23:00 WIB**
+Terakhir diperbarui: **2026-10-17 04.40 WITA**
 
 ## Done
 
@@ -198,7 +198,63 @@ game (`/`), dan lewat perintah bot.
 - Berkas uji lokal (`db-mirror/trading-data.json`, `db-mirror/game-token.txt`) sudah masuk
   `.gitignore` dan tidak ikut ke server produksi (data produksi tetap 2 akun asli).
 
+## Task 15 — "akun owner tidak sah" saat ACC Top Up (2026-10-17 04.40 WITA)
+
+**Gejala.** Klik **ACC Top Up** di website jadibot ditolak bot dengan *"Akses owner tidak sah."*
+(HTTP 401). Aksi owner lain di website ikut kena: kontrol bot utama, panel auto-order, AI agent.
+
+**Akar masalah.** Berkas `.owner-console-relay.env` di root server bot berisi **amplop terenkripsi
+Vercel** (1.168 karakter, awalan `eyJ2` → `{"v":"v2",…}`), bukan rahasia aslinya. Tiket HMAC yang
+ditandatangani website (`process.env.UMI_CONSOLE_RELAY_SECRET`) karena itu tidak pernah cocok di
+`bot/lib/jadibot-platform-api.js` (`verifyOwnerRelayTicket` baris 96–125) → semua rute
+`/api/owner-*` balas 401. Amplop itu bisa masuk karena
+`GET /v9/projects/<proj>/env?decrypt=true` mengembalikan amplop untuk **semua** kunci, bukan plaintext.
+
+**Perbaikan (relay).**
+- Nilai plaintext diambil lewat `npx vercel env pull` (butuh `.vercel/project.json`: project
+  `prj_UPjBvflOYP8ureG3cCxHHQKxOb0s`, team `team_TwCNMEAL8AoOA0whO30gFU4S`) → disimpan di
+  `/home/user/.secrets/shared-secrets.env` (chmod 600, 4 kunci 64-hex). Nilai sah:
+  awalan `8f388b64`, sha256-12 `833a71c385e5`.
+- `tools/make-deploy-env.mjs` diberi komentar anti-amplop; `config.js` & `.tunnel.env` dibuat
+  opsional → menghasilkan 4 berkas `.secrets/upload/*.env`.
+- Diunggah ke server `b3f9c8df` (fingerprint sha256-12 identik) lalu `ptero.mjs power restart` (204).
+- Verifikasi dari sandbox dengan tiket HMAC bentuk asli: `owner-console/status` **200**,
+  `owner-panel/status` **200**, `owner-panel/manual-topups` **200** (menampilkan top up asli
+  `tu_mvb595vb_2c6f25c7297f5111` Rp1.000.000), `owner-agent/status` **200**; tiket kedaluwarsa
+  dan tanda tangan palsu tetap **401**.
+- Profil owner dicek: `AlzRiss` (`akunindo2011264@gmail.com`) `roles=['owner','developer']`,
+  `locked=true` — jadi bukan soal role.
+
+**Bonus yang ikut dibetulkan: ekspor backup bot 503 & `/api/cron/backup` 502.**
+`CMD_RUN=node scripts/companion.js` ternyata tidak memuat `.backup-export.env` / `.error-report.env`
+(hanya `npm run tunnel-start` yang memuat), jadi bot balas 503 "Layanan ekspor backup belum
+dikonfigurasi." `db-mirror/companion.js` ditambah `ENV_FILES` + `loadDotEnv()` (chmod 600, tidak
+menimpa env asli, disebar ke proses anak bot & game). Setelah restart:
+- `POST https://api.gwenna.my.id/api/internal/backup/export` **200** — bot 13.102.212 B / 3.543 berkas,
+  jadibot 1.761 B (uji, langsung dibersihkan).
+- `POST /api/cron/backup` **200** — generasi `hourly_20261016202653276_6cf41ad0bacde514`:
+  website 1.401.065 B, bot 13.102.205 B, jadibot 1.765 B.
+- Log bot: `[VERCEL-BACKUP-SCHEDULER] Backup berikutnya dijadwalkan …` (bukan "Tidak aktif"),
+  `⚙️ Bot utama: NONAKTIF` dari website, 0 jejak pairing (perintah "pairing off" dipatuhi).
+- Jalur laporan error diuji: `POST /api/platform/feedback/bot` **201** (`deliveredTo: 1`) memakai
+  rahasia dari `.error-report.env`; baris uji di `platform_audit_logs` (id 165) langsung dihapus.
+- `UMI_MIRROR_URL` dihapus dari env Vercel (host mirror `159.223.57.221:2844` sudah mati / HTTP 000)
+  supaya backup tidak menggantung menunggu mirror.
+
+**Catatan.** Klik ACC Top Up dari sesi login owner tetap perlu sekali percobaan nyata (sandbox tidak
+punya sesi Supabase) — namun tiket yang dikirim website bentuknya identik dengan tiket uji yang
+sudah lolos 200. Metadata git lokal juga diperbaiki: `.git/config` hilang karena pemulihan snapshot,
+remote `origin` dipasang ulang, HEAD diselaraskan ke `3fe84f2` (berkas kerja tidak diubah).
+
 ## Pending
 
-- Feedback auto-report sudah jalan, brat.js sudah di-fix (error reports berkurang)
+- Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
 - Payment gateway (TriPay) belum dikonfigurasi (saat ini manual DANA)
+- **Perlu 1x klik nyata dari akun owner** (sandbox tak punya sesi Supabase): ACC Top Up di
+  halaman Panel, tombol Auto Read & Bot Utama di halaman Bot Utama
+- Uji end-to-end WhatsApp: kirim `.daftar` dan `@verify` → akun trading otomatis muncul di
+  papan peringkat (harness lokal sudah lolos, belum dari WA asli)
+- Harness plugin `bot/plugins/game/trading-umi.js` (unit/integration test) belum ditulis
+- Plugin lama `bot/plugins/game/trading1.js` (37.464 B) masih menunggu keputusan: hapus atau
+  pindahkan ke arsip supaya tidak dobel dengan `trading-umi.js`
+- Jadibot `6282343823200` masih reconnect loop → perlu cek sesi/perangkat di sisi pengguna

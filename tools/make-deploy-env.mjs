@@ -9,9 +9,13 @@
  * Sumber tiap berkas, dan alasannya:
  *   config.js                → .secrets/bot-config.js (versi produksi, bukan versi repo)
  *   .tunnel.env              → .secrets/tunnel.env (token tunnel umi-api-gwenna)
- *   .owner-console-relay.env → env Vercel (berkas lokal pernah memuat nilai lama 64
- *                              karakter; yang berlaku 1168 karakter, dan relay
- *                              menolak tiket kalau tidak sama persis)
+ *   .owner-console-relay.env → .secrets/shared-secrets.env (rahasia ASLI, 64 karakter)
+ *                              JANGAN pakai API Vercel /env?decrypt=true: yang keluar
+ *                              adalah AMPLOP terenkripsi (~1168 char, berawalan eyJ2).
+ *                              Kalau amplop itu ditanam ke server bot, semua panggilan
+ *                              owner lewat relay dijawab 401 "Akses owner tidak sah."
+ *                              (kejadian nyata 2026-10-16 → ACC Top Up mati).
+ *                              Ambil nilai asli dengan: npx vercel env pull (plaintext).
  *   .backup-export.env       → env Vercel; NAMA VARIABEL harus UMI_BACKUP_* karena
  *                              kode membacanya dari process.env, bukan nama berkas
  *   .main-bot.env            → selalu MAIN_BOT_ENABLED=false (keputusan tetap:
@@ -40,16 +44,28 @@ const readEnvFile = (file) => {
 fs.mkdirSync(UPLOAD, { recursive: true })
 const cred = readEnvFile(CRED)
 const done = []
+const warn = []
 
 // ── 1. config.js ────────────────────────────────────────────────────────
-fs.copyFileSync(path.join(SECRETS, 'bot-config.js'), path.join(UPLOAD, 'config.js'))
-done.push(['config.js', 'dari .secrets/bot-config.js'])
+const BOT_CONFIG = path.join(SECRETS, 'bot-config.js')
+if (fs.existsSync(BOT_CONFIG)) {
+  fs.copyFileSync(BOT_CONFIG, path.join(UPLOAD, 'config.js'))
+  done.push(['config.js', 'dari .secrets/bot-config.js'])
+} else {
+  warn.push(['config.js', '.secrets/bot-config.js tidak ada — dilewati (versi di server tidak diubah)'])
+}
 
 // ── 2. Token tunnel ─────────────────────────────────────────────────────
-const tun = readEnvFile(path.join(SECRETS, 'tunnel.env'))
-if (!tun.CLOUDFLARE_TUNNEL_TOKEN) throw new Error('CLOUDFLARE_TUNNEL_TOKEN tidak ada di .secrets/tunnel.env')
-fs.writeFileSync(path.join(UPLOAD, '.tunnel.env'), `CLOUDFLARE_TUNNEL_TOKEN=${tun.CLOUDFLARE_TUNNEL_TOKEN}\n`)
-done.push(['.tunnel.env', 'token tunnel umi-api-gwenna'])
+const TUNNEL_ENV = path.join(SECRETS, 'tunnel.env')
+if (fs.existsSync(TUNNEL_ENV)) {
+  const tun = readEnvFile(TUNNEL_ENV)
+  if (tun.CLOUDFLARE_TUNNEL_TOKEN) {
+    fs.writeFileSync(path.join(UPLOAD, '.tunnel.env'), `CLOUDFLARE_TUNNEL_TOKEN=${tun.CLOUDFLARE_TUNNEL_TOKEN}\n`)
+    done.push(['.tunnel.env', 'token tunnel umi-api-gwenna'])
+  } else warn.push(['.tunnel.env', 'CLOUDFLARE_TUNNEL_TOKEN kosong — dilewati'])
+} else {
+  warn.push(['.tunnel.env', '.secrets/tunnel.env tidak ada — dilewati (tunnel di server tidak diubah)'])
+}
 
 // ── 3. Bot utama selalu NONAKTIF ────────────────────────────────────────
 fs.writeFileSync(path.join(UPLOAD, '.main-bot.env'), 'MAIN_BOT_ENABLED=false\n')
@@ -122,6 +138,11 @@ console.log('\nBerkas konfigurasi deploy siap:\n')
 for (const [name, from] of done) {
   const size = fs.statSync(path.join(UPLOAD, name)).size
   console.log(`  ✓ ${name.padEnd(24)} ${String(size).padStart(7)} byte  ← ${from}`)
+}
+
+if (warn.length) {
+  console.log('\nDilewati:')
+  for (const [name, why] of warn) console.log(`  ! ${name.padEnd(24)} ${why}`)
 }
 
 const archives = fs.readdirSync(UPLOAD).filter((f) => f.endsWith('.tar.gz'))
