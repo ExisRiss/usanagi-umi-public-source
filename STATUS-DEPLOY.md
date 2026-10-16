@@ -1672,3 +1672,69 @@ Cron dipicu manual → generasi `hourly_20261015185021524_036fdf06cde3c27a`:
    beyy PLTC, Vercel, Cloudflare, Supabase.
 3. Server `83595f4b` tidak auto-start bila node panel reboot — perlu dinyalakan
    manual dari panel kalau panel-nya reboot.
+
+---
+
+## 🔴 Host panel beyy MATI total (16 Oktober 2026, 02.20 UTC dicek)
+
+### Gejala yang terukur
+
+| Target | Hasil |
+|---|---|
+| `https://beyy.ikynebula.my.id/api/client` | **tidak merespons** (curl timeout 12–25 dtk, kode 000) |
+| `https://api.gwenna.my.id/` (bot) | **530** — sebelumnya 401 (hidup) |
+| `https://game.gwenna.my.id/health` | **530** — sebelumnya 200 |
+| `http://192.241.149.63:3348/health` (mirror langsung) | **timeout** |
+| `https://jadibot-alzriss.gwenna.my.id/` | 200 (Vercel, infra lain) |
+| `https://alzriss.gwenna.my.id/` | 200 (Vercel) |
+| `https://panel2.ikyhost.cloud/` | 200 (panel lain, pembanding) |
+| `https://registry.npmjs.org/` | 200 (jaringan sandbox sehat) |
+
+`beyy.ikynebula.my.id` resolve ke **192.241.149.63** — IP yang sama dengan node
+tempat bot `bf133872` dan mirror `83595f4b` berjalan. Jadi panel, bot, dan mirror
+mati bersamaan karena satu kotak yang sama.
+
+### Kapan matinya (data dari Cloudflare, bukan dari server)
+
+```
+umi-api-gwenna     konektor=0  mati sejak 2026-10-15T22:47:28Z
+umi-games-gwenna   konektor=0  mati sejak 2026-10-15T22:48:31Z
+diperiksa          2026-10-16T02:19:33Z  → sudah ±3,5 jam
+```
+
+Kedua konektor putus berselisih **63 detik** — pola satu mesin mati, bukan dua
+kegagalan terpisah. Pekerjaan pemulihan mirror selesai 18.52 UTC dan masih
+terverifikasi 200 pada saat itu; host mati ±4 jam sesudahnya.
+
+### Catatan metodologi
+
+Tes `bash /dev/tcp` **tidak bisa dipercaya di sandbox ini**: port acak
+(`192.241.149.63:12345`, bahkan `cloudflare.com:9999`) ikut dilaporkan "terbuka".
+Semua kesimpulan konektivitas di atas memakai `curl` dengan batas waktu.
+
+### Yang belum bisa dikerjakan (terhalang host mati)
+
+1. **Mematikan pairing bot utama** — sudah ketemu jalurnya:
+   `POST /api/owner-console/main-bot` body `{"enabled":false}` dengan tiket HMAC
+   yang sama seperti log konsol (`lib/jadibot-platform-api.js:171`), tanpa perlu
+   restart. Cadangan bila API bot belum hidup: tulis `.main-bot.env`
+   (`MAIN_BOT_ENABLED=false`, nomor pairing dipertahankan) lewat Client API lalu
+   restart.
+2. **Menyalakan mirror `83595f4b`** — butuh Client API panel, yang ikut mati.
+
+Alat baru **`tools/recover-after-outage.mjs`** mengerjakan keduanya otomatis dan
+idempoten: tunggu panel hidup → nyalakan mirror bila offline → matikan pairing
+(API dulu, jatuh ke tulis berkas + restart) → verifikasi mirror/game/pairing.
+Dipasang sebagai pemantau tiap 60 detik. `--once` untuk satu putaran.
+
+### Rotation kunci
+
+Sesuai keputusan pemilik: **tidak dilakukan**, risiko diterima. Tidak ada kunci
+yang dirotate pada sesi ini.
+
+### Kejutan workspace
+
+Symlink `/home/user/tools` **hilang** saat snapshot dipulihkan (symlink tidak ikut
+tersimpan), sedangkan direktori repo, `.secrets/`, dan `restore/bot-latest.tar.gz`
+(24 MB) utuh. Perbaikan: `ln -sfn /home/user/usanagi-umi-public-source/tools /home/user/tools`,
+atau panggil alat dengan jalur lengkap.
