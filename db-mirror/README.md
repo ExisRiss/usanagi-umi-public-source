@@ -1,3 +1,24 @@
+> ## ⚠️ PINDAH SERVER (17 Okt 2026) — baca ini dulu
+>
+> Server `83595f4b` (panel `beyy.ikynebula.my.id`) dan node lama **167.99.67.212
+> sudah mati**, jadi game web tidak jalan dari sana lagi.
+>
+> **Kondisi sekarang:** game berjalan **di dalam container bot** (`b3f9c8df`,
+> panel `beyy.serverprivv.my.id`, IP `167.99.193.164`), dinyalakan oleh
+> `scripts/companion.js` bersama tunnel `umi-games-gwenna` (6f82f294).
+>
+> | Bagian | Port internal | Alamat publik |
+> |---|---|---|
+> | Game web (`game.js`) | `127.0.0.1:3900` | `https://game.gwenna.my.id` |
+> | API bot & verifikasi token | `127.0.0.1:3366` | `https://api.gwenna.my.id` |
+>
+> Deploy: `node tools/deploy-game.mjs` (unggah ke container lalu restart).
+> Tunnel: `tunnel-games.yml` (bukan lagi `tunnel-config.yml`).
+> Verifikasi token trading: `POST https://jadibot-alzriss.gwenna.my.id/api/platform/verify-token`.
+>
+> Dokumen di bawah ini masih menggambarkan server `83595f4b` yang lama —
+> arsip sejarah, bukan kondisi produksi.
+
 # Umi DB Mirror + Umi Web Games — server beyy `83595f4b`
 
 Satu proses Node.js (tanpa dependensi) di server Pterodactyl **`83595f4b`**
@@ -54,24 +75,46 @@ Semua selain `/health` wajib `Authorization: Bearer <token>`.
 Enam meja: `uno`, `unoflip`, `chess`, `snakes`, `monopoly`, `werewolf`.
 Realtime lewat SSE, tanpa dependensi, halaman tunggal `game.html`.
 
-- `GET /health` — jumlah room + daftar permainan
-- `GET /` dan `GET /:game/:roomId` — halaman room
-- `POST /api/rooms` — buat meja (**wajib token bot**)
-- `POST /api/rooms/:id/claim` — minta kursi (nomor WA → status pending)
+- `GET /health` — jumlah room, daftar permainan, `openJoinDefault`
+- `GET /` dan `GET /:game/:roomId` — halaman room (dibaca ulang dari disk kalau
+  `game.html` berubah, jadi unggah berkas baru tidak perlu restart)
+- `POST /api/rooms` — buat meja. Dengan **token bot** kursinya langsung
+  terverifikasi; dari website statusnya mengikuti mode masuk bebas
+- `POST /api/rooms/:id/claim` — minta kursi (nomor WA)
 - `POST /api/rooms/:id/verify` — verifikasi WhatsApp (**token bot**) → kode masuk 6 digit
 - `POST /api/rooms/:id/enter` — tukar kode masuk dengan token kursi
 - `GET /api/rooms/:id/state?token=` — keadaan meja (tangan lawan disensor)
 - `GET /api/rooms/:id/events?token=` — SSE
-- `POST /api/rooms/:id/action` — aksi pemain (hanya kursi terverifikasi)
+- `POST /api/rooms/:id/action` — aksi pemain (hanya kursi terverifikasi;
+  pengecualian: host boleh mengirim `openjoin`)
 
 Token bot dibaca dari `game-token.txt` di container atau env `UMI_GAME_TOKEN`.
 Sisi bot: plugin `bot/plugins/game/game-webmultiplayer.js` + konfigurasi
-`bot/lib/webgame.json` (berisi token; berkas itu di-gitignore). Perintah:
-`.uno`, `.unoflip`, `.caturweb`, `.utweb`, `.monopoli`, `.wwweb`, `.webgame`,
-plus `<perintah> join <id>` dan `<perintah> <id>` untuk verifikasi.
+`bot/lib/webgame.json` (berisi token; berkas itu di-gitignore). Perintah memakai
+prefix aktif bot (default `/`): `/uno`, `/unoflip`, `/caturweb`, `/utweb`,
+`/monopoli`, `/wwweb`, `/webgame`, plus `<perintah> join <id>` dan
+`<perintah> <id>` untuk verifikasi. **Catur, ular tangga, dan werewolf wajib
+memakai akhiran `web`** — nama polosnya sudah dipakai game WhatsApp lama, dan
+halaman web mengambil nama perintah dari server (`state.waCommand`) supaya
+keduanya tidak bisa berbeda lagi.
 
-Uji: `tools/test-webgame.mjs` (25 uji alur API) dan
-`tools/test-webmultiplayer-plugin.mjs` (15 uji plugin asli).
+### Mode masuk bebas (`UMI_GAME_OPEN_JOIN`)
+
+Verifikasi WhatsApp butuh bot utama yang tersambung. Kalau bot utama dimatikan
+(`MAIN_BOT_ENABLED=false`), tidak ada pemain yang bisa duduk — host sendiri pun
+terkunci, jadi meja tidak bisa dimainkan. Selama `UMI_GAME_OPEN_JOIN` tidak
+diisi `0`, kursi dari website langsung dianggap terverifikasi, halaman room
+menampilkan peringatannya, dan host boleh mematikannya per meja (aksi
+`openjoin`). Room buatan bot selalu tetap wajib verifikasi. Matikan global
+dengan `UMI_GAME_OPEN_JOIN=0` setelah bot utama online lagi.
+
+Uji:
+- `tools/test-webgame.mjs` — alur API dasar (sadar mode masuk bebas)
+- `tools/test-game-live.mjs` — memainkan keenam meja sampai selesai di server
+  hidup, termasuk regresi deadlock werewolf dan mode masuk bebas
+- `tools/test-game-page.mjs` — merender `game.html` di jsdom dan memeriksa
+  keluaran tiap meja (butuh `npm install jsdom`)
+- `tools/test-webmultiplayer-plugin.mjs` — plugin bot asli
 
 ## 3. Tunnel Cloudflare
 

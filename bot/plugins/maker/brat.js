@@ -5,11 +5,23 @@ let handler = async (m, { conn, text }) => {
     await m.react('🕒')
 
     try {
-        const url = `https://aqul-brat.hf.space?text=${encodeURIComponent(text)}`
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 15000)
+
+        const res = await fetch(
+            `https://apiii-xrina.my.id/maker/brat?text=${encodeURIComponent(text)}`,
+            { signal: controller.signal }
+        )
+        clearTimeout(timeout)
+
+        if (!res.ok) throw new Error(`API ${res.status}`)
+
+        const buffer = Buffer.from(await res.arrayBuffer())
+        if (buffer.length < 100) throw new Error('Response terlalu kecil')
 
         await conn.sendSticker(
             m.chat,
-            url,
+            buffer,
             m,
             {
                 packname: global.stickpack || global.namebot,
@@ -19,9 +31,9 @@ let handler = async (m, { conn, text }) => {
 
         await m.react('✅')
     } catch (e) {
-        console.error(e)
+        console.error('[brat]', e.message || e)
         await m.react('❌')
-        m.reply('Gagal membuat sticker.')
+        m.reply('Gagal membuat sticker. Coba lagi nanti.')
     }
 }
 

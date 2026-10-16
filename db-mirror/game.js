@@ -38,13 +38,40 @@ let GAME_TOKEN = ''
 try { GAME_TOKEN = fs.readFileSync(path.join(process.cwd(), 'game-token.txt'), 'utf8').trim() } catch {}
 if (!GAME_TOKEN) GAME_TOKEN = String(process.env.UMI_GAME_TOKEN || '').trim()
 
+/*
+ * Mode masuk bebas (open join).
+ *
+ * Verifikasi WhatsApp butuh bot utama yang tersambung. Kalau bot utama sedang
+ * dimatikan (MAIN_BOT_ENABLED=false / pairing off), tidak ada satu pun pemain
+ * yang bisa duduk — host sendiri pun terkunci oleh "Kursimu belum
+ * terverifikasi WhatsApp", jadi meja tidak bisa dimainkan sama sekali.
+ *
+ * Selama mode ini aktif, kursi yang diminta dari website langsung dianggap
+ * terverifikasi. Halaman room menampilkannya sebagai peringatan yang jelas, dan
+ * host boleh mematikannya per meja. Kembalikan ke wajib verifikasi dengan
+ * UMI_GAME_OPEN_JOIN=0 setelah bot utama online lagi.
+ */
+const OPEN_JOIN_DEFAULT = String(process.env.UMI_GAME_OPEN_JOIN || '1').toLowerCase() !== '0'
+
+/* URL verifikasi token UMI (halaman Profil di jadibot).
+ * Dulu diarahkan ke http://167.99.67.212:3480/api/verify — IP node lama yang
+ * sudah mati dan endpoint-nya memang tidak pernah ada, jadi login trading
+ * selalu gagal walau tokennya benar. Ganti dengan endpoint platform:
+ *   POST { token } -> { ok, user:{ username, roles, owner } }
+ * Bisa ditimpa lewat env UMI_VERIFY_URL kalau backend pindah lagi. */
+const VERIFY_URL = String(process.env.UMI_VERIFY_URL || 'https://jadibot-alzriss.gwenna.my.id/api/platform/verify-token').trim()
+
+/* `cmd` adalah nama perintah WhatsApp yang benar-benar diterima plugin
+ * bot/plugins/game/game-webmultiplayer.js. Catur, ular tangga, dan werewolf
+ * pakai akhiran `web` karena nama polosnya sudah dipakai game WhatsApp lama —
+ * halaman web harus memakai nama yang sama, kalau tidak bot tidak menjawab. */
 const GAMES = {
-    uno: { label: 'UNO', emoji: '🃏', min: 2, max: 10 },
-    unoflip: { label: 'UNO Flip', emoji: '🔄', min: 2, max: 10 },
-    chess: { label: 'Catur', emoji: '♟️', min: 2, max: 2 },
-    snakes: { label: 'Ular Tangga', emoji: '🐍', min: 2, max: 6 },
-    monopoly: { label: 'Monopoli', emoji: '🏠', min: 2, max: 4 },
-    werewolf: { label: 'Werewolf', emoji: '🐺', min: 5, max: 12 },
+    uno: { label: 'UNO', emoji: '🃏', min: 2, max: 10, cmd: 'uno' },
+    unoflip: { label: 'UNO Flip', emoji: '🔄', min: 2, max: 10, cmd: 'unoflip' },
+    chess: { label: 'Catur', emoji: '♟️', min: 2, max: 2, cmd: 'caturweb' },
+    snakes: { label: 'Ular Tangga', emoji: '🐍', min: 2, max: 6, cmd: 'utweb' },
+    monopoly: { label: 'Monopoli', emoji: '🏠', min: 2, max: 4, cmd: 'monopoli' },
+    werewolf: { label: 'Werewolf', emoji: '🐺', min: 5, max: 12, cmd: 'wwweb' },
 }
 const BOT_NAMES = ['Umi-Bot', 'Kiko-Bot', 'Rin-Bot', 'Sora-Bot', 'Mika-Bot', 'Yui-Bot', 'Ren-Bot', 'Aiko-Bot', 'Tama-Bot', 'Neko-Bot', 'Piko-Bot']
 
@@ -81,12 +108,14 @@ const cleanNumber = (v) => String(v || '').replace(/\D/g, '').slice(0, 16)
 function makeSeat(name, number, kind, status) {
     return { name: cleanName(name), number: cleanNumber(number), kind, status, token: newToken(), entryCode: newCode() }
 }
-function createRoom(game, creatorSeat) {
+function createRoom(game, creatorSeat, openJoin, verifyNumber) {
     const room = {
         id: newId(), game, status: 'lobby', createdAt: Date.now(), lastActivity: Date.now(),
-        seats: creatorSeat ? [creatorSeat] : [], state: null, log: [], chat: [], clients: new Set(), aiTimer: null,
+        seats: creatorSeat ? [creatorSeat] : [], state: null, log: [], chat: [], clients: new Set(), aiTimer: null, wwTimer: null,
+        openJoin: !!openJoin, verifyNumber: cleanNumber(verifyNumber) || '',
     }
     room.log.push(`${GAMES[game].emoji} Room ${GAMES[game].label} dibuat. Bagikan tautan ini ke temanmu!`)
+    if (room.openJoin) room.log.push('🔓 Mode masuk bebas aktif — pemain boleh duduk tanpa verifikasi WhatsApp.')
     rooms.set(room.id, room)
     return room
 }
@@ -478,6 +507,42 @@ function monopolyAI(room) {
 }
 
 /* ============================== WEREWOLF ============================== */
+/*
+ * Malam dan siang hanya boleh berganti kalau semua manusia yang punya
+ * kewajiban sudah memilih. Dulu pemeriksaan itu cuma jalan di dalam
+ * werewolfAction, akibatnya meja macet selamanya begitu satu-satunya pemain
+ * manusia berperan warga biasa (atau sudah mati) — tidak ada yang memicu
+ * pergantian fase. Kedua fungsi di bawah menutup lubang itu.
+ */
+function werewolfPendingHumans(room) {
+    const st = room.state
+    if (!st || st.winner) return []
+    if (st.phase === 'night') {
+        return room.seats.map((s, i) => i).filter(i => st.alive[i] && room.seats[i].kind === 'human'
+            && ['werewolf', 'seer', 'doctor'].includes(st.roles[i]) && st.nightActs[i] === undefined)
+    }
+    if (st.phase === 'day') {
+        return room.seats.map((s, i) => i).filter(i => st.alive[i] && room.seats[i].kind === 'human' && st.votes[i] === undefined)
+    }
+    return []
+}
+function werewolfMaybeResolve(room) {
+    const st = room.state
+    if (!st || st.winner) return
+    if (werewolfPendingHumans(room).length) return
+    if (room.wwTimer) { clearTimeout(room.wwTimer); room.wwTimer = null }
+    if (st.phase === 'night') werewolfResolveNight(room)
+    else if (st.phase === 'day') werewolfResolveDay(room)
+}
+/* Kalau tidak ada manusia yang perlu bertindak, fase tetap ditampilkan sebentar
+ * supaya pemain tidak melihat malam berlalu dalam sekejap. */
+function werewolfScheduleResolve(room) {
+    if (room.wwTimer || werewolfPendingHumans(room).length) return
+    room.wwTimer = setTimeout(() => {
+        room.wwTimer = null
+        try { werewolfMaybeResolve(room); broadcast(room) } catch (e) { console.log('[game] werewolf error:', e.message) }
+    }, 2500)
+}
 function werewolfStart(room) {
     const n = room.seats.length
     const wolves = Math.max(1, Math.floor(n / 4))
@@ -489,6 +554,7 @@ function werewolfStart(room) {
     }
     say(room, `🐺 Werewolf dimulai dengan ${n} pemain (${wolves} werewolf). Malam 1 — peran khusus, pilih targetmu!`)
     werewolfAiNight(room)
+    werewolfScheduleResolve(room)
 }
 function werewolfAiNight(room) {
     const st = room.state
@@ -535,6 +601,7 @@ function werewolfResolveNight(room) {
             if (targets.length) st.votes[i] = pick(targets)
         }
     })
+    werewolfScheduleResolve(room)
 }
 function werewolfResolveDay(room) {
     const st = room.state
@@ -553,6 +620,7 @@ function werewolfResolveDay(room) {
     st.day += 1; st.phase = 'night'
     say(room, `🌙 Malam ${st.day} tiba. Peran khusus, pilih targetmu!`)
     werewolfAiNight(room)
+    werewolfScheduleResolve(room)
 }
 function werewolfAction(room, idx, act) {
     const st = room.state
@@ -563,16 +631,14 @@ function werewolfAction(room, idx, act) {
         if (!['werewolf', 'seer', 'doctor'].includes(st.roles[idx])) return 'Warga biasa tidur di malam hari. 😴'
         if (!(act.target >= 0) || !st.alive[act.target]) return 'Target tidak sah.'
         st.nightActs[idx] = act.target
-        const needed = room.seats.filter((s, i) => st.alive[i] && s.kind === 'human' && ['werewolf', 'seer', 'doctor'].includes(st.roles[i]))
-        if (needed.every(s => st.nightActs[room.seats.indexOf(s)] !== undefined)) werewolfResolveNight(room)
+        werewolfMaybeResolve(room)
         return null
     }
     if (act.type === 'vote') {
         if (st.phase !== 'day') return 'Voting hanya di siang hari.'
         if (!(act.target >= 0) || !st.alive[act.target]) return 'Target tidak sah.'
         st.votes[idx] = act.target
-        const humanAlive = room.seats.filter((s, i) => st.alive[i] && s.kind === 'human')
-        if (humanAlive.every(s => st.votes[room.seats.indexOf(s)] !== undefined)) werewolfResolveDay(room)
+        werewolfMaybeResolve(room)
         return null
     }
     return 'Aksi tidak dikenal.'
@@ -612,6 +678,8 @@ function publicState(room, viewerIdx) {
     const base = {
         id: room.id, game: room.game, gameLabel: GAMES[room.game].label, emoji: GAMES[room.game].emoji,
         status: room.status, min: GAMES[room.game].min, max: GAMES[room.game].max,
+        openJoin: !!room.openJoin, waCommand: GAMES[room.game].cmd, waVerifyAvailable: !room.openJoin,
+        verifyNumber: room.verifyNumber || '',
         seats: room.seats.map((s, i) => ({ i, name: s.name, kind: s.kind, status: s.status, you: i === viewerIdx, alive: st && st.alive ? st.alive[i] : true })),
         viewer: viewerIdx, log: room.log.slice(-25), chat: room.chat.slice(-40),
     }
@@ -691,6 +759,18 @@ async function handleAction(room, idx, act) {
         say(room, `🤖 ${room.seats[room.seats.length - 1].name} bergabung sebagai bot AI.`)
         return null
     }
+    if (act.type === 'openjoin') {
+        if (idx !== 0) return 'Hanya pembuat room yang bisa mengubah mode masuk.'
+        if (room.status !== 'lobby') return 'Mode masuk hanya bisa diubah sebelum game dimulai.'
+        room.openJoin = !!act.value
+        // Kursi yang sudah menunggu langsung ikut aktif supaya host tidak
+        // perlu menyuruh temannya mengulang dari awal.
+        if (room.openJoin) room.seats.forEach(s => { if (s.kind === 'human' && s.status === 'pending') s.status = 'verified' })
+        say(room, room.openJoin
+            ? '🔓 Mode masuk bebas AKTIF — pemain boleh duduk tanpa verifikasi WhatsApp.'
+            : '🔐 Mode masuk bebas dimatikan — pemain baru wajib verifikasi WhatsApp.')
+        return null
+    }
     if (room.status !== 'playing') return 'Game belum dimulai. Host: tekan MULAI GAME.'
     if (room.seats[idx].kind === 'ai') return 'Kursi bot tidak bisa bertindak manual.'
     const fn = ACTIONS[room.game]
@@ -700,18 +780,56 @@ async function handleAction(room, idx, act) {
 }
 
 /* ============================== SERVER HTTP ============================== */
+/* Halaman dibaca ulang kalau berkasnya berubah, jadi unggah game.html baru
+ * langsung terlihat tanpa perlu restart container. */
 let PAGE = ''
-try { PAGE = fs.readFileSync(path.join(HERE, 'game.html'), 'utf8') } catch { PAGE = '<h1>Umi Games</h1>' }
+let PAGE_AT = -1
+function page() {
+    const file = path.join(HERE, 'game.html')
+    try {
+        const at = fs.statSync(file).mtimeMs
+        if (at !== PAGE_AT) { PAGE = fs.readFileSync(file, 'utf8'); PAGE_AT = at }
+    } catch {
+        if (!PAGE) PAGE = '<h1>Umi Games</h1>'
+    }
+    return PAGE
+}
 
-export function startGameServer(port = 3900) {
-    const server = http.createServer(async (req, res) => {
+/** Handler HTTP murni — bisa dipakai langsung atau via startGameServer. */
+export async function gameHandler(req, res) {
         const url = new URL(req.url || '/', 'http://localhost')
         const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
         try {
-            if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'umi-web-games', rooms: rooms.size, games: Object.keys(GAMES), time: new Date().toISOString() })
+            if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'umi-web-games', rooms: rooms.size, games: Object.keys(GAMES), openJoinDefault: OPEN_JOIN_DEFAULT, time: new Date().toISOString() })
+            /* Aset statis: logo, dadu, kartu, papan game */
+            if (req.method === 'GET' && parts[0] === 'assets' && parts.length === 2 && /^[a-z0-9._-]+$/i.test(parts[1])) {
+                const file = path.join(HERE, 'assets', parts[1])
+                try {
+                    const buf = fs.readFileSync(file)
+                    const ext = path.extname(file).toLowerCase()
+                    const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' }[ext] || 'application/octet-stream'
+                    res.writeHead(200, { 'Content-Type': mime, 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=86400' })
+                    return res.end(buf)
+                } catch {}
+            }
+            /* Trading page */
+            if (req.method === 'GET' && (url.pathname === '/trading' || url.pathname === '/trading/')) {
+                try {
+                    const tradingHtml = fs.readFileSync(path.join(HERE, 'trading.html'), 'utf8')
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(tradingHtml), 'Cache-Control': 'no-cache' })
+                    return res.end(tradingHtml)
+                } catch (e) {
+                    return sendJson(res, 500, { error: 'Trading page not found' })
+                }
+            }
+            /* Trading API */
+            if (parts[0] === 'api' && parts[1] === 'trading') {
+                return handleTradingAPI(req, res, url, parts.slice(2))
+            }
             if (req.method === 'GET' && (parts.length === 0 || (parts.length === 2 && GAMES[parts[0]]))) {
-                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' })
-                return res.end(PAGE)
+                const html = page()
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(html), 'Cache-Control': 'no-cache' })
+                return res.end(html)
             }
             if (parts[0] !== 'api' || parts[1] !== 'rooms') return sendJson(res, 404, { error: 'not found' })
 
@@ -720,11 +838,15 @@ export function startGameServer(port = 3900) {
                 const game = String(body.game || '')
                 if (!GAMES[game]) return sendJson(res, 400, { error: 'game tidak dikenal' })
                 const fromBot = botAuthorized(req)
-                const seat = makeSeat(body.name, body.number, 'human', fromBot ? 'verified' : 'pending')
-                if (!fromBot && !seat.number) return sendJson(res, 400, { error: 'Nomor WhatsApp wajib diisi untuk verifikasi.' })
-                const room = createRoom(game, seat)
+                // Room yang dibuat bot selalu pakai verifikasi normal; room dari
+                // website mengikuti setelan mode masuk bebas.
+                const openJoin = fromBot ? false : OPEN_JOIN_DEFAULT
+                const verifyNumber = cleanNumber(body.verifyNumber) || ''
+                const seat = makeSeat(body.name, body.number, 'human', (fromBot || openJoin) ? 'verified' : 'pending')
+                if (!fromBot && !seat.number && !openJoin) return sendJson(res, 400, { error: 'Nomor WhatsApp wajib diisi untuk verifikasi.' })
+                const room = createRoom(game, seat, openJoin, verifyNumber)
                 broadcast(room)
-                return sendJson(res, 200, { ok: true, roomId: room.id, game, url: `/${game}/${room.id}`, token: seat.token, entryCode: seat.entryCode, verified: fromBot })
+                return sendJson(res, 200, { ok: true, roomId: room.id, game, url: `/${game}/${room.id}`, token: seat.token, entryCode: seat.entryCode, verified: fromBot || openJoin, openJoin, verifyNumber: room.verifyNumber })
             }
 
             const room = rooms.get(parts[2] || '')
@@ -756,9 +878,13 @@ export function startGameServer(port = 3900) {
                 let seat = room.seats.find(s => s.kind === 'human' && s.number === number)
                 if (!seat) {
                     if (room.seats.length >= GAMES[room.game].max) return sendJson(res, 409, { error: 'meja penuh' })
-                    seat = makeSeat(body.name, number, 'human', 'pending')
+                    seat = makeSeat(body.name, number, 'human', room.openJoin ? 'verified' : 'pending')
                     room.seats.push(seat)
-                    say(room, `🪑 ${seat.name} meminta kursi — menunggu verifikasi WhatsApp.`)
+                    say(room, room.openJoin ? `🪑 ${seat.name} duduk di meja (mode masuk bebas).` : `🪑 ${seat.name} meminta kursi — menunggu verifikasi WhatsApp.`)
+                } else if (room.openJoin && seat.status === 'pending') {
+                    seat.status = 'verified'
+                    if (body.name) seat.name = cleanName(body.name)
+                    say(room, `✅ ${seat.name} duduk di meja (mode masuk bebas).`)
                 }
                 broadcast(room)
                 return sendJson(res, 200, { ok: true, token: seat.token, status: seat.status, seat: room.seats.indexOf(seat) })
@@ -792,7 +918,11 @@ export function startGameServer(port = 3900) {
                 const body = await readBody(req)
                 const idx = seatByToken(room, body.token)
                 if (idx < 0) return sendJson(res, 401, { error: 'Kamu belum punya kursi. Verifikasi dulu ya.' })
-                if (room.seats[idx].status !== 'verified') return sendJson(res, 403, { error: 'Kursimu belum terverifikasi WhatsApp.' })
+                // Host boleh menyalakan mode masuk bebas walaupun kursinya masih
+                // pending — kalau tidak, meja yang wajib verifikasi tidak bisa
+                // dibuka sama sekali saat bot utama offline.
+                const isHostToggle = idx === 0 && body.action && body.action.type === 'openjoin'
+                if (room.seats[idx].status !== 'verified' && !isHostToggle) return sendJson(res, 403, { error: 'Kursimu belum terverifikasi WhatsApp.' })
                 const err = await handleAction(room, idx, body.action || {})
                 broadcast(room)
                 if (err) return sendJson(res, 400, { error: err })
@@ -804,14 +934,134 @@ export function startGameServer(port = 3900) {
             console.log('[game] request error:', error.message)
             return sendJson(res, 500, { error: 'server error' })
         }
-    })
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * TRADING SYSTEM - $AS (Dollar AS)
+ * ═══════════════════════════════════════════════════════════════════════════ */
+const TRADING_DB_FILE = path.join(HERE, 'trading-data.json')
+const INITIAL_BALANCE = 100
+const DAILY_BONUS = 10
+const REDEEM_CODES = {
+    'UMI2024': { amount: 50, maxUses: 100, used: 0 },
+    'TRADING': { amount: 25, maxUses: 50, used: 0 },
+    'WELCOME': { amount: 15, maxUses: 200, used: 0 },
+    'BONUS': { amount: 10, maxUses: 500, used: 0 },
+}
+let tradingDB = { users: {}, lastDailyReset: '' }
+function loadTradingDB() { try { tradingDB = JSON.parse(fs.readFileSync(TRADING_DB_FILE, 'utf8')) } catch { tradingDB = { users: {}, lastDailyReset: '' }; saveTradingDB() } }
+function saveTradingDB() { try { fs.writeFileSync(TRADING_DB_FILE, JSON.stringify(tradingDB, null, 2)) } catch (e) { console.log('[trading] save error:', e.message) } }
+function getTradingUser(token) {
+    if (!tradingDB.users[token]) {
+        tradingDB.users[token] = { balance: INITIAL_BALANCE, portfolio: {}, history: [], lastDailyBonus: '' }
+        saveTradingDB()
+    }
+    return tradingDB.users[token]
+}
+function checkDailyBonus(user) {
+    const today = new Date().toISOString().split('T')[0]
+    if (user.lastDailyBonus !== today) {
+        user.balance += DAILY_BONUS; user.lastDailyBonus = today
+        user.history.push({ type: 'daily', amount: DAILY_BONUS, time: new Date().toISOString(), symbol: '$AS' })
+        saveTradingDB(); return true
+    }
+    return false
+}
+async function handleTradingAPI(req, res, url, parts) {
+    try {
+        if (req.method === 'POST' && parts[0] === 'login') {
+            const body = await readBody(req)
+            const token = String(body.token || '')
+            if (!token) return sendJson(res, 400, { error: 'Token diperlukan' })
+            let verifiedUser = null
+            try {
+                const v = await fetch(VERIFY_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token }),
+                    signal: AbortSignal.timeout(15000),
+                })
+                const vd = await v.json().catch(() => ({}))
+                if (!vd.ok) return sendJson(res, 401, { error: vd.error || 'Token tidak valid' })
+                verifiedUser = vd.user || {}
+            } catch (e) { return sendJson(res, 500, { error: 'Verifikasi gagal: ' + e.message }) }
+            const user = getTradingUser(token)
+            const hadBonus = checkDailyBonus(user)
+            return sendJson(res, 200, { ok: true, token, user: { username: verifiedUser.username || '', roles: verifiedUser.roles || [], owner: Boolean(verifiedUser.owner) }, balance: user.balance, portfolio: user.portfolio, history: user.history, dailyBonus: hadBonus ? DAILY_BONUS : 0 })
+        }
+        if (req.method === 'GET' && parts[0] === 'me') {
+            const token = url.searchParams.get('token')
+            if (!token) return sendJson(res, 400, { error: 'Token diperlukan' })
+            const user = getTradingUser(token); checkDailyBonus(user)
+            return sendJson(res, 200, { ok: true, balance: user.balance, portfolio: user.portfolio, history: user.history })
+        }
+        if (req.method === 'POST' && parts[0] === 'trade') {
+            const body = await readBody(req)
+            const { token, symbol, side, amount, price } = body
+            if (!token || !symbol || !side || !amount || !price) return sendJson(res, 400, { error: 'Parameter tidak lengkap' })
+            const user = getTradingUser(token)
+            const total = Number(amount) * Number(price)
+            if (side === 'buy') {
+                if (user.balance < total) return sendJson(res, 400, { error: 'Saldo tidak cukup' })
+                user.balance -= total
+                if (!user.portfolio[symbol]) user.portfolio[symbol] = { qty: 0, avgPrice: 0 }
+                const pos = user.portfolio[symbol]; const nq = pos.qty + Number(amount)
+                pos.avgPrice = ((pos.avgPrice * pos.qty) + total) / nq; pos.qty = nq
+            } else if (side === 'sell') {
+                if (!user.portfolio[symbol] || user.portfolio[symbol].qty < Number(amount)) return sendJson(res, 400, { error: 'Posisi tidak cukup' })
+                user.balance += total; user.portfolio[symbol].qty -= Number(amount)
+                if (user.portfolio[symbol].qty <= 0) delete user.portfolio[symbol]
+            } else return sendJson(res, 400, { error: 'Side tidak valid' })
+            user.history.push({ type: side, symbol, amount: Number(amount), price: Number(price), total, time: new Date().toISOString() })
+            saveTradingDB()
+            return sendJson(res, 200, { ok: true, balance: user.balance, portfolio: user.portfolio, history: user.history })
+        }
+        if (req.method === 'POST' && parts[0] === 'redeem') {
+            const body = await readBody(req)
+            const { token, code } = body
+            if (!token || !code) return sendJson(res, 400, { error: 'Token dan kode diperlukan' })
+            const user = getTradingUser(token); const rc = REDEEM_CODES[String(code).toUpperCase()]
+            if (!rc) return sendJson(res, 400, { error: 'Kode tidak valid' })
+            if (rc.used >= rc.maxUses) return sendJson(res, 400, { error: 'Kode sudah habis' })
+            if (user.history.some(h => h.type === 'redeem' && h.code === String(code).toUpperCase())) return sendJson(res, 400, { error: 'Kode sudah digunakan' })
+            user.balance += rc.amount; rc.used++
+            user.history.push({ type: 'redeem', code: String(code).toUpperCase(), amount: rc.amount, time: new Date().toISOString() })
+            saveTradingDB()
+            return sendJson(res, 200, { ok: true, balance: user.balance, amount: rc.amount })
+        }
+        return sendJson(res, 404, { error: 'Endpoint tidak ditemukan' })
+    } catch (error) {
+        console.log('[trading] Error:', error.message)
+        return sendJson(res, 500, { error: 'Server error' })
+    }
+}
+loadTradingDB()
+setInterval(() => {
+    const now = new Date()
+    if (now.getHours() === 0 && now.getMinutes() === 0) {
+        const today = now.toISOString().split('T')[0]
+        if (tradingDB.lastDailyReset !== today) {
+            tradingDB.lastDailyReset = today
+            Object.values(tradingDB.users).forEach(u => { u.lastDailyBonus = '' })
+            saveTradingDB(); console.log('[trading] Daily reset done')
+        }
+    }
+}, 60000)
+
+export function startGameServer(port = 3900) {
+    const server = http.createServer(gameHandler)
     server.on('error', (error) => console.log(`[game] port ${port}: ${error.message}`))
-    server.listen(port, '127.0.0.1', () => console.log(`[game] Umi Web Games aktif di 127.0.0.1:${port} (token bot ${GAME_TOKEN ? 'siap' : 'BELUM DIATUR'})`))
+    server.listen(port, '0.0.0.0', () => console.log(`[game] Umi Web Games aktif di 0.0.0.0:${port} (token bot ${GAME_TOKEN ? 'siap' : 'BELUM DIATUR'})`))
+    startGameCleanup()
+    return server
+}
+
+/** Jalankan cleanup room tanpa start server terpisah (dipakai saat game terintegrasi). */
+export function startGameCleanup() {
     setInterval(() => {
         const cutoff = Date.now() - 6 * 3600 * 1000
         for (const [id, room] of rooms) if (room.lastActivity < cutoff && room.status !== 'playing') rooms.delete(id)
     }, 600000)
-    return server
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {

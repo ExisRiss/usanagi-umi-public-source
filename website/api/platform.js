@@ -300,6 +300,87 @@ export default async function handler(req, res) {
       }
       return send(res, 201, { ok: true, message: 'Akun berhasil dibuat. Silakan masuk.' })
     }
+    /* Google OAuth redirect URL */
+    if (path === 'auth/google' && req.method === 'POST') {
+      try {
+        const supabaseUrl = AUTH_URL()
+        const anonKey = AUTH_ANON()
+        const redirectTo = `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}/#dashboard`
+        const oauthUrl = `${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(redirectTo)}`
+        return send(res, 200, { url: oauthUrl })
+      } catch (e) {
+        return send(res, 500, { error: 'Google login belum dikonfigurasi' })
+      }
+    }
+    /* Get/regenerate API token */
+    if (path === 'auth/token' && req.method === 'POST') {
+      const user = await authUser(req)
+      if (!user) return send(res, 401, { error: 'Unauthorized' })
+      const newToken = crypto.randomBytes(32).toString('hex')
+      await dataRequest(`platform_profiles?auth_id=eq.${encodeURIComponent(user.id)}`, {
+        method: 'PATCH',
+        body: { api_token: newToken },
+        headers: { Prefer: 'return=minimal' },
+      }).catch(() => {})
+      return send(res, 200, { ok: true, token: newToken })
+    }
+    /* Verifikasi token API — dipakai game web / integrasi eksternal (tanpa login) */
+    if (path === 'verify-token' && req.method === 'POST') {
+      rateLimit(req, 'platform:verify-token', 120, 60 * 1000)
+      const token = text(req.body?.token, 200)
+      if (token.length < 16) return send(res, 400, { ok: false, error: 'Token tidak valid.' })
+      const rows = await dataRequest(`platform_profiles?api_token=eq.${encodeURIComponent(token)}&select=auth_id,username,email,roles,locked,banned,created_at&limit=1`)
+      const profile = rows?.[0]
+      if (!profile) return send(res, 401, { ok: false, error: 'Token tidak dikenali. Buat token baru di halaman Profil.' })
+      if (profile.banned) return send(res, 403, { ok: false, error: 'Akun ini diblokir dari platform.' })
+      return send(res, 200, {
+        ok: true,
+        user: {
+          id: profile.auth_id,
+          username: profile.username || '',
+          email: profile.email || '',
+          roles: profile.roles || ['user'],
+          owner: Boolean(profile.locked),
+          joined: profile.created_at || null,
+        },
+      })
+    }
+    /* Change password */
+    if (path === 'auth/change-password' && req.method === 'POST') {
+      const user = await authUser(req)
+      if (!user) return send(res, 401, { error: 'Unauthorized' })
+      const oldPw = String(req.body?.old_password || '')
+      const newPw = String(req.body?.new_password || '')
+      if (newPw.length < 8 || newPw.length > 128) return send(res, 400, { error: 'Password baru harus 8–128 karakter.' })
+      try {
+        await authAdmin(`users/${user.id}`, { method: 'PUT', body: { password: newPw } })
+        return send(res, 200, { ok: true, message: 'Password berhasil diubah.' })
+      } catch (e) {
+        return send(res, 500, { error: 'Gagal mengubah password.' })
+      }
+    }
+    /* Public stats for hero section */
+    if (path === 'stats' && req.method === 'GET') {
+      try {
+        const profiles = await dataRequest('platform_profiles?select=auth_id&limit=10000').catch(() => [])
+        // Query bot API public stats endpoint (no auth required)
+        let sessions = 0, online = 0
+        try {
+          const botCfg = await getBotApiConfig()
+          const botRes = await fetch(`${botCfg.origin}/api/stats`, {
+            signal: AbortSignal.timeout(8000)
+          })
+          if (botRes.ok) {
+            const botData = await botRes.json()
+            sessions = Number(botData.sessions) || 0
+            online = Number(botData.online) || 0
+          }
+        } catch {}
+        return send(res, 200, { ok: true, users: profiles.length, online, sessions })
+      } catch (e) {
+        return send(res, 200, { ok: true, users: 0, online: 0, sessions: 0 })
+      }
+    }
     /*
      * Laporan error dari bot (server-to-server).
      *
@@ -397,7 +478,7 @@ export default async function handler(req, res) {
     const user = await authUser(req)
     const profile = await ensureProfile(user)
 
-    if (path === 'me' && req.method === 'GET') return send(res, 200, { user: { id: user.id, email: user.email, username: profile.username || user.username || '', roles: profile.roles, locked: profile.locked } })
+    if (path === 'me' && req.method === 'GET') return send(res, 200, { user: { id: user.id, email: user.email, username: profile.username || user.username || '', roles: profile.roles, locked: profile.locked, created_at: profile.created_at || user.created_at || null, api_token: profile.api_token || null } })
 
     if (path === 'chat' && req.method === 'GET') {
       const limit = Math.max(1, Math.min(200, Number(req.query.limit) || 100))

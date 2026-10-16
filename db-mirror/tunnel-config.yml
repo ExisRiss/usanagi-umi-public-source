@@ -1,4 +1,7 @@
-# Tunnel AKTIF untuk server mirror baru (Pterodactyl beyy, server 83595f4b).
+# ⚠️ ARSIP — jangan dipakai. Tunnel & server di berkas ini (83595f4b / beyy.ikynebula)
+# sudah mati. Konfigurasi aktif: tunnel-games.yml (dijalankan dari container bot).
+
+# Tunnel AKTIF untuk server mirror (panel2, server df6a073f; sebelumnya beyy 83595f4b).
 # Mode lokal-managed: cloudflared dijalankan dengan berkas ini + tunnel-creds.json.
 # Berkas kredensial TIDAK ada di repo (lihat .gitignore).
 #

@@ -1,19 +1,34 @@
 #!/usr/bin/env node
 /**
- * Deploy website ke Vercel produksi lewat REST API (tanpa Vercel CLI):
- * sinkronkan aset, unggah berkas yang berubah (sha1), buat deployment,
- * lalu tunggu sampai READY.
+ * Deploy situs statis + API route ke Vercel produksi lewat REST API
+ * (tanpa Vercel CLI): sinkronkan aset, unggah berkas yang berubah (sha1),
+ * buat deployment, lalu tunggu sampai READY.
  *
- * Pakai: node tools/deploy-website.mjs
+ * Pakai:
+ *   node tools/deploy-website.mjs                              # website jadibot
+ *   node tools/deploy-website.mjs --dir upload-owner --project upload-owner
+ *   node tools/deploy-website.mjs --dir <folder> --project <nama> --no-sync
+ *
+ * --dir boleh relatif terhadap root repo. --no-sync melewati langkah
+ * scripts/sync-public.mjs (hanya website jadibot yang membutuhkannya).
  */
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { spawnSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
 
-const WEB = '/home/user/usanagi-umi-public-source/website'
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const args = process.argv.slice(2)
+const argOf = (name, fallback) => {
+    const i = args.indexOf('--' + name)
+    return i >= 0 && args[i + 1] ? args[i + 1] : fallback
+}
+const WEB = path.isAbsolute(argOf('dir', 'website')) ? argOf('dir', 'website') : path.join(REPO, argOf('dir', 'website'))
 const TEAM = 'team_TwCNMEAL8AoOA0whO30gFU4S'
-const PROJECT = 'alzriss-comunity'
+const PROJECT = argOf('project', 'alzriss-comunity')
+const SYNC = !args.includes('--no-sync')
+if (!fs.existsSync(WEB)) { console.error('folder tidak ada:', WEB); process.exit(1) }
 
 const secretsRaw = fs.readFileSync('/home/user/.secrets/usanagi-credentials.env', 'utf8')
 const tokens = [...secretsRaw.matchAll(/^VERCEL_TOKEN=(.+)$/gm)].map((m) => m[1].trim()).filter(Boolean)
@@ -21,9 +36,12 @@ const TOKEN = tokens[tokens.length - 1] // baris terakhir yang berlaku
 if (!TOKEN) { console.error('VERCEL_TOKEN tidak ditemukan'); process.exit(1) }
 const H = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }
 
-console.log('==> sinkronkan aset publik')
-const sync = spawnSync('/usr/bin/node', ['scripts/sync-public.mjs'], { cwd: WEB, stdio: 'inherit' })
-if (sync.status !== 0) process.exit(1)
+if (SYNC) {
+    console.log('==> sinkronkan aset publik')
+    const sync = spawnSync('/usr/bin/node', ['scripts/sync-public.mjs'], { cwd: WEB, stdio: 'inherit' })
+    if (sync.status !== 0) process.exit(1)
+}
+console.log(`==> proyek ${PROJECT} dari ${path.relative(REPO, WEB) || WEB}`)
 
 const skip = (rel) => /(^|\/)(node_modules|\.git)(\/|$)/.test(rel)
 const files = []
@@ -88,7 +106,7 @@ for (let i = 0; i < 60; i++) {
     const st = await call(`/v13/deployments/${dep.json.id}?teamId=${TEAM}`)
     const state = st.json?.readyState || st.json?.status
     process.stdout.write(` ${state || '?'}`)
-    if (state === 'READY') { console.log('\n✅ Produksi READY: https://alzriss-comunity.vercel.app'); process.exit(0) }
+    if (state === 'READY') { console.log(`\n✅ Produksi READY: https://${PROJECT}.vercel.app (${dep.json.url || ''})`); process.exit(0) }
     if (state === 'ERROR' || state === 'CANCELED') { console.error('\n❌ deployment gagal:', JSON.stringify(st.json?.error || {}).slice(0, 400)); process.exit(1) }
 }
 console.error('\n⏱️ timeout menunggu deployment')

@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trading $AS — Umi Games</title>
+<meta name="description" content="Simulasi trading $AS (Dollar AS) Umi Games. Masuk dengan token API dari halaman Profil Usanagi Umi Jadibot Studio.">
+<meta name="theme-color" content="#070d18">
+<style>
+  :root{
+    color-scheme:dark;
+    --bg:#1d1631; --surface:#261e3d; --surface-2:#302650;
+    --line:#3a2f5a; --line-2:#4a3d6e;
+    --ink:#f3effb; --ink-2:#b1a7cc; --muted:#8a7faa;
+    --cyan:#7dd3fc; --blue:#818cf8; --violet:#a78bfa; --lime:#6ee7b7; --amber:#fbbf24; --red:#fb7185;
+    --gold:#ffd166; --gold-2:#f0a43a;
+    --r-sm:10px; --r-md:14px; --r-lg:20px; --r-xl:26px;
+    --shadow:0 8px 32px rgba(10,6,20,.5);
+    --ring:0 0 0 3px rgba(125,211,252,.25);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;min-height:100vh;color:var(--ink);line-height:1.55;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);
+  }
+  a{color:var(--cyan);text-decoration:none}
+  a:hover{text-decoration:underline}
+  button,input,select{font:inherit;color:inherit}
+  :focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 18px 72px}
+  .hidden{display:none!important}
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  header.top{position:sticky;top:0;z-index:30;background:rgba(29,22,49,.92);border-bottom:1px solid var(--line);backdrop-filter:blur(10px)}
+  .top-in{max-width:1120px;margin:0 auto;padding:10px 18px;display:flex;align-items:center;gap:12px}
+  .brand{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none}
+  .brand:hover{text-decoration:none}
+  .brand-mark{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;font-size:18px;overflow:hidden;
+    background:linear-gradient(135deg,var(--gold),var(--gold-2));box-shadow:0 4px 14px rgba(240,164,58,.35)}
+  .brand b{display:block;font-size:14px;letter-spacing:.10em;line-height:1.15}
+  .brand small{display:block;font-size:9.5px;letter-spacing:.22em;color:var(--muted);font-weight:600}
+  .top-right{margin-left:auto;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;font-size:11.5px;font-weight:650;
+    border:1px solid var(--line);background:var(--surface);color:var(--ink-2);white-space:nowrap}
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  .pill.on .dot{background:var(--lime);box-shadow:0 0 0 3px rgba(110,231,183,.18)}
+  .pill.off .dot{background:var(--red);box-shadow:0 0 0 3px rgba(251,113,133,.18)}
+
+  .card{padding:22px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow)}
+  .card + .card{margin-top:16px}
+  h1{font-size:24px;margin:26px 0 6px;letter-spacing:-.01em}
+  h2{font-size:16px;margin:0 0 14px;letter-spacing:.02em;text-transform:uppercase;color:var(--ink-2)}
+  .tiny{font-size:12.5px;color:var(--muted)}
+  label{display:block;font-size:12.5px;font-weight:650;color:var(--ink-2);margin:0 0 14px}
+  label > span{display:block;margin-bottom:6px}
+  input,select{width:100%;min-height:44px;padding:10px 13px;border-radius:var(--r-sm);
+    border:1px solid var(--line);background:var(--surface-2);color:var(--ink)}
+  input:focus{border-color:var(--cyan);box-shadow:var(--ring);outline:none}
+  input::placeholder{color:var(--muted)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:10px 18px;
+    border-radius:var(--r-sm);border:1px solid var(--line-2);background:var(--surface-2);color:var(--ink);font-weight:650;
+    cursor:pointer;transition:transform .12s ease,filter .12s ease}
+  .btn:hover{transform:translateY(-1px);filter:brightness(1.18)}
+  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none;filter:none}
+  .btn-pri{background:linear-gradient(135deg,var(--gold),var(--gold-2));border-color:transparent;color:#1a1305;box-shadow:0 6px 18px rgba(240,164,58,.35)}
+  .btn-lime{background:linear-gradient(135deg,#34d399,#10b981);border-color:transparent;color:#022c22}
+  .btn-red{background:linear-gradient(135deg,#fb7185,#e11d48);border-color:transparent;color:#2a0410}
+  .btn-ghost{background:transparent}
+  .btn-sm{min-height:36px;padding:7px 12px;font-size:13px;border-radius:10px}
+  .btn-block{width:100%}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .row > .grow{flex:1;min-width:0}
+  .grid2{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+  .stats{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin-bottom:4px}
+  .stat{padding:14px 16px;border-radius:var(--r-md);border:1px solid var(--line);background:var(--surface-2)}
+  .stat span{display:block;font-size:11px;letter-spacing:.14em;color:var(--muted);font-weight:700}
+  .stat b{display:block;font-size:22px;margin-top:4px}
+  table{width:100%;border-collapse:collapse;font-size:13.5px}
+  th,td{padding:9px 8px;text-align:left;border-bottom:1px solid var(--line)}
+  th{font-size:11px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase}
+  td.num,th.num{text-align:right}
+  .up{color:var(--lime)} .down{color:var(--red)}
+  .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;border:1px solid var(--line-2);color:var(--ink-2)}
+  .notice{padding:12px 14px;border-radius:var(--r-md);border:1px solid var(--line-2);background:var(--surface-2);font-size:13px;margin-bottom:14px}
+  .notice.warn{border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.08)}
+  .notice.ok{border-color:rgba(110,231,183,.35);background:rgba(110,231,183,.08)}
+  .notice.err{border-color:rgba(251,113,133,.4);background:rgba(251,113,133,.1)}
+  #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:60;padding:12px 18px;border-radius:999px;
+    background:var(--surface-2);border:1px solid var(--line-2);box-shadow:var(--shadow);font-size:13.5px;max-width:92vw;text-align:center}
+  #toast.error{border-color:rgba(251,113,133,.5);background:#3a1d2c}
+  .hist{max-height:260px;overflow:auto}
+  .muted-line{border-top:1px dashed var(--line);margin:16px 0}
+  footer{padding:26px 0 0;text-align:center}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <a class="brand" href="/">
+      <span class="brand-mark">🎮</span>
+      <span><b>UMI GAMES</b><small>TRADING $AS</small></span>
+    </a>
+    <div class="top-right">
+      <span class="pill" id="whoPill"><span class="dot"></span><span id="whoText">Belum masuk</span></span>
+      <a class="btn btn-sm btn-ghost" href="/">← Lobi</a>
+      <a class="btn btn-sm btn-ghost" href="https://jadibot-alzriss.gwenna.my.id/#profile" target="_blank" rel="noopener">Halaman Profil ↗</a>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- ───── LOGIN ───── -->
+  <section id="loginView">
+    <h1>Masuk Trading $AS</h1>
+    <p class="tiny" style="margin:0 0 18px">Tempel <b>token akun</b> dari halaman Profil di Jadibot Studio. Token itu yang mengikat saldo dan portofolio ke akunmu.</p>
+    <div class="card" style="max-width:560px">
+      <div class="notice" id="loginHint">
+        Belum punya token? Buka <a href="https://jadibot-alzriss.gwenna.my.id/#profile" target="_blank" rel="noopener">Profil → Token Akun</a>, klik <b>REGENERATE</b>, lalu salin di sini.
+      </div>
+      <form id="loginForm" autocomplete="off">
+        <label><span>Token akun UMI</span>
+          <input id="tokenInput" type="password" placeholder="tempel token (32–64 karakter)" spellcheck="false" autocomplete="off">
+        </label>
+        <div class="row">
+          <button class="btn btn-pri grow" id="loginBtn" type="submit">MASUK</button>
+          <button class="btn btn-ghost btn-sm" type="button" id="showTokenBtn">LIHAT</button>
+        </div>
+        <p class="tiny" style="margin:12px 0 0">Token hanya dikirim ke server game ini untuk diverifikasi sekali saat masuk — tidak pernah ditampilkan ke pemain lain.</p>
+      </form>
+    </div>
+    <div class="card" style="max-width:560px">
+      <h2>Aturan main</h2>
+      <ul class="tiny" style="margin:0;padding-left:20px;line-height:1.9">
+        <li>Saldo awal <b>$AS 100</b> + bonus harian <b>$AS 10</b> tiap hari baru.</li>
+        <li>Harga bergerak tiap beberapa detik — beli murah, jual mahal.</li>
+        <li>Kode redeem: <span class="mono">UMI2024</span>, <span class="mono">TRADING</span>, <span class="mono">WELCOME</span>, <span class="mono">BONUS</span>.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ───── DASHBOARD ───── -->
+  <section id="appView" class="hidden">
+    <h1>$AS Trading</h1>
+    <p class="tiny" id="welcomeLine" style="margin:0 0 16px"></p>
+
+    <div id="bonusNotice" class="notice ok hidden"></div>
+
+    <div class="stats">
+      <article class="stat"><span>SALDO $AS</span><b id="balance">0.00</b></article>
+      <article class="stat"><span>NILAI PORTOFOLIO</span><b id="equity">0.00</b></article>
+      <article class="stat"><span>TOTAL ASSET</span><b id="netWorth">0.00</b></article>
+      <article class="stat"><span>P/L</span><b id="pnl">0.00</b></article>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:6px">
+        <h2 style="margin:0">Pasar</h2>
+        <span class="tiny" id="tickInfo">—</span>
+      </div>
+      <div style="overflow:auto">
+        <table>
+          <thead><tr><th>Simbol</th><th class="num">Harga</th><th class="num">Perubahan</th><th class="num">Posisi</th><th class="num">Aksi</th></tr></thead>
+          <tbody id="marketBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Portofolio</h2>
+      <div style="overflow:auto">
+        <table>
+          <thead><tr><th>Simbol</th><th class="num">Jumlah</th><th class="num">Harga rata-rata</th><th class="num">Nilai kini</th><th class="num">P/L</th></tr></thead>
+          <tbody id="portfolioBody"><tr><td colspan="5" class="tiny">Belum ada posisi.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Kode redeem</h2>
+      <form id="redeemForm" class="row" autocomplete="off">
+        <input id="redeemInput" class="grow" placeholder="mis. UMI2024" style="max-width:260px">
+        <button class="btn btn-sm btn-lime" type="submit">TUKAR</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:6px">
+        <h2 style="margin:0">Riwayat</h2>
+        <button class="btn btn-sm btn-ghost" type="button" id="refreshBtn">↻ MUAT ULANG</button>
+      </div>
+      <div class="hist">
+        <table>
+          <thead><tr><th>Waktu</th><th>Jenis</th><th>Detail</th><th class="num">Jumlah</th></tr></thead>
+          <tbody id="historyBody"><tr><td colspan="4" class="tiny">Belum ada transaksi.</td></tr></tbody>
+        </table>
+      </div>
+      <div class="muted-line"></div>
+      <div class="row">
+        <button class="btn btn-sm btn-ghost" type="button" id="logoutBtn">KELUAR (lupakan token)</button>
+      </div>
+    </div>
+  </section>
+
+  <footer class="tiny">
+    Umi Games × Usanagi Umi Jadibot Studio ·
+    <a href="https://jadibot-alzriss.gwenna.my.id" target="_blank" rel="noopener">jadibot-alzriss.gwenna.my.id</a>
+  </footer>
+</div>
+
+<div id="toast" class="hidden"></div>
+
+<script>
+(() => {
+  'use strict'
+  const $ = id => document.getElementById(id)
+  const TOKEN_KEY = 'umi-trading-token'
+  let TOKEN = ''
+
+  /* ── pasar: harga bergerak pelan (deterministik per simbol + detik) ── */
+  const SYMBOLS = [
+    { sym: '$AS',   name: 'Dollar AS',      base: 1.0 },
+    { sym: 'UMI',   name: 'Usanagi Umi',    base: 25.5 },
+    { sym: 'JDB',   name: 'Jadibot Studio', base: 64.0 },
+    { sym: 'PNL',   name: 'Panel Hosting',  base: 42.0 },
+    { sym: 'GAME',  name: 'Umi Games',      base: 12.8 },
+    { sym: 'WA',    name: 'WhatsApp Inc',   base: 120.0 },
+  ]
+  const priceOf = (base, sym, step) => {
+    let h = 0
+    for (let i = 0; i < sym.length; i++) h = (h * 31 + sym.charCodeAt(i)) % 9973
+    const w = Math.sin((step + h) * 0.7) * 0.045 + Math.sin((step + h) * 0.19) * 0.09
+    return Math.max(0.01, base * (1 + w))
+  }
+  let step = Math.floor(Date.now() / 5000)
+  const prices = () => Object.fromEntries(SYMBOLS.map(s => [s.sym, priceOf(s.base, s.sym, step)]))
+  let prevPrices = prices()
+
+  const money = n => Number(n || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  const toast = (msg, error = false) => {
+    const t = $('toast')
+    t.textContent = String(msg || 'Selesai.')
+    t.classList.toggle('error', Boolean(error))
+    t.classList.remove('hidden')
+    clearTimeout(toast.timer)
+    toast.timer = setTimeout(() => t.classList.add('hidden'), 4200)
+  }
+  const api = async (path, options = {}) => {
+    const res = await fetch(path, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    })
+    let data = {}
+    try { data = await res.json() } catch {}
+    if (!res.ok || data.error) throw new Error(data.error || ('HTTP ' + res.status))
+    return data
+  }
+
+  /* ── state ── */
+  let state = { balance: 0, portfolio: {}, history: [], user: null }
+
+  function renderMarket() {
+    const p = prices(), prev = prevPrices
+    $('marketBody').innerHTML = SYMBOLS.map(s => {
+      const now = p[s.sym], was = prev[s.sym] || now
+      const chg = ((now - was) / was) * 100
+      const pos = state.portfolio[s.sym]
+      return `<tr>
+        <td><b>${s.sym}</b><br><span class="tiny">${s.name}</span></td>
+        <td class="num mono">${money(now)}</td>
+        <td class="num mono ${chg >= 0 ? 'up' : 'down'}">${chg >= 0 ? '▲' : '▼'} ${Math.abs(chg).toFixed(2)}%</td>
+        <td class="num mono">${pos ? Number(pos.qty).toFixed(2) : '—'}</td>
+        <td class="num">
+          <button class="btn btn-sm btn-lime" data-buy="${s.sym}">BELI</button>
+          <button class="btn btn-sm btn-red" data-sell="${s.sym}">JUAL</button>
+        </td>
+      </tr>`
+    }).join('')
+    $('tickInfo').textContent = 'Pembaruan #' + step
+  }
+
+  function renderPortfolio() {
+    const p = prices()
+    const rows = Object.entries(state.portfolio || {})
+    if (!rows.length) { $('portfolioBody').innerHTML = '<tr><td colspan="5" class="tiny">Belum ada posisi.</td></tr>'; return }
+    $('portfolioBody').innerHTML = rows.map(([sym, pos]) => {
+      const now = p[sym] || pos.avgPrice
+      const value = now * pos.qty
+      const cost = pos.avgPrice * pos.qty
+      const pl = value - cost
+      return `<tr>
+        <td><b>${sym}</b></td>
+        <td class="num mono">${Number(pos.qty).toFixed(2)}</td>
+        <td class="num mono">${money(pos.avgPrice)}</td>
+        <td class="num mono">${money(value)}</td>
+        <td class="num mono ${pl >= 0 ? 'up' : 'down'}">${pl >= 0 ? '+' : ''}${money(pl)}</td>
+      </tr>`
+    }).join('')
+  }
+
+  function renderStats() {
+    const p = prices()
+    const equity = Object.entries(state.portfolio || {}).reduce((sum, [sym, pos]) => sum + (p[sym] || pos.avgPrice) * pos.qty, 0)
+    const cost = Object.entries(state.portfolio || {}).reduce((sum, [, pos]) => sum + pos.avgPrice * pos.qty, 0)
+    $('balance').textContent = money(state.balance)
+    $('equity').textContent = money(equity)
+    $('netWorth').textContent = money(state.balance + equity)
+    const pl = equity - cost
+    const el = $('pnl')
+    el.textContent = (pl >= 0 ? '+' : '') + money(pl)
+    el.className = pl >= 0 ? 'up' : 'down'
+  }
+
+  function renderHistory() {
+    const h = (state.history || []).slice(-60).reverse()
+    if (!h.length) { $('historyBody').innerHTML = '<tr><td colspan="4" class="tiny">Belum ada transaksi.</td></tr>'; return }
+    const label = { buy: 'BELI', sell: 'JUAL', daily: 'BONUS HARIAN', redeem: 'REDEEM' }
+    $('historyBody').innerHTML = h.map(x => {
+      const time = x.time ? new Date(x.time).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
+      const detail = x.symbol ? `${x.symbol}${x.amount && x.price ? ` · ${x.amount} @ ${money(x.price)}` : ''}` : (x.code || '—')
+      const amount = x.total != null ? money(x.total) : money(x.amount)
+      return `<tr><td class="tiny">${time}</td><td><span class="tag">${label[x.type] || x.type}</span></td><td class="tiny">${detail}</td><td class="num mono">${amount}</td></tr>`
+    }).join('')
+  }
+
+  function renderAll() { renderStats(); renderMarket(); renderPortfolio(); renderHistory() }
+
+  function showApp() {
+    $('loginView').classList.add('hidden')
+    $('appView').classList.remove('hidden')
+    $('whoPill').className = 'pill on'
+    $('whoText').textContent = state.user?.username ? ('Masuk: ' + state.user.username + (state.user.owner ? ' (owner)' : '')) : 'Masuk'
+    renderAll()
+  }
+
+  function showLogin(message) {
+    $('loginView').classList.remove('hidden')
+    $('appView').classList.add('hidden')
+    $('whoPill').className = 'pill off'
+    $('whoText').textContent = 'Belum masuk'
+    if (message) $('loginHint').innerHTML = message
+  }
+
+  /* ── aksi ── */
+  async function login(token) {
+    const btn = $('loginBtn')
+    btn.disabled = true; btn.textContent = 'MEMERIKSA…'
+    try {
+      const d = await api('/api/trading/login', { method: 'POST', body: JSON.stringify({ token }) })
+      TOKEN = token
+      state = { balance: d.balance, portfolio: d.portfolio || {}, history: d.history || [], user: d.user || null }
+      try { localStorage.setItem(TOKEN_KEY, token) } catch {}
+      if (d.dailyBonus) {
+        $('bonusNotice').classList.remove('hidden')
+        $('bonusNotice').innerHTML = '🎁 Bonus harian <b>$AS ' + money(d.dailyBonus) + '</b> masuk ke saldomu.'
+      } else { $('bonusNotice').classList.add('hidden') }
+      $('welcomeLine').textContent = 'Halo ' + (d.user?.username || 'trader') + ' — saldo & portofolio terikat ke akun UMI-mu.'
+      showApp()
+      toast('Berhasil masuk trading.')
+      return true
+    } catch (e) {
+      toast(e.message, true)
+      showLogin('<b>Gagal masuk:</b> ' + String(e.message || '')).valueOf()
+      $('loginHint').className = 'notice err'
+      return false
+    } finally {
+      btn.disabled = false; btn.textContent = 'MASUK'
+    }
+  }
+
+  async function trade(sym, side) {
+    try {
+      const p = prices()
+      const raw = prompt((side === 'buy' ? 'Beli' : 'Jual') + ' ' + sym + ' — harga ' + money(p[sym]) + '\nJumlah unit:', '10')
+      if (raw === null) return
+      const amount = Number(String(raw).replace(',', '.'))
+      if (!Number.isFinite(amount) || amount <= 0) return toast('Jumlah tidak valid.', true)
+      const d = await api('/api/trading/trade', { method: 'POST', body: JSON.stringify({ token: TOKEN, symbol: sym, side, amount, price: p[sym] }) })
+      state.balance = d.balance; state.portfolio = d.portfolio || {}; state.history = d.history || []
+      renderAll()
+      toast((side === 'buy' ? 'Beli' : 'Jual') + ' ' + amount + ' ' + sym + ' berhasil.')
+    } catch (e) { toast(e.message, true) }
+  }
+
+  /* ── binding ── */
+  $('loginForm').addEventListener('submit', e => {
+    e.preventDefault()
+    const token = $('tokenInput').value.trim()
+    if (token.length < 16) return toast('Token terlalu pendek.', true)
+    login(token)
+  })
+  $('showTokenBtn').addEventListener('click', () => {
+    const input = $('tokenInput')
+    const shown = input.type === 'text'
+    input.type = shown ? 'password' : 'text'
+    $('showTokenBtn').textContent = shown ? 'LIHAT' : 'SEMBUNYIKAN'
+  })
+  $('logoutBtn').addEventListener('click', () => {
+    TOKEN = ''
+    try { localStorage.removeItem(TOKEN_KEY) } catch {}
+    $('tokenInput').value = ''
+    $('bonusNotice').classList.add('hidden')
+    showLogin('Token dilupakan dari browser ini.')
+    toast('Sudah keluar.')
+  })
+  $('refreshBtn').addEventListener('click', () => refresh(true))
+  $('redeemForm').addEventListener('submit', async e => {
+    e.preventDefault()
+    const code = $('redeemInput').value.trim()
+    if (!code) return
+    try {
+      const d = await api('/api/trading/redeem', { method: 'POST', body: JSON.stringify({ token: TOKEN, code }) })
+      $('redeemInput').value = ''
+      toast('Kode ' + code.toUpperCase() + ' ditukar +$AS ' + money(d.amount))
+      await refresh()
+    } catch (err) { toast(err.message, true) }
+  })
+  $('marketBody').addEventListener('click', e => {
+    const buy = e.target.closest('[data-buy]'), sell = e.target.closest('[data-sell]')
+    if (buy) trade(buy.dataset.buy, 'buy')
+    else if (sell) trade(sell.dataset.sell, 'sell')
+  })
+
+  async function refresh(showToast = false) {
+    try {
+      const d = await api('/api/trading/me?token=' + encodeURIComponent(TOKEN))
+      state.balance = d.balance; state.portfolio = d.portfolio || {}; state.history = d.history || []
+      renderAll()
+      if (showToast) toast('Data dimuat ulang.')
+    } catch (e) {
+      toast(e.message, true)
+      if (/token/i.test(e.message)) { TOKEN = ''; try { localStorage.removeItem(TOKEN_KEY) } catch {}; showLogin('Sesi token tidak valid lagi. Tempel token baru dari halaman Profil.') }
+    }
+  }
+
+  /* ── loop harga + auto-refresh ── */
+  setInterval(() => {
+    prevPrices = prices()
+    step++
+    if (!$('appView').classList.contains('hidden')) { renderMarket(); renderPortfolio(); renderStats() }
+  }, 5000)
+  setInterval(() => { if (TOKEN) refresh().catch(() => {}) }, 30000)
+
+  /* ── boot ── */
+  const saved = (() => { try { return localStorage.getItem(TOKEN_KEY) || '' } catch { return '' } })()
+  if (saved) { $('tokenInput').value = saved; login(saved) }
+  else { showLogin('Belum punya token? Buka <a href="https://jadibot-alzriss.gwenna.my.id/#profile" target="_blank" rel="noopener">Profil → Token Akun</a>, klik <b>REGENERATE</b>, lalu salin di sini.') }
+})()
+</script>
+</body>
+</html>

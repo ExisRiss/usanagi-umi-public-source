@@ -1,22 +1,28 @@
 import axios from 'axios'
 
+const API_BASE = 'https://apiii-xrina.my.id'
+
 let handler = async (m, { conn, args }) => {
   const text = args.join(' ') || m.quoted?.text
 
   if (!text) {
     return m.reply(
-      `✨ Masukin teks dong!\nContoh: .bratvid halo hilman`
+      `✨ Masukin teks dong!\nContoh: .bratvid halo dunia`
     )
   }
 
   try {
-    const url = `https://brat.siputzx.my.id/gif?text=${encodeURIComponent(text)}`
+    await m.react('⏳').catch(() => {})
+    const url = `${API_BASE}/maker/bratvid?text=${encodeURIComponent(text)}`
 
     const { data } = await axios.get(url, {
-      responseType: 'arraybuffer'
+      responseType: 'arraybuffer',
+      timeout: 60000,
+      headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 13) Chrome/140' }
     })
 
     const buffer = Buffer.from(data)
+    if (!buffer.length) throw new Error('API mengembalikan data kosong.')
 
     await conn.sendSticker(
       m.chat,
@@ -27,9 +33,11 @@ let handler = async (m, { conn, args }) => {
         packpublish: global.stickauth || global.author
       }
     )
+    await m.react('✅').catch(() => {})
   } catch (e) {
-    console.error(e)
-    m.reply('Yahh error')
+    console.error('[BRATVID]', e?.message || e)
+    await m.react('❌').catch(() => {})
+    m.reply(`❌ Gagal membuat bratvid.\n${e?.message || e}`)
   }
 }
 

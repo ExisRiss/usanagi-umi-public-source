@@ -1,5 +1,5 @@
 import fs from 'node:fs'
-/* Audited compatibility boundary for Rimuru/Ourin plugins. No vendor accounts/keys. */
+/* Audited compatibility boundary for Usanagi plugins. No vendor accounts/keys. */
 import { AsyncLocalStorage } from 'node:async_hooks'
 import path from 'node:path'
 const scope = new AsyncLocalStorage(), modules = new Map(), cooldowns = new Map()

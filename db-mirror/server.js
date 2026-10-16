@@ -21,10 +21,27 @@ import { pipeline } from 'node:stream/promises'
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
-import { startGameServer } from './game.js'
+import { startGameServer, gameHandler, startGameCleanup } from './game.js'
 
 const PORT = Number(process.env.SERVER_PORT || process.env.PORT || 2016)
 const ROOT = process.cwd()
+
+/* ── Salin keluaran ke ./server.log ────────────────────────────────────────
+ * Konsol WebSocket Wings kadang menolak koneksi dari luar (403), jadi log juga
+ * ditulis ke berkas yang bisa dibaca lewat File Manager / Client API.
+ */
+try {
+    const LOG_STREAM = fs.createWriteStream(path.join(ROOT, 'server.log'), { flags: 'a' })
+    const originalLog = console.log.bind(console)
+    console.log = (...args) => {
+        const line = args.map((a) => (a instanceof Error ? a.stack || a.message : String(a))).join(' ')
+        originalLog(line)
+        try { LOG_STREAM.write(`${new Date().toISOString()} ${line}\n`) } catch {}
+    }
+    process.on('uncaughtException', (error) => console.log('[fatal] uncaughtException:', error.stack || error.message))
+    process.on('unhandledRejection', (reason) => console.log('[fatal] unhandledRejection:', reason))
+} catch {}
+
 const DATA_DIR = path.join(ROOT, 'data')
 const MAX_BYTES = 300 * 1024 * 1024
 const KEEP_PER_KIND = 48
@@ -95,7 +112,7 @@ const server = http.createServer((req, res) => {
         return sendJson(res, 200, { ok: true, service: 'umi-db-mirror', time: new Date().toISOString(), archives: summary })
     }
 
-    if (parts[0] !== 'mirror') return sendJson(res, 404, { error: 'not found' })
+    if (parts[0] !== 'mirror') return gameHandler(req, res)
     if (!authorized(req)) return sendJson(res, 401, { error: 'unauthorized' })
 
     if (req.method === 'GET' && parts[1] === 'list' && parts.length === 2) {
@@ -164,7 +181,13 @@ const TUNNEL_TOKEN_FILE = path.join(ROOT, 'tunnel-token.txt')
 const CLOUDFLARED_BIN = path.join(ROOT, 'cloudflared')
 
 async function ensureCloudflared() {
-    if (fs.existsSync(CLOUDFLARED_BIN)) return
+    if (fs.existsSync(CLOUDFLARED_BIN)) {
+        // Berkas yang diunggah lewat File Manager / Client API kehilangan bit
+        // eksekusi, sehingga spawn gagal dengan EACCES. Dipulihkan di sini agar
+        // biner hasil unggahan maupun hasil unduhan sama-sama jalan.
+        try { fs.chmodSync(CLOUDFLARED_BIN, 0o755) } catch (error) { console.log('[tunnel] chmod cloudflared gagal:', error.message) }
+        return
+    }
     console.log('[tunnel] mengunduh cloudflared…')
     const response = await fetch('https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64', { redirect: 'follow' })
     if (!response.ok || !response.body) throw new Error(`unduh cloudflared gagal (${response.status})`)
@@ -224,10 +247,5 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`[mirror] Umi DB Mirror aktif di 0.0.0.0:${PORT} (token ${TOKEN ? 'siap' : 'BELUM DIATUR'})`)
 })
 
-// ── Umi Web Games (game.gwenna.my.id) ─────────────────────────────────────
-// Server game multiplayer web (UNO/Catur/Ular Tangga/Monopoli/Werewolf)
-// di port internal 3900; Cloudflare Tunnel meneruskannya ke publik.
-// Matikan dengan UMI_GAMES=off.
-if (String(process.env.UMI_GAMES || 'on') !== 'off') {
-    try { startGameServer(3900) } catch (error) { console.log('[game] gagal start:', error.message) }
-}
+// Game terintegrasi di mirror server — gameHandler menangani semua non-/mirror
+startGameCleanup()

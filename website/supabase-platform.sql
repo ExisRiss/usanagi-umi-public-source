@@ -10,6 +10,7 @@ create table if not exists public.platform_profiles (
   roles text[] not null default array['user']::text[],
   locked boolean not null default false,
   banned boolean not null default false,
+  api_token text default null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   last_seen_at timestamptz not null default now(),
@@ -18,6 +19,13 @@ create table if not exists public.platform_profiles (
     and cardinality(roles) between 1 and 5
   )
 );
+
+-- Migration: add api_token column if table already exists
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='platform_profiles' AND column_name='api_token') THEN
+    ALTER TABLE public.platform_profiles ADD COLUMN api_token text DEFAULT NULL;
+  END IF;
+END $$;
 
 create unique index if not exists platform_profiles_username_unique on public.platform_profiles(lower(username)) where username <> '';
 

@@ -21,8 +21,11 @@ function clampRefreshSeconds(value) {
 function httpsOrigin(value) {
   let url
   try { url = new URL(String(value || '').trim()) } catch { throw new BotConfigError('botApiOrigin pada konfigurasi Gist tidak valid.') }
-  if (url.protocol !== 'https:' || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
-    throw new BotConfigError('botApiOrigin pada konfigurasi Gist harus berupa origin HTTPS yang valid.')
+  // Allow HTTP for internal IP-based backends (server-to-server on Vercel)
+  const isInternalIp = /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(url.hostname)
+  const okProtocol = isInternalIp ? (url.protocol === 'http:' || url.protocol === 'https:') : (url.protocol === 'https:')
+  if (!okProtocol || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    throw new BotConfigError('botApiOrigin harus berupa origin HTTPS (atau HTTP untuk IP internal).')
   }
   return url.origin
 }

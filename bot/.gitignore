@@ -21,3 +21,6 @@ feature-smoke-results.json
 # Token tunnel Cloudflare - jangan pernah di-commit
 .tunnel.env
 .backup-export.env
+config.js
+start-bot.sh
+start-bot.js

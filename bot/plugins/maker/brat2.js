@@ -10,7 +10,7 @@ import { getFfmpegBinPath } from '../../lib/awang-ytdlp.js'
 
 const BRAND = global.brandCredit || 'By AlzRiss - Usanagi Umi AI'
 const CFG = global.rinAPI || {}
-const BASE = String(CFG.baseUrl || 'https://apiii-xrina.vercel.app').replace(/\/+$/, '')
+const BASE = String(CFG.baseUrl || 'https://apiii-xrina.my.id').replace(/\/+$/, '')
 const PRIMARY_PATH = String(CFG.bratvid2Path || '/maker/bratvid2')
 const FALLBACK_URL = String(CFG.bratvid2FallbackUrl || '')
 const TIMEOUT = Number(CFG.timeoutMs) || 180000

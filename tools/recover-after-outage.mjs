@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * Pemulihan setelah host panel beyy (192.241.149.63) mati.
+ * Pemulihan setelah host panel mati (dipakai saat host beyy 192.241.149.63 down;
+ * kini menunjuk panel2 dengan server bot c2b5fd9a + mirror df6a073f).
  *
  * Melakukan tiga hal, berurutan dan idempoten:
  *   1. Menunggu panel bisa dihubungi (atau langsung lapor dengan --once).
- *   2. Menyalakan server mirror `83595f4b` bila keadaannya offline.
+ *   2. Menyalakan server mirror bila keadaannya offline.
  *   3. Mematikan bot utama (pairing) lewat POST /api/owner-console/main-bot.
  *      Kalau API bot belum terjangkau tapi panel sudah hidup, ia menulis
  *      .main-bot.env langsung ke container lalu me-restart bot.
@@ -16,10 +17,10 @@
 import fs from 'node:fs'
 import crypto from 'node:crypto'
 
-const CRED = process.env.PTERO_ENV_FILE || '/home/user/.secrets/beyy-new-panel-credentials.env'
+const CRED = process.env.PTERO_ENV_FILE || '/home/user/.secrets/panel2-credentials.env'
 const RELAY = '/home/user/.secrets/upload/.owner-console-relay.env'
 const BOT_ORIGIN = process.env.BOT_ORIGIN || 'https://api.gwenna.my.id'
-const MIRROR_ORIGIN = process.env.MIRROR_ORIGIN || 'http://192.241.149.63:3348'
+const MIRROR_ORIGIN = process.env.MIRROR_ORIGIN || 'http://159.223.57.221:2844'
 const GAME_ORIGIN = process.env.GAME_ORIGIN || 'https://game.gwenna.my.id'
 
 const env = Object.fromEntries(
@@ -30,7 +31,7 @@ const env = Object.fromEntries(
 const PANEL = env.PTERO_PANEL_URL.replace(/\/+$/, '')
 const KEY = env.PTERO_CLIENT_API_KEY
 const BOT = process.env.PTERO_SERVER_ID || env.PTERO_SERVER_ID
-const MIRROR = process.env.PTERO_SERVER_MIRROR_ID || env.PTERO_SERVER_MIRROR_ID
+const MIRROR = process.env.PTERO_SERVER_MIRROR_ID || env.PTERO_SERVER_MIRROR_ID || env.PTERO_SERVER_MIRROR
 const H = { Authorization: `Bearer ${KEY}`, Accept: 'application/json' }
 
 const log = (...a) => console.log(`[${new Date().toISOString().slice(11, 19)}]`, ...a)

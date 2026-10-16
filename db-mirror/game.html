@@ -4,212 +4,534 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Umi Games — Multiplayer WhatsApp</title>
-<meta name="description" content="Main UNO, Catur, Ular Tangga, Monopoli & Werewolf bareng teman — room dari WhatsApp, verifikasi nomor, isi bot AI kalau pemain kurang.">
+<meta name="description" content="Main UNO, UNO Flip, Catur, Ular Tangga, Monopoli & Werewolf bareng teman — room dibuat dari WhatsApp atau web, kursi bisa diisi bot AI kalau pemain kurang.">
+<meta name="theme-color" content="#070d18">
 <style>
-  :root{color-scheme:dark;--ink:#e8efff;--muted:#9aaaca;--cyan:#62d8ff;--blue:#526dff;--violet:#8057ed;--lime:#52e0b3;--red:#ff7185;
-    --glass:linear-gradient(145deg,rgba(255,255,255,.13),rgba(255,255,255,.05));--line:1px solid rgba(255,255,255,.20);
-    --shadow:0 8px 32px rgba(0,0,0,.30), inset 0 1px 0 rgba(255,255,255,.20)}
+  :root{
+    color-scheme:dark;
+    --bg:#1d1631; --surface:#261e3d; --surface-2:#302650;
+    --line:#3a2f5a; --line-2:#4a3d6e;
+    --ink:#f3effb; --ink-2:#b1a7cc; --muted:#8a7faa;
+    --cyan:#7dd3fc; --blue:#818cf8; --violet:#a78bfa; --lime:#6ee7b7; --amber:#fbbf24; --red:#fb7185;
+    --gold:#ffd166; --gold-2:#f0a43a;
+    --r-sm:10px; --r-md:14px; --r-lg:20px; --r-xl:26px;
+    --shadow:0 8px 32px rgba(10,6,20,.5);
+    --ring:0 0 0 3px rgba(125,211,252,.25);
+  }
   *{box-sizing:border-box}
-  body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);line-height:1.55;min-height:100vh;
-    background:linear-gradient(180deg,rgba(5,10,26,.70),rgba(5,10,26,.82)),#07111f}
-  body::before{content:"";position:fixed;inset:0;z-index:-1;background:radial-gradient(60rem 30rem at 85% -10%,rgba(128,87,237,.35),transparent 60%),radial-gradient(50rem 28rem at -10% 30%,rgba(82,109,255,.35),transparent 60%),radial-gradient(44rem 26rem at 55% 110%,rgba(82,224,179,.14),transparent 60%),#07111f}
-  a{color:var(--cyan)}
-  .wrap{max-width:1080px;margin:0 auto;padding:0 16px 60px}
-  header.top{position:sticky;top:0;z-index:20;backdrop-filter:blur(20px) saturate(160%);-webkit-backdrop-filter:blur(20px) saturate(160%);background:rgba(255,255,255,.08);border-bottom:1px solid rgba(255,255,255,.16)}
-  .top-in{max-width:1080px;margin:0 auto;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
-  .brand{font-weight:800;letter-spacing:.04em;color:#fff;text-decoration:none}
-  .brand small{display:block;font-size:10px;letter-spacing:.24em;color:var(--muted);font-weight:600}
-  .glass{background:var(--glass);border:var(--line);border-radius:24px;box-shadow:var(--shadow);backdrop-filter:blur(18px) saturate(160%);-webkit-backdrop-filter:blur(18px) saturate(160%)}
-  .card{padding:22px}
-  h1{font-size:clamp(30px,5.4vw,50px);line-height:1.05;letter-spacing:-.03em;margin:26px 0 8px}
-  h2{margin:0 0 8px;font-size:22px}
-  .sub{color:#b7c5e0;max-width:65ch}
-  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0}
-  .gcard{padding:18px;cursor:pointer;transition:transform .15s,border-color .15s}
-  .gcard:hover{transform:translateY(-3px);border-color:rgba(98,216,255,.5)}
-  .gcard.sel{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(98,216,255,.35),var(--shadow)}
-  .gcard .em{font-size:34px}
-  .gcard b{display:block;margin:6px 0 2px;font-size:17px}
-  .gcard span{color:var(--muted);font-size:13px}
-  label{display:grid;gap:6px;font-size:13px;font-weight:600;margin:10px 0}
-  input,select{width:100%;min-height:44px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.25);background:rgba(7,17,34,.6);color:#edf3ff;font:inherit}
-  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:46px;padding:11px 18px;border-radius:12px;font-weight:700;border:1px solid rgba(255,255,255,.22);color:#fff;background:rgba(255,255,255,.10);cursor:pointer;font:inherit;transition:transform .15s,filter .15s}
-  .btn:hover{transform:translateY(-1px);filter:brightness(1.12)}
-  .btn-pri{background:linear-gradient(135deg,var(--blue),var(--violet));border-color:transparent}
-  .btn-lime{background:linear-gradient(135deg,#12b981,#0ea5a3);border-color:transparent}
-  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
-  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
-  .cols{display:grid;grid-template-columns:1.5fr 1fr;gap:16px;align-items:start}
-  .seats{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
-  .seat{padding:8px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.08);font-size:13px}
-  .seat.turn{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(98,216,255,.35)}
-  .seat.dead{opacity:.45;text-decoration:line-through}
-  .log{max-height:240px;overflow:auto;font-size:13.5px;color:#c9d6ef}
-  .log div{padding:3px 0;border-bottom:1px dashed rgba(255,255,255,.08)}
-  .chatbox{max-height:200px;overflow:auto;font-size:13.5px;margin-bottom:8px}
-  .chatbox div{padding:2px 0}
-  .notice{padding:12px 14px;border-radius:14px;background:rgba(98,216,255,.12);border:1px solid rgba(98,216,255,.35);font-size:14px}
-  .warn{background:rgba(255,213,79,.12);border-color:rgba(255,213,79,.4)}
-  .err{background:rgba(255,113,133,.14);border-color:rgba(255,113,133,.45);padding:10px 14px;border-radius:12px;font-size:14px;display:none}
-  code.cmd{display:inline-block;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.25);padding:8px 12px;border-radius:10px;font-size:16px;color:#a7f3d8}
-  /* UNO */
-  .unocard{display:inline-flex;flex-direction:column;align-items:center;justify-content:center;width:64px;height:92px;border-radius:12px;margin:4px;border:2px solid rgba(255,255,255,.55);font-weight:800;font-size:15px;cursor:pointer;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.6);transition:transform .12s;vertical-align:top;text-align:center;padding:4px}
-  .unocard:hover{transform:translateY(-6px)}
-  .unocard.no{opacity:.45;cursor:not-allowed}
-  .c-red{background:#e5484d}.c-yellow{background:#f5b90d;color:#231a00;text-shadow:none}.c-green{background:#30a46c}.c-blue{background:#3e63dd}
-  .c-purple{background:#8e4ec6}.c-pink{background:#e93d82}.c-orange{background:#f76b15}.c-teal{background:#12a594}.c-wild{background:linear-gradient(135deg,#e5484d,#f5b90d,#30a46c,#3e63dd)}
-  .topcard{transform:scale(1.15);cursor:default}
-  .colorpick{width:38px;height:38px;border-radius:50%;border:2px solid #fff;cursor:pointer}
-  /* Catur */
-  .board{display:grid;grid-template-columns:repeat(8,1fr);max-width:520px;margin:10px auto;border:2px solid rgba(255,255,255,.4);border-radius:10px;overflow:hidden}
-  .sq{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:clamp(20px,5.4vw,36px);cursor:pointer;user-select:none}
-  .sq.dk{background:rgba(62,99,221,.45)}.sq.lt{background:rgba(232,239,255,.85)}
-  .sq.sel{outline:3px solid var(--lime);outline-offset:-3px}.sq.hint{outline:3px solid rgba(82,224,179,.55);outline-offset:-6px}.sq.last{background-color:rgba(245,185,13,.45)}
-  .pw{color:#fff;text-shadow:0 0 3px #000,0 2px 2px #000}.pb{color:#141821;text-shadow:0 0 3px #fff}
-  /* Ular tangga & monopoli */
-  .snakeboard{display:grid;grid-template-columns:repeat(10,1fr);max-width:520px;margin:10px auto;gap:2px}
-  .cell{aspect-ratio:1;border-radius:6px;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);font-size:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden}
-  .cell.lad{background:rgba(82,224,179,.22)}.cell.snk{background:rgba(255,113,133,.22)}
-  .pawn{font-size:13px;line-height:1}
-  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}
-  .tile{padding:10px;border-radius:12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);font-size:12px;min-height:74px}
-  .tile.here{border-color:var(--cyan);box-shadow:0 0 0 2px rgba(98,216,255,.3)}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0;min-height:100vh;color:var(--ink);line-height:1.55;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg);
+  }
+  a{color:var(--cyan);text-decoration:none}
+  a:hover{text-decoration:underline}
+  button,input,select,textarea{font:inherit;color:inherit}
+  :focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+
+  .wrap{max-width:1120px;margin:0 auto;padding:0 18px 72px}
   .hidden{display:none!important}
-  @media(max-width:860px){.grid{grid-template-columns:1fr 1fr}.cols{grid-template-columns:1fr}.tiles{grid-template-columns:1fr 1fr}}
-  @media(max-width:540px){.grid{grid-template-columns:1fr}.unocard{width:54px;height:78px;font-size:13px}}
+
+  /* ---------- header ---------- */
+  header.top{
+    position:sticky;top:0;z-index:30;
+    background:rgba(29,22,49,.92);
+    border-bottom:1px solid var(--line);
+  }
+  .top-in{max-width:1120px;margin:0 auto;padding:10px 18px;display:flex;align-items:center;gap:12px}
+  .brand{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none}
+  .brand:hover{text-decoration:none}
+  .brand-mark{
+    width:36px;height:36px;border-radius:11px;display:grid;place-items:center;font-size:18px;
+    overflow:hidden;background:linear-gradient(135deg,var(--gold),var(--gold-2));
+    box-shadow:0 4px 14px rgba(240,164,58,.35);
+  }
+  .brand b{display:block;font-size:14px;letter-spacing:.10em;line-height:1.15}
+  .brand small{display:block;font-size:9.5px;letter-spacing:.22em;color:var(--muted);font-weight:600}
+  .top-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .pill{
+    display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;
+    font-size:11.5px;font-weight:650;letter-spacing:.02em;
+    border:1px solid var(--line);background:var(--surface);color:var(--ink-2);white-space:nowrap;
+  }
+  .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+  .pill.on .dot{background:var(--lime);box-shadow:0 0 0 3px rgba(110,231,183,.18)}
+  .pill.off .dot{background:var(--red);box-shadow:0 0 0 3px rgba(251,113,133,.18)}
+  .pill.warn{color:var(--amber);border-color:rgba(251,191,36,.35);background:rgba(251,191,36,.10)}
+
+  /* ---------- kartu & tipografi ---------- */
+  .glass{
+    background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+    box-shadow:var(--shadow);
+  }
+  .card{padding:22px}
+  .card + .card{margin-top:16px}
+  h1{font-size:clamp(29px,5vw,46px);line-height:1.08;letter-spacing:-.025em;margin:0 0 14px;font-weight:800}
+  h2{margin:0 0 6px;font-size:17.5px;letter-spacing:-.01em}
+  h3{margin:18px 0 8px;font-size:14.5px;color:var(--ink-2)}
+  p{margin:0 0 10px}
+  .sub{color:var(--ink-2);max-width:68ch}
+  .tiny{font-size:12.5px;color:var(--muted)}
+  .eyebrow{
+    display:inline-flex;align-items:center;gap:7px;padding:6px 14px;border-radius:999px;margin-bottom:18px;
+    font-size:10.5px;font-weight:750;letter-spacing:.20em;color:var(--gold);
+    border:1px solid rgba(255,209,102,.30);background:rgba(255,209,102,.08);
+  }
+  .hero{padding:44px 0 8px}
+
+  /* ---------- grid game ---------- */
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:26px 0 30px}
+  .gcard{
+    position:relative;padding:18px;cursor:pointer;text-align:left;overflow:hidden;
+    border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--line);
+    transition:transform .16s ease,border-color .16s ease,background .16s ease;
+  }
+  .gcard::after{content:"";position:absolute;inset:0 0 auto;height:3px;background:var(--accent,var(--gold));opacity:.65}
+  .gcard:hover{transform:translateY(-3px);border-color:var(--line-2);background:var(--surface-2)}
+  .gcard.sel{border-color:var(--accent,var(--gold));background:var(--surface-2);box-shadow:0 0 0 1px var(--accent,var(--gold)),0 14px 34px rgba(10,6,20,.45)}
+  .gcard .gimg{width:100%;height:120px;overflow:hidden;border-radius:8px;margin-bottom:8px;background:var(--bg)}
+  .gcard .gimg img{width:100%;height:100%;object-fit:cover;opacity:.85;transition:opacity .2s}
+  .gcard:hover .gimg img{opacity:1}
+  .gcard b{display:block;font-size:16px;letter-spacing:-.01em}
+  .gcard span{display:block;color:var(--muted);font-size:12.5px;margin-top:3px;line-height:1.45}
+  .gcard .meta{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px}
+  .tag{
+    display:inline-flex;align-items:center;gap:4px;padding:3px 8px;border-radius:7px;font-size:11px;font-weight:650;
+    background:var(--surface-2);border:1px solid var(--line);color:var(--ink-2);
+  }
+  .tag.cmd{color:var(--lime);border-color:rgba(110,231,183,.28);background:rgba(110,231,183,.08);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .cols{display:grid;grid-template-columns:1.05fr .95fr;gap:16px;align-items:start}
+
+  /* ---------- form ---------- */
+  label{display:block;font-size:12.5px;font-weight:650;color:var(--ink-2);margin:0 0 14px}
+  label > span{display:block;margin-bottom:6px}
+  input,select,textarea{
+    width:100%;min-height:46px;padding:11px 13px;border-radius:var(--r-md);
+    border:1px solid var(--line);background:var(--surface-2);color:var(--ink);
+    transition:border-color .16s,box-shadow .16s;
+  }
+  textarea{min-height:56px;resize:vertical;line-height:1.5}
+  input::placeholder,textarea::placeholder{color:var(--muted)}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan);box-shadow:var(--ring)}
+  select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 18px) 20px,calc(100% - 13px) 20px;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+
+  /* ---------- tombol ---------- */
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    min-height:46px;padding:11px 18px;border-radius:var(--r-md);font-weight:700;font-size:14.5px;
+    border:1px solid var(--line-2);background:var(--surface-2);color:var(--ink);cursor:pointer;
+    transition:transform .13s ease,filter .13s ease,border-color .13s ease;
+  }
+  .btn:hover{transform:translateY(-1px);filter:brightness(1.18)}
+  .btn:active{transform:translateY(0)}
+  .btn:disabled{opacity:.45;cursor:not-allowed;transform:none;filter:none}
+  .btn-pri{background:linear-gradient(135deg,var(--gold),var(--gold-2));border-color:transparent;color:#1a1305;box-shadow:0 6px 18px rgba(240,164,58,.35)}
+  .btn-lime{background:linear-gradient(135deg,#34d399,#10b981);border-color:transparent;color:#022c22;box-shadow:0 6px 18px rgba(16,185,129,.3)}
+  .btn-ghost{background:transparent}
+  .btn-sm{min-height:36px;padding:7px 12px;font-size:13px;border-radius:10px}
+  .btn-block{width:100%}
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .row > .grow{flex:1;min-width:0}
+
+  /* ---------- panel status ---------- */
+  .notice{
+    padding:13px 15px;border-radius:var(--r-md);font-size:13.5px;line-height:1.5;
+    background:rgba(125,211,252,.08);border:1px solid rgba(125,211,252,.25);color:#bae6fd;
+  }
+  .notice b{color:#fff}
+  .notice.warn{background:rgba(251,191,36,.08);border-color:rgba(251,191,36,.28);color:#fde68a}
+  .notice.good{background:rgba(110,231,183,.08);border-color:rgba(110,231,183,.25);color:#a7f3d0}
+  .notice.bad{background:rgba(251,113,133,.08);border-color:rgba(251,113,133,.25);color:#fecdd3}
+  .notice + .notice{margin-top:10px}
+  .err{
+    margin-top:10px;padding:10px 13px;border-radius:11px;font-size:13px;display:none;
+    background:rgba(251,113,133,.08);border:1px solid rgba(251,113,133,.25);color:#fecdd3;
+  }
+  code.cmd{
+    display:inline-flex;align-items:center;gap:8px;padding:9px 13px;border-radius:11px;
+    background:var(--surface-2);border:1px solid var(--line);
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14.5px;color:#a7f3d0;
+    word-break:break-all;
+  }
+  .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  /* ---------- room ---------- */
+  .room-head{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;margin-bottom:16px}
+  .room-head .em{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;font-size:22px;background:var(--surface-2);border:1px solid var(--line)}
+  .room-head h1{font-size:clamp(22px,3.4vw,30px);margin:0 0 4px}
+  .room-head .idrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+  .idbox{
+    display:inline-flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;border-radius:10px;
+    background:var(--surface-2);border:1px solid var(--line);font-size:13px;
+  }
+  .seats{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0 4px}
+  .seat{
+    display:inline-flex;align-items:center;gap:8px;padding:7px 13px 7px 8px;border-radius:999px;
+    border:1px solid var(--line);background:var(--surface);font-size:13px;max-width:100%;
+  }
+  .seat .av{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800;background:var(--surface-2);border:1px solid var(--line);flex:none}
+  .seat .nm{font-weight:650;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .seat .mt{color:var(--muted);font-size:11.5px}
+  .seat.turn{border-color:var(--gold);box-shadow:0 0 0 2px rgba(255,209,102,.2)}
+  .seat.turn .av{background:linear-gradient(135deg,var(--gold),var(--gold-2));border-color:transparent}
+  .seat.dead{opacity:.5}
+  .seat.dead .nm{text-decoration:line-through}
+  .log{max-height:236px;overflow:auto;font-size:13px;color:var(--ink-2);padding:10px 12px;border-radius:var(--r-md);background:var(--surface-2);border:1px solid var(--line)}
+  .log div{padding:5px 0;border-bottom:1px dashed rgba(255,255,255,.07)}
+  .log div:last-child{border-bottom:0}
+  .chatbox{max-height:190px;overflow:auto;font-size:13px;margin-bottom:10px;padding:10px 12px;border-radius:var(--r-md);background:var(--surface-2);border:1px solid var(--line)}
+  .chatbox div{padding:4px 0;border-bottom:1px dashed rgba(255,255,255,.06)}
+  .chatbox div:last-child{border-bottom:0}
+  .chatbox b{color:var(--cyan)}
+  .scroll-hint{height:1px}
+
+  /* ---------- UNO ---------- */
+  .topcard-wrap{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin:12px 0 6px}
+  .unocard{
+    display:inline-flex;flex-direction:column;align-items:center;justify-content:center;
+    width:66px;height:96px;border-radius:13px;margin:4px;padding:4px;
+    border:2px solid rgba(255,255,255,.55);font-weight:800;font-size:15px;color:#fff;text-align:center;
+    text-shadow:0 1px 3px rgba(0,0,0,.55);cursor:pointer;vertical-align:top;
+    transition:transform .12s ease,box-shadow .12s ease;
+  }
+  .unocard small{font-size:9.5px;font-weight:700;opacity:.9;letter-spacing:.03em}
+  .unocard:hover{transform:translateY(-7px);box-shadow:0 12px 26px rgba(0,0,0,.4)}
+  .unocard.no{opacity:.42;cursor:not-allowed}
+  .unocard.no:hover{transform:none;box-shadow:none}
+  .c-red{background:#e5484d}.c-yellow{background:#f5b90d;color:#241b00;text-shadow:none}
+  .c-green{background:#30a46c}.c-blue{background:#3e63dd}.c-purple{background:#8e4ec6}
+  .c-pink{background:#e93d82}.c-orange{background:#f76b15}.c-teal{background:#12a594}
+  .c-wild{background:linear-gradient(135deg,#e5484d,#f5b90d,#30a46c,#3e63dd)}
+  .topcard{transform:scale(1.12);transform-origin:left center;cursor:default;margin-left:6px}
+  .topcard:hover{transform:scale(1.12);box-shadow:none}
+  .colorpick{width:38px;height:38px;border-radius:50%;border:3px solid rgba(255,255,255,.35);cursor:pointer;padding:0;transition:transform .12s}
+  .colorpick:hover{transform:scale(1.1)}
+  .colorpick.on{border-color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.28)}
+  .handwrap{display:flex;flex-wrap:wrap;margin:6px -4px}
+
+  /* ---------- catur ---------- */
+  .board{display:grid;grid-template-columns:repeat(8,1fr);max-width:520px;margin:12px auto;border:2px solid var(--line-2);border-radius:12px;overflow:hidden}
+  .sq{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:clamp(20px,5.2vw,35px);cursor:pointer;user-select:none}
+  .sq.dk{background:rgba(129,140,248,.32)}.sq.lt{background:rgba(243,239,251,.86)}
+  .sq.sel{outline:3px solid var(--lime);outline-offset:-3px}
+  .sq.hint{outline:3px solid rgba(110,231,183,.6);outline-offset:-6px}
+  .sq.last{background-color:rgba(251,191,36,.32)}
+  .pw{color:#fff;text-shadow:0 0 3px #000,0 2px 2px #000}
+  .pb{color:#141821;text-shadow:0 0 3px #fff}
+
+  /* ---------- ular tangga & monopoli ---------- */
+  .snakeboard{display:grid;grid-template-columns:repeat(10,1fr);max-width:520px;margin:12px auto;gap:3px}
+  .cell{
+    aspect-ratio:1;border-radius:7px;background:var(--surface-2);border:1px solid var(--line);
+    font-size:9px;display:flex;flex-direction:column;align-items:center;justify-content:center;overflow:hidden;line-height:1.25;
+  }
+  .cell.lad{background:rgba(110,231,183,.15);border-color:rgba(110,231,183,.30)}
+  .cell.snk{background:rgba(251,113,133,.12);border-color:rgba(251,113,133,.25)}
+  .pawn{font-size:12px;line-height:1}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+  .tile{padding:10px;border-radius:12px;background:var(--surface-2);border:1px solid var(--line);font-size:11.5px;min-height:76px;line-height:1.45}
+  .tile.here{border-color:var(--gold);box-shadow:0 0 0 2px rgba(255,209,102,.20)}
+  .tile b{font-size:12.5px}
+  .tile i{color:var(--muted)}
+
+  /* ---------- toast ---------- */
+  .toasts{position:fixed;right:16px;bottom:16px;z-index:60;display:flex;flex-direction:column;gap:8px;max-width:min(360px,calc(100vw - 32px))}
+  .toast{
+    padding:11px 14px;border-radius:12px;font-size:13.5px;line-height:1.45;
+    background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);
+    animation:tin .18s ease;
+  }
+  .toast.bad{border-color:rgba(251,113,133,.5);color:#fecdd3}
+  .toast.good{border-color:rgba(110,231,183,.5);color:#a7f3d0}
+  @keyframes tin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+  .skel{height:14px;border-radius:7px;background:linear-gradient(90deg,var(--surface-2),var(--line),var(--surface-2));background-size:200% 100%;animation:sh 1.3s infinite}
+  @keyframes sh{from{background-position:200% 0}to{background-position:-200% 0}}
+
+  /* ---------- responsive ---------- */
+  @media(max-width:720px){
+    .cols{grid-template-columns:1fr}
+    .grid{grid-template-columns:repeat(2,1fr)}
+    .hero{padding-top:26px}
+  }
+  @media(max-width:480px){
+    .grid{grid-template-columns:1fr}
+    .unocard{width:56px;height:82px;font-size:13px}
+    .top-in{padding:9px 13px}
+    .brand small{display:none}
+    .toasts{right:10px;left:10px;bottom:10px;max-width:none}
+  }
 </style>
 </head>
 <body>
 <header class="top"><div class="top-in">
-  <a class="brand" href="/">🎮 UMI GAMES<small>MULTIPLAYER · WHATSAPP</small></a>
-  <a class="btn" href="https://jadibot-alzriss.gwenna.my.id" target="_blank" rel="noopener">Jadibot Studio ↗</a>
+  <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo-umi-games.png" alt="UMI" style="width:36px;height:36px;border-radius:8px"></span><span><b>UMI GAMES</b><small>MULTIPLAYER · WHATSAPP</small></span></a>
+  <div class="top-right">
+    <span class="pill hidden" id="connPill"><span class="dot"></span><span id="connText">menyambung…</span></span>
+    <a class="btn btn-sm btn-ghost" href="https://jadibot-alzriss.gwenna.my.id" target="_blank" rel="noopener">Jadibot Studio ↗</a>
+  </div>
 </div></header>
 
 <main class="wrap">
   <!-- ================= LOBI ================= -->
   <section id="lobby">
-    <h1>Main bareng teman,<br>mejanya di website — verifikasinya di WhatsApp.</h1>
-    <p class="sub">Pilih game, buat room, lalu bagikan tautannya. Setiap pemain wajib verifikasi nomor WhatsApp ke bot Umi sebelum duduk. Pemain kurang? Isi bot AI saja — bisa 1vs1, bertiga, berempat, sampai 10 orang (UNO).</p>
+    <div class="hero">
+      <span class="eyebrow">6 MEJA · BOT AI · VERIFIKASI WA</span>
+      <h1>Main bareng teman.<br>Mejanya di web, verifikasinya di WhatsApp.</h1>
+      <p class="sub">Buat room, bagikan tautannya, lalu duduk di meja. Pemain kurang? Isi kursi kosong dengan bot AI — bisa 1 lawan 1, bertiga, berempat, sampai 10 orang di UNO.</p>
+    </div>
+
     <div class="grid" id="gameGrid"></div>
+
     <div class="cols">
       <div class="glass card">
-        <h2>➕ Buat Room Baru</h2>
-        <label>Nama kamu <input id="crName" maxlength="24" placeholder="mis. Alzriss"></label>
-        <label>Nomor WhatsApp (untuk verifikasi) <input id="crNumber" inputmode="numeric" placeholder="628xxxxxxxxxx"></label>
-        <div class="err" id="crErr"></div>
-        <button class="btn btn-pri" id="crBtn">Buat Room &amp; Minta Verifikasi</button>
-        <p class="sub" style="font-size:13px">Setelah room dibuat, kamu diarahkan ke halaman meja dan diminta kirim pesan verifikasi ke bot. Atau buat room langsung dari WhatsApp: ketik <b>.uno</b>, <b>.monopoli</b>, <b>.caturweb</b> di bot Umi.</p>
+        <h2>➕ Buat room baru</h2>
+        <p class="tiny" style="margin-bottom:16px">Kamu jadi host dan satu-satunya yang boleh memulai game.</p>
+        <form id="crForm">
+          <label><span>Nama kamu</span><input id="crName" maxlength="24" placeholder="mis. Alzriss" autocomplete="nickname" required></label>
+          <label><span>Nomor WhatsApp <span style="color:var(--muted);font-weight:500">(opsional kalau open join)</span></span><input id="crNumber" inputmode="numeric" placeholder="628xxxxxxxxxx" autocomplete="tel"></label>
+          <label><span>Nomor verifikasi (jadibot) <span style="color:var(--muted);font-weight:500">(opsional)</span></span><input id="crVerify" inputmode="numeric" placeholder="628xxxxxxxxxx — nomor bot yang akan memverifikasi" autocomplete="tel"></label>
+          <div class="err" id="crErr"></div>
+          <button class="btn btn-pri btn-block" id="crBtn" type="submit">Buat room</button>
+        </form>
+        <p class="tiny" style="margin:14px 0 0">Bisa juga dari WhatsApp: kirim <b class="mono">/uno</b>, <b class="mono">/monopoli</b>, atau <b class="mono">/caturweb</b> ke bot Umi.</p>
       </div>
+
       <div class="glass card">
-        <h2>🔑 Masuk Meja</h2>
-        <label>ID / tautan room <input id="jnRoom" placeholder="tempel tautan atau ID room"></label>
-        <label>Kode masuk 6 digit (dari balasan bot) <input id="jnCode" inputmode="numeric" maxlength="6" placeholder="123456"></label>
-        <div class="err" id="jnErr"></div>
-        <button class="btn btn-lime" id="jnBtn">Masuk Meja</button>
-        <p class="sub" style="font-size:13px">Belum punya kode? Buka tautan room yang dibagikan temanmu, lalu ikuti instruksi verifikasi WhatsApp di sana.</p>
+        <h2>🔑 Masuk meja</h2>
+        <p class="tiny" style="margin-bottom:16px">Tempel tautan room dari temanmu, atau masukkan kode masuk 6 digit dari bot.</p>
+        <form id="jnForm">
+          <label><span>ID atau tautan room</span><input id="jnRoom" placeholder="https://game.gwenna.my.id/uno/AbCdEf1234"></label>
+          <label><span>Kode masuk 6 digit <span style="color:var(--muted);font-weight:500">(opsional)</span></span><input id="jnCode" inputmode="numeric" maxlength="6" placeholder="123456" autocomplete="one-time-code"></label>
+          <div class="err" id="jnErr"></div>
+          <button class="btn btn-lime btn-block" id="jnBtn" type="submit">Masuk meja</button>
+        </form>
+        <p class="tiny" style="margin:14px 0 0">Tanpa kode pun tetap bisa: buka tautannya, lalu ikuti petunjuk di halaman room.</p>
       </div>
     </div>
+
+    <div id="lobbyNotice" style="margin-top:16px"></div>
   </section>
 
   <!-- ================= ROOM ================= -->
   <section id="roomView" class="hidden">
-    <h1 id="rmTitle">Room</h1>
-    <p class="sub" id="rmSub"></p>
+    <div class="room-head">
+      <div class="em" id="rmEmoji">🎮</div>
+      <div style="flex:1;min-width:220px">
+        <h1 id="rmTitle">Room</h1>
+        <p class="sub" id="rmSub" style="margin:0"></p>
+        <div class="idrow">
+          <span class="idbox"><span class="tiny">Room</span> <b class="mono" id="rmId">—</b></span>
+          <button class="btn btn-sm" id="copyBtn" type="button">📋 Salin tautan</button>
+          <a class="btn btn-sm btn-ghost" href="/">← Lobi</a>
+        </div>
+      </div>
+    </div>
+
+    <div id="roomNotice"></div>
     <div class="glass card" id="verifyBox"></div>
+
     <div class="cols" style="margin-top:16px">
-      <div class="glass card" id="gameArea"></div>
+      <div class="glass card" id="gameArea">
+        <div class="skel" style="width:40%;margin-bottom:12px"></div>
+        <div class="skel" style="width:90%;margin-bottom:8px"></div>
+        <div class="skel" style="width:70%"></div>
+      </div>
       <div>
         <div class="glass card">
           <h2>🪑 Meja</h2>
           <div class="seats" id="seatList"></div>
           <div id="hostControls"></div>
-          <h2 style="margin-top:18px">📜 Kejadian</h2>
+          <h3 style="margin-top:20px">📜 Kejadian</h3>
           <div class="log" id="logBox"></div>
         </div>
-        <div class="glass card" style="margin-top:16px">
+        <div class="glass card">
           <h2>💬 Chat</h2>
           <div class="chatbox" id="chatBox"></div>
-          <form id="chatForm" class="row"><input id="chatInput" maxlength="300" placeholder="Tulis pesan…" style="flex:1"><button class="btn" type="submit">Kirim</button></form>
+          <form id="chatForm" class="row"><input id="chatInput" maxlength="300" placeholder="Tulis pesan…" class="grow"><button class="btn btn-sm" type="submit">Kirim</button></form>
         </div>
       </div>
     </div>
   </section>
 </main>
 
+<div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+
 <script>
 const BOT_WA = '6282343823200'
+const PREFIX = '/'
+/* `cmd` harus sama persis dengan yang diterima plugin bot. Catur, ular tangga,
+ * dan werewolf memakai akhiran `web` karena nama polosnya sudah dipakai game
+ * WhatsApp yang lama — kalau salah, bot tidak akan menjawab sama sekali. */
 const GAME_INFO = {
-  uno:      { label:'UNO', emoji:'🃏', desc:'2–10 pemain · kartu +2, skip, wild', min:2, max:10, cmd:'.uno' },
-  unoflip:  { label:'UNO Flip', emoji:'🔄', desc:'2–10 pemain · kartu bisa dibalik gelap/terang', min:2, max:10, cmd:'.unoflip' },
-  chess:    { label:'Catur', emoji:'♟️', desc:'2 pemain · klasik, ada skakmat & rokade', min:2, max:2, cmd:'.caturweb' },
-  snakes:   { label:'Ular Tangga', emoji:'🐍', desc:'2–6 pemain · balapan ke kotak 100', min:2, max:6, cmd:'.utweb' },
-  monopoly: { label:'Monopoli', emoji:'🏠', desc:'2–4 pemain · versi ringkas 16 petak', min:2, max:4, cmd:'.monopoli' },
-  werewolf: { label:'Werewolf', emoji:'🐺', desc:'5–12 pemain · peran rahasia, voting siang hari', min:5, max:12, cmd:'.wwweb' },
+  uno:      { label:'UNO', emoji:'🃏', desc:'Kartu +2, skip, reverse, wild', min:2, max:10, cmd:'uno', accent:'#e5484d', img:'/assets/kartu-uno.png' },
+  unoflip:  { label:'UNO Flip', emoji:'🔄', desc:'Dua sisi kartu, gelap & terang', min:2, max:10, cmd:'unoflip', accent:'#8e4ec6', img:'/assets/kartu-uno.png' },
+  chess:    { label:'Catur', emoji:'♟️', desc:'Klasik, ada skakmat & rokade', min:2, max:2, cmd:'caturweb', accent:'#c4cfe8', img:'/assets/papan-catur.png' },
+  snakes:   { label:'Ular Tangga', emoji:'🐍', desc:'Balapan ke kotak 100', min:2, max:6, cmd:'utweb', accent:'#3ddc9a', img:'/assets/papan-ular-tangga.png' },
+  monopoly: { label:'Monopoli', emoji:'🏠', desc:'Versi ringkas 16 petak', min:2, max:4, cmd:'monopoli', accent:'#5b7cfa', img:'/assets/papan-monopoli.png' },
+  werewolf: { label:'Werewolf', emoji:'🐺', desc:'Peran rahasia, voting siang hari', min:5, max:12, cmd:'wwweb', accent:'#9b6bff', img:'/assets/werewolf.png' },
 }
 const parts = location.pathname.split('/').filter(Boolean)
-const isRoom = parts.length === 2 && GAME_INFO[parts[0]]
+const isRoom = parts.length === 2 && !!GAME_INFO[parts[0]]
 let roomId = isRoom ? parts[1] : null
 let gameKey = isRoom ? parts[0] : 'uno'
 let token = roomId ? (localStorage.getItem('umi-game-' + roomId) || '') : ''
 let myState = null
 let selColor = 'red'
 let chessSel = -1
+let panelMode = ''
+let es = null
 
 const $ = (id) => document.getElementById(id)
+const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+const COLOR_NAME = { red:'Merah', yellow:'Kuning', green:'Hijau', blue:'Biru', purple:'Ungu', pink:'Pink', orange:'Oranye', teal:'Toska', wild:'Wild' }
+const PIONS = ['🔴', '🔵', '🟢', '🟣', '🟠', '🟡', '🟤', '⚪', '⚫', '🟩', '🟨', '🟦']
+
+function toast(msg, kind) {
+  const box = $('toasts')
+  const el = document.createElement('div')
+  el.className = 'toast' + (kind ? ' ' + kind : '')
+  el.textContent = msg
+  box.appendChild(el)
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .25s'; setTimeout(() => el.remove(), 260) }, 3600)
+}
+function showErr(id, msg) { const el = $(id); if (!el) return; el.textContent = msg; el.style.display = msg ? 'block' : 'none' }
+
 async function api(path, body) {
   const res = await fetch(path, body ? { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) } : {})
   const json = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status))
   return json
 }
-function showErr(id, msg) { const el = $(id); el.textContent = msg; el.style.display = msg ? 'block' : 'none' }
+function waCommand(state) {
+  const cmd = (state && state.waCommand) || GAME_INFO[gameKey].cmd
+  return PREFIX + cmd + ' ' + roomId
+}
+function setConn(state) {
+  const pill = $('connPill')
+  pill.classList.remove('hidden', 'on', 'off')
+  if (state === 'on') { pill.classList.add('on'); $('connText').textContent = 'terhubung' }
+  else if (state === 'off') { pill.classList.add('off'); $('connText').textContent = 'terputus — menyambung ulang' }
+  else $('connText').textContent = 'menyambung…'
+}
+/* Gulung otomatis hanya kalau pembaca memang sedang di bawah, supaya tidak
+ * merampas guliran saat orang sedang membaca riwayat. */
+function stickBottom(el) {
+  const near = el.scrollHeight - el.scrollTop - el.clientHeight < 60
+  if (near) el.scrollTop = el.scrollHeight
+}
 
-/* ---------- LOBI ---------- */
+/* ============================== LOBI ============================== */
 if (!isRoom) {
   const grid = $('gameGrid')
   for (const [key, g] of Object.entries(GAME_INFO)) {
-    const d = document.createElement('div')
+    const d = document.createElement('button')
+    d.type = 'button'
     d.className = 'glass gcard' + (key === gameKey ? ' sel' : '')
-    d.innerHTML = '<div class="em">' + g.emoji + '</div><b>' + g.label + '</b><span>' + g.desc + '<br>Dari WA: <b>' + g.cmd + '</b></span>'
-    d.onclick = () => { gameKey = key; document.querySelectorAll('.gcard').forEach(x => x.classList.remove('sel')); d.classList.add('sel') }
+    d.style.setProperty('--accent', g.accent)
+    d.setAttribute('aria-pressed', key === gameKey ? 'true' : 'false')
+    d.innerHTML = '<div class="gimg"><img src="' + g.img + '" alt="' + esc(g.label) + '" loading="lazy"></div><div class="em">' + g.emoji + '</div><b>' + esc(g.label) + '</b><span>' + esc(g.desc) + '</span>'
+      + '<div class="meta"><span class="tag">👥 ' + g.min + (g.min === g.max ? '' : '–' + g.max) + '</span><span class="tag cmd">' + PREFIX + esc(g.cmd) + '</span></div>'
+    d.onclick = () => {
+      gameKey = key
+      document.querySelectorAll('.gcard').forEach(x => { x.classList.remove('sel'); x.setAttribute('aria-pressed', 'false') })
+      d.classList.add('sel'); d.setAttribute('aria-pressed', 'true')
+    }
     grid.appendChild(d)
   }
-  $('crBtn').onclick = async () => {
+
+  $('crForm').onsubmit = async (e) => {
+    e.preventDefault()
     showErr('crErr', '')
+    const btn = $('crBtn')
+    btn.disabled = true
     try {
-      const out = await api('/api/rooms', { game: gameKey, name: $('crName').value.trim(), number: $('crNumber').value.trim() })
+      const out = await api('/api/rooms', { game: gameKey, name: $('crName').value.trim(), number: $('crNumber').value.trim(), verifyNumber: $('crVerify').value.trim() })
       localStorage.setItem('umi-game-' + out.roomId, out.token)
       location.href = out.url
-    } catch (e) { showErr('crErr', e.message) }
+    } catch (err) { showErr('crErr', err.message); btn.disabled = false }
   }
-  $('jnBtn').onclick = async () => {
+
+  $('jnForm').onsubmit = async (e) => {
+    e.preventDefault()
     showErr('jnErr', '')
+    const btn = $('jnBtn')
+    btn.disabled = true
     try {
       const raw = $('jnRoom').value.trim()
-      const m = raw.match(/([A-Za-z0-9]{10})(?:\/?$|\/?#)/) || raw.match(/rooms?\/([A-Za-z0-9]{10})/) || raw.match(/\/([A-Za-z0-9]{10})/)
+      const m = raw.match(/([A-Za-z0-9]{10})(?:[/?#].*)?$/) || raw.match(/\/([A-Za-z0-9]{10})/)
       const id = m ? m[1] : raw
+      if (!/^[A-Za-z0-9]{10}$/.test(id)) throw new Error('ID room harus 10 huruf/angka. Tempel tautan lengkapnya saja.')
       const gm = (raw.match(/\/(uno|unoflip|chess|snakes|monopoly|werewolf)\//) || [])[1]
-      const out = await api('/api/rooms/' + id + '/enter', { entryCode: $('jnCode').value.trim() })
-      localStorage.setItem('umi-game-' + id, out.token)
+      const code = $('jnCode').value.trim()
+      if (code) {
+        const out = await api('/api/rooms/' + id + '/enter', { entryCode: code })
+        localStorage.setItem('umi-game-' + id, out.token)
+      }
       location.href = '/' + (gm || 'uno') + '/' + id
-    } catch (e) { showErr('jnErr', e.message) }
+    } catch (err) { showErr('jnErr', err.message); btn.disabled = false }
   }
+
+  api('/health').then(h => {
+    if (h.openJoinDefault) {
+      $('lobbyNotice').innerHTML = '<div class="notice warn"><b>Mode masuk bebas sedang aktif.</b> Kursi bisa langsung diduduki tanpa verifikasi WhatsApp — biasanya karena bot utama sedang offline. Kalau bot sudah online lagi, verifikasi berjalan normal.</div>'
+    }
+  }).catch(() => {})
 }
 
-/* ---------- ROOM ---------- */
+/* ============================== ROOM ============================== */
 if (isRoom) {
   $('lobby').classList.add('hidden')
   $('roomView').classList.remove('hidden')
-  $('rmTitle').textContent = GAME_INFO[gameKey].emoji + ' ' + GAME_INFO[gameKey].label + ' — Room ' + roomId
-  $('rmSub').innerHTML = 'Bagikan tautan ini ke temanmu: <b>' + location.href + '</b>'
+  const info = GAME_INFO[gameKey]
+  $('rmEmoji').textContent = info.emoji
+  $('rmTitle').textContent = info.label
+  $('rmSub').textContent = info.desc + ' · ' + info.min + (info.min === info.max ? ' pemain' : '–' + info.max + ' pemain')
+  $('rmId').textContent = roomId
 
-  const es = new EventSource('/api/rooms/' + roomId + '/events?token=' + encodeURIComponent(token))
-  es.onmessage = (ev) => { try { myState = JSON.parse(ev.data); render() } catch {} }
-  es.onerror = async () => { try { myState = await api('/api/rooms/' + roomId + '/state?token=' + encodeURIComponent(token)); render() } catch {} }
+  $('copyBtn').onclick = async () => {
+    const link = location.origin + '/' + gameKey + '/' + roomId
+    try {
+      await navigator.clipboard.writeText(link)
+      toast('Tautan room disalin.', 'good')
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = link; document.body.appendChild(ta); ta.select()
+      try { document.execCommand('copy'); toast('Tautan room disalin.', 'good') }
+      catch { prompt('Salin tautan ini:', link) }
+      ta.remove()
+    }
+  }
 
-  async function act(action) {
-    try { await api('/api/rooms/' + roomId + '/action', { token, action }) }
-    catch (e) { alert(e.message) }
+  function connect() {
+    if (es) { try { es.close() } catch {} }
+    es = new EventSource('/api/rooms/' + roomId + '/events?token=' + encodeURIComponent(token))
+    es.onopen = () => setConn('on')
+    es.onmessage = (ev) => {
+      try { myState = JSON.parse(ev.data); render() } catch {}
+      if (myState === null) fatalRoom()
+    }
+    es.onerror = async () => {
+      setConn('off')
+      try {
+        const s = await api('/api/rooms/' + roomId + '/state?token=' + encodeURIComponent(token))
+        if (s && s.error) return fatalRoom(s.error)
+        myState = s; render()
+      } catch (e) {
+        if (/tidak ditemukan|not found/i.test(e.message)) fatalRoom(e.message)
+      }
+    }
+  }
+  function fatalRoom(msg) {
+    setConn('off')
+    $('verifyBox').innerHTML = '<h2>😕 Room tidak ada</h2><p class="sub">' + esc(msg || 'Room ini sudah ditutup atau tautannya salah. Meja yang tidak dipakai lebih dari 6 jam dibersihkan otomatis.') + '</p><a class="btn btn-pri" href="/">Buat room baru</a>'
+    $('gameArea').innerHTML = ''
+  }
+
+  async function act(action, quiet) {
+    try { await api('/api/rooms/' + roomId + '/action', { token, action }); return true }
+    catch (e) { if (!quiet) toast(e.message, 'bad'); return false }
   }
   window.act = act
 
@@ -217,142 +539,217 @@ if (isRoom) {
     e.preventDefault()
     const text = $('chatInput').value.trim()
     if (!text) return
-    $('chatInput').value = ''
-    await act({ type:'chat', text })
+    const okSend = await act({ type:'chat', text }, true)
+    if (okSend) $('chatInput').value = ''
+    else toast('Pesan belum terkirim — kamu perlu duduk di meja dulu.', 'bad')
   }
 
-  function verifyPanel(me) {
+  function noticeFor(s) {
+    const box = $('roomNotice')
+    const out = []
+    if (s.openJoin) {
+      out.push('<div class="notice warn"><b>Mode masuk bebas aktif.</b> Pemain boleh duduk tanpa verifikasi WhatsApp — biasanya karena bot utama sedang offline. Siapa pun yang punya tautan ini bisa ikut main.</div>')
+    }
+    box.innerHTML = out.join('')
+  }
+
+  /* Panel verifikasi sengaja hanya dibangun ulang saat modenya berubah, supaya
+   * kode yang sedang diketik tidak hilang setiap ada siaran status baru. */
+  function verifyPanel(s, me) {
     const box = $('verifyBox')
-    const slug = { uno:'uno', unoflip:'unoflip', chess:'catur', snakes:'ulartangga', monopoly:'monopoli', werewolf:'werewolf' }[gameKey]
-    const cmd = '/' + slug + ' ' + roomId
-    const waLink = 'https://wa.me/' + BOT_WA + '?text=' + encodeURIComponent(cmd)
-    if (me && me.status === 'verified') {
-      box.innerHTML = '<h2>✅ Kamu sudah duduk</h2><p class="sub">Sebagai <b>' + esc(me.name) + '</b>. Tunggu pemain lain terverifikasi, lalu host menekan MULAI GAME.</p>'
-      return
-    }
-    if (me && me.status === 'pending') {
-      box.innerHTML = '<h2>⏳ Kursimu menunggu verifikasi</h2><p>Kirim pesan ini ke bot Umi di WhatsApp:</p><p><code class="cmd">' + cmd + '</code></p>'
-        + '<p><a class="btn btn-lime" target="_blank" rel="noopener" href="' + waLink + '">Buka WhatsApp &amp; Kirim Otomatis ↗</a></p>'
-        + '<p class="sub">Setelah bot membalas, halaman ini otomatis aktif (tidak perlu refresh).</p>'
-      return
-    }
-    box.innerHTML = '<h2>🔐 Verifikasi WhatsApp dulu untuk duduk</h2>'
-      + '<p>1) Kirim pesan ini ke bot Umi:</p><p><code class="cmd">' + cmd + '</code></p>'
-      + '<p><a class="btn btn-lime" target="_blank" rel="noopener" href="' + waLink + '">Buka WhatsApp &amp; Kirim Otomatis ↗</a></p>'
-      + '<p>2) Bot membalas <b>kode masuk 6 digit</b>. Isi di sini:</p>'
-      + '<div class="row"><input id="codeIn" inputmode="numeric" maxlength="6" placeholder="kode masuk" style="max-width:180px"><button class="btn btn-pri" id="codeBtn">Duduk di Meja</button></div>'
-      + '<div class="err" id="codeErr"></div>'
-      + '<p class="sub">Atau isi nomor WA-mu untuk minta kursi (lalu tetap kirim pesan verifikasi di atas):</p>'
-      + '<div class="row"><input id="clName" placeholder="nama" maxlength="24" style="max-width:170px"><input id="clNum" placeholder="628xxxxxxxxxx" inputmode="numeric" style="max-width:190px"><button class="btn" id="claimBtn">Minta Kursi</button></div><div class="err" id="claimErr"></div>'
-    $('codeBtn').onclick = async () => {
-      showErr('codeErr', '')
-      try {
-        const out = await api('/api/rooms/' + roomId + '/enter', { entryCode: $('codeIn').value.trim() })
-        token = out.token
-        localStorage.setItem('umi-game-' + roomId, token)
-        location.reload()
-      } catch (e) { showErr('codeErr', e.message) }
-    }
-    $('claimBtn').onclick = async () => {
-      showErr('claimErr', '')
-      try {
-        const out = await api('/api/rooms/' + roomId + '/claim', { name: $('clName').value.trim(), number: $('clNum').value.trim() })
-        token = out.token
-        localStorage.setItem('umi-game-' + roomId, token)
-        location.reload()
-      } catch (e) { showErr('claimErr', e.message) }
+    const cmd = waCommand(s)
+    const waTarget = (s.verifyNumber || BOT_WA).replace(/[^0-9]/g, '')
+    const waLink = 'https://wa.me/' + waTarget + '?text=' + encodeURIComponent(cmd)
+    let mode
+    if (me && me.status === 'verified') mode = 'in'
+    else if (s.openJoin) mode = 'open'
+    else if (me && me.status === 'pending') mode = 'pending'
+    else mode = 'locked'
+
+    if (mode !== panelMode) {
+      panelMode = mode
+      if (mode === 'in') {
+        box.innerHTML = '<h2>✅ Kamu sudah duduk</h2><p class="sub" style="margin:0">Sebagai <b>' + esc(me.name) + '</b>. ' + (s.status === 'lobby' ? 'Tunggu pemain lain, lalu host menekan MULAI.' : 'Game sedang berjalan — selamat main!') + '</p>'
+      } else if (mode === 'open') {
+        box.innerHTML = '<h2>🪑 Duduk di meja</h2>'
+          + '<p class="sub">Mode masuk bebas aktif, jadi cukup isi nama dan nomor WhatsApp-mu.</p>'
+          + '<form id="clForm" class="row"><input id="clName" placeholder="nama kamu" maxlength="24" class="grow" style="max-width:200px"><input id="clNum" placeholder="628xxxxxxxxxx" inputmode="numeric" class="grow" style="max-width:210px"><button class="btn btn-pri" type="submit">Duduk</button></form>'
+          + '<div class="err" id="claimErr"></div>'
+        $('clForm').onsubmit = (e) => {
+          e.preventDefault()
+          showErr('claimErr', '')
+          api('/api/rooms/' + roomId + '/claim', { name: $('clName').value.trim(), number: $('clNum').value.trim() })
+            .then(out => { token = out.token; localStorage.setItem('umi-game-' + roomId, token); connect(); panelMode = '' })
+            .catch(err => showErr('claimErr', err.message))
+        }
+      } else if (mode === 'pending') {
+        const botLabel = s.verifyNumber ? 'jadibot ' + s.verifyNumber.replace(/(\d{4})\d+(\d{4})/, '$1…$2') : 'bot Umi'
+        box.innerHTML = '<h2>⏳ Kursimu menunggu verifikasi</h2>'
+          + '<p class="sub">Kirim pesan ini ke ' + botLabel + ' di WhatsApp, lalu masukkan kode masuk 6 digit yang dibalas bot.</p>'
+          + '<p><code class="cmd">' + esc(cmd) + '</code></p>'
+          + '<p><a class="btn btn-lime btn-sm" target="_blank" rel="noopener" href="' + waLink + '">Buka WhatsApp ↗</a></p>'
+          + '<form id="codeForm" class="row"><input id="codeIn" inputmode="numeric" maxlength="6" placeholder="kode masuk" style="max-width:170px" autocomplete="one-time-code"><button class="btn btn-pri" type="submit">Duduk di meja</button></form>'
+          + '<div class="err" id="codeErr"></div>'
+        $('codeForm').onsubmit = (e) => {
+          e.preventDefault()
+          showErr('codeErr', '')
+          api('/api/rooms/' + roomId + '/enter', { entryCode: $('codeIn').value.trim() })
+            .then(out => { token = out.token; localStorage.setItem('umi-game-' + roomId, token); connect(); panelMode = '' })
+            .catch(err => showErr('codeErr', err.message))
+        }
+      } else {
+        const botLabelLk = s.verifyNumber ? 'jadibot ' + s.verifyNumber.replace(/(\d{4})\d+(\d{4})/, '$1…$2') : 'bot Umi'
+        box.innerHTML = '<h2>🔐 Verifikasi WhatsApp dulu</h2>'
+          + '<p class="sub">1) Kirim pesan ini ke ' + botLabelLk + ':</p><p><code class="cmd">' + esc(cmd) + '</code></p>'
+          + '<p><a class="btn btn-lime btn-sm" target="_blank" rel="noopener" href="' + waLink + '">Buka WhatsApp ↗</a></p>'
+          + '<p class="sub">2) Bot membalas <b>kode masuk 6 digit</b>. Masukkan di sini:</p>'
+          + '<form id="codeForm" class="row"><input id="codeIn" inputmode="numeric" maxlength="6" placeholder="kode masuk" style="max-width:170px" autocomplete="one-time-code"><button class="btn btn-pri" type="submit">Duduk di meja</button></form>'
+          + '<div class="err" id="codeErr"></div>'
+          + '<p class="sub" style="margin-top:14px">Atau minta kursi dulu (tetap harus verifikasi setelahnya):</p>'
+          + '<form id="clForm" class="row"><input id="clName" placeholder="nama" maxlength="24" style="max-width:170px"><input id="clNum" placeholder="628xxxxxxxxxx" inputmode="numeric" style="max-width:190px"><button class="btn" type="submit">Minta kursi</button></form>'
+          + '<div class="err" id="claimErr"></div>'
+        $('codeForm').onsubmit = (e) => {
+          e.preventDefault()
+          showErr('codeErr', '')
+          api('/api/rooms/' + roomId + '/enter', { entryCode: $('codeIn').value.trim() })
+            .then(out => { token = out.token; localStorage.setItem('umi-game-' + roomId, token); connect(); panelMode = '' })
+            .catch(err => showErr('codeErr', err.message))
+        }
+        $('clForm').onsubmit = (e) => {
+          e.preventDefault()
+          showErr('claimErr', '')
+          api('/api/rooms/' + roomId + '/claim', { name: $('clName').value.trim(), number: $('clNum').value.trim() })
+            .then(out => { token = out.token; localStorage.setItem('umi-game-' + roomId, token); connect(); panelMode = '' })
+            .catch(err => showErr('claimErr', err.message))
+        }
+      }
     }
   }
-
-  function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
 
   function render() {
     const s = myState
     if (!s) return
     const me = s.viewer >= 0 ? s.seats[s.viewer] : null
-    verifyPanel(me)
-    const turnIdx = s.state ? (s.game === 'werewolf' ? -1 : s.state.turn) : -1
+    noticeFor(s)
+    verifyPanel(s, me)
+
+    const turnIdx = (s.state && s.game !== 'werewolf' && s.game !== 'chess') ? s.state.turn : (s.game === 'chess' && s.state ? (s.state.turn === 'w' ? 0 : 1) : -1)
     $('seatList').innerHTML = s.seats.length ? s.seats.map(seat => {
-      let extra = ''
-      if (s.game === 'monopoly' && s.state) extra = ' · Rp' + s.state.cash[seat.i]
-      if ((s.game === 'uno' || s.game === 'unoflip') && s.state) extra = ' · ' + s.state.counts[seat.i] + ' kartu'
-      if (s.game === 'snakes' && s.state) extra = ' · kotak ' + s.state.pos[seat.i]
+      let meta = ''
+      if (s.state) {
+        if (s.game === 'monopoly') meta = 'Rp' + s.state.cash[seat.i]
+        else if (s.game === 'uno' || s.game === 'unoflip') meta = s.state.counts[seat.i] + ' kartu'
+        else if (s.game === 'snakes') meta = 'kotak ' + s.state.pos[seat.i]
+      }
       const alive = !(s.state && s.state.alive && !s.state.alive[seat.i])
+      const badge = seat.kind === 'ai' ? '🤖' : seat.status === 'verified' ? '✅' : '⏳'
       return '<span class="seat' + (turnIdx === seat.i && s.status === 'playing' ? ' turn' : '') + (alive ? '' : ' dead') + '">'
-        + (seat.kind === 'ai' ? '🤖 ' : seat.status === 'verified' ? '✅ ' : '⏳ ') + esc(seat.name) + (seat.you ? ' (kamu)' : '') + extra + '</span>'
-    }).join('') : '<span class="sub">Belum ada yang duduk.</span>'
+        + '<span class="av">' + (seat.kind === 'ai' ? '🤖' : esc(seat.name.slice(0, 1).toUpperCase())) + '</span>'
+        + '<span><span class="nm">' + badge + ' ' + esc(seat.name) + (seat.you ? ' (kamu)' : '') + '</span>'
+        + (meta ? '<span class="mt">' + esc(meta) + '</span>' : '') + '</span></span>'
+    }).join('') : '<span class="tiny">Belum ada yang duduk.</span>'
 
     const hc = $('hostControls')
     if (s.viewer === 0 && s.status === 'lobby') {
       const g = GAME_INFO[s.game]
-      hc.innerHTML = '<div class="notice warn" style="margin:10px 0">Kamu host meja ini. Pemain terverifikasi: <b>' + s.seats.filter(x => x.status === 'verified').length + '</b> (minimal ' + g.min + ').</div>'
-        + '<label>Jumlah pemain kalau diisi bot AI <select id="tgtPlayers">' + Array.from({length: g.max - g.min + 1}, (_, k) => g.min + k).map(n => '<option value="' + n + '"' + (n === Math.max(g.min, 3) ? ' selected' : '') + '>' + n + ' orang</option>').join('') + '</select></label>'
-        + '<div class="row"><button class="btn btn-pri" id="startFill">▶ MULAI (isi bot AI)</button><button class="btn" id="startPure">Mulai tanpa bot</button><button class="btn" id="addBotBtn">+1 Bot AI</button></div>'
+      const ready = s.seats.filter(x => x.kind === 'ai' || x.status === 'verified').length
+      hc.innerHTML = '<div class="notice ' + (ready >= g.min ? 'good' : 'warn') + '" style="margin:12px 0">Kamu host. Siap main: <b>' + ready + '</b> dari minimal <b>' + g.min + '</b>.</div>'
+        + '<label><span>Jumlah pemain kalau diisi bot AI</span><select id="tgtPlayers">'
+        + Array.from({ length: g.max - g.min + 1 }, (_, k) => g.min + k).map(n => '<option value="' + n + '"' + (n === Math.max(g.min, 3) ? ' selected' : '') + '>' + n + ' orang</option>').join('')
+        + '</select></label>'
+        + '<div class="row"><button class="btn btn-pri" id="startFill" type="button">▶ Mulai + bot AI</button>'
+        + '<button class="btn" id="startPure" type="button">Mulai tanpa bot</button>'
+        + '<button class="btn btn-sm" id="addBotBtn" type="button">+1 bot</button></div>'
+        + '<div class="row" style="margin-top:12px"><button class="btn btn-sm btn-ghost" id="ojBtn" type="button">' + (s.openJoin ? '🔐 Wajibkan verifikasi WA' : '🔓 Izinkan masuk tanpa verifikasi') + '</button></div>'
       $('startFill').onclick = () => act({ type:'start', fillBots:true, targetPlayers:Number($('tgtPlayers').value) })
       $('startPure').onclick = () => act({ type:'start', fillBots:false })
       $('addBotBtn').onclick = () => act({ type:'addbot' })
+      $('ojBtn').onclick = () => act({ type:'openjoin', value:!s.openJoin })
     } else if (s.status === 'lobby') {
-      hc.innerHTML = '<p class="sub">Menunggu host memulai game…</p>'
+      hc.innerHTML = '<p class="tiny" style="margin:10px 0 0">Menunggu host memulai game…</p>'
     } else if (s.status === 'finished') {
-      hc.innerHTML = '<div class="notice">🏁 Game selesai! Buat room baru dari <a href="/">lobi</a> atau ketik <b>' + GAME_INFO[s.game].cmd + '</b> di bot.</div>'
+      hc.innerHTML = '<div class="notice" style="margin-top:12px">🏁 Selesai. <a href="/">Buat room baru</a> atau kirim <b class="mono">' + PREFIX + esc(GAME_INFO[s.game].cmd) + '</b> ke bot.</div>'
     } else hc.innerHTML = ''
 
-    $('logBox').innerHTML = s.log.map(esc).map(t => '<div>' + t + '</div>').join('')
-    $('logBox').scrollTop = $('logBox').scrollHeight
-    $('chatBox').innerHTML = s.chat.map(c => '<div><b>' + esc(c.name) + ':</b> ' + esc(c.text) + '</div>').join('')
-    $('chatBox').scrollTop = $('chatBox').scrollHeight
+    const lb = $('logBox')
+    lb.innerHTML = s.log.map(t => '<div>' + esc(t) + '</div>').join('')
+    stickBottom(lb)
+    const cb = $('chatBox')
+    cb.innerHTML = s.chat.length ? s.chat.map(c => '<div><b>' + esc(c.name) + ':</b> ' + esc(c.text) + '</div>').join('') : '<div class="tiny">Belum ada pesan.</div>'
+    stickBottom(cb)
     renderGame(s, me)
   }
 
   function renderGame(s, me) {
     const A = $('gameArea')
-    if (s.status === 'lobby') { A.innerHTML = '<h2>🎲 ' + GAME_INFO[s.game].label + '</h2><p class="sub">Game belum dimulai. Undang teman lewat tautan room, pastikan semua sudah ✅ terverifikasi, lalu host menekan MULAI. Kursi kosong bisa diisi bot AI.</p>'; return }
-    if (s.game === 'uno' || s.game === 'unoflip') return renderUno(A, s, me)
-    if (s.game === 'chess') return renderChess(A, s, me)
-    if (s.game === 'snakes') return renderSnakes(A, s, me)
-    if (s.game === 'monopoly') return renderMonopoly(A, s, me)
-    if (s.game === 'werewolf') return renderWerewolf(A, s, me)
+    if (s.status === 'lobby') {
+      A.innerHTML = '<h2>🎲 ' + esc(GAME_INFO[s.game].label) + '</h2><p class="sub">Game belum dimulai. Undang teman lewat tautan room, pastikan kursinya ✅ siap, lalu host menekan <b>Mulai</b>. Kursi kosong boleh diisi bot AI.</p>'
+      return
+    }
+    if (s.game === 'uno' || s.game === 'unoflip') return renderUno(A, s)
+    if (s.game === 'chess') return renderChess(A, s)
+    if (s.game === 'snakes') return renderSnakes(A, s)
+    if (s.game === 'monopoly') return renderMonopoly(A, s)
+    if (s.game === 'werewolf') return renderWerewolf(A, s)
   }
 
-  const COLOR_NAME = { red:'Merah', yellow:'Kuning', green:'Hijau', blue:'Biru', purple:'Ungu', pink:'Pink', orange:'Oranye', teal:'Toska', wild:'Wild' }
-  function renderUno(A, s, me) {
+  function renderUno(A, s) {
     const st = s.state
-    const myTurn = st.turn === s.viewer && st.winner === null
-    const top = st.top
+    const over = st.winner !== null && st.winner !== undefined
+    const myTurn = !over && st.turn === s.viewer
     const sideKey = st.side === 'dark' ? 1 : 0
+    const top = st.top
     const topC = top ? (sideKey ? top.d : top.l) : null
-    let html = '<h2>' + GAME_INFO[s.game].emoji + ' ' + GAME_INFO[s.game].label + (s.game === 'unoflip' ? ' — sisi ' + (st.side === 'dark' ? '🌙 GELAP' : '☀️ TERANG') : '') + '</h2>'
-    if (st.winner !== null) html += '<div class="notice">🏆 <b>' + esc(s.seats[st.winner].name) + '</b> menang!</div>'
-    else html += '<p class="sub">Giliran: <b>' + esc(s.seats[st.turn].name) + '</b> · Warna aktif: <b>' + (COLOR_NAME[st.color] || st.color) + '</b> · Sisa deck: ' + st.deckCount + '</p>'
-    html += '<p>Kartu atas:</p><div>' + (top ? '<span class="unocard topcard c-' + topC[0] + '">' + topC[1] + '<br><small>' + (COLOR_NAME[topC[0]] || '') + '</small></span>' : '-') + '</div>'
+    let html = '<h2>' + GAME_INFO[s.game].emoji + ' ' + esc(GAME_INFO[s.game].label)
+      + (s.game === 'unoflip' ? ' — sisi ' + (st.side === 'dark' ? '🌙 gelap' : '☀️ terang') : '') + '</h2>'
+    if (over) html += '<div class="notice good">🏆 <b>' + esc(s.seats[st.winner] ? s.seats[st.winner].name : 'Pemain') + '</b> menang — kartunya habis!</div>'
+    else html += '<p class="sub">Giliran <b>' + esc(s.seats[st.turn] ? s.seats[st.turn].name : '—') + '</b> · warna aktif <b>' + (COLOR_NAME[st.color] || st.color || '—') + '</b> · sisa deck ' + st.deckCount + '</p>'
+    html += '<div class="topcard-wrap"><div><div class="tiny" style="margin-bottom:4px">Kartu atas</div>'
+      + (top ? '<span class="unocard topcard c-' + topC[0] + '">' + esc(topC[1]) + '<small>' + (COLOR_NAME[topC[0]] || '') + '</small></span>' : '<span class="tiny">—</span>')
+      + '</div></div>'
     if (s.viewer >= 0) {
-      html += '<h3 style="margin:16px 0 4px">Kartumu (' + st.hand.length + ')</h3>'
-      if (myTurn) {
-        html += '<div class="row" style="margin:8px 0"><span class="sub">Warna untuk wild:</span>' + ['red','yellow','green','blue','purple','pink','orange','teal'].filter(c => s.game === 'unoflip' || ['red','yellow','green','blue'].includes(c)).map(c => '<button class="colorpick c-' + c + '" data-color="' + c + '" title="' + COLOR_NAME[c] + '"></button>').join('') + '<b>' + (COLOR_NAME[selColor] || selColor) + '</b></div>'
+      html += '<h3>Kartumu (' + st.hand.length + ')</h3>'
+      if (myTurn && s.game === 'unoflip') {
+        html += '<div class="row" style="margin:4px 0 10px"><span class="tiny">Warna untuk wild:</span>'
+          + ['red','yellow','green','blue','purple','pink','orange','teal'].map(c => '<button class="colorpick c-' + c + (selColor === c ? ' on' : '') + '" data-color="' + c + '" type="button" title="' + COLOR_NAME[c] + '" aria-label="' + COLOR_NAME[c] + '"></button>').join('')
+          + '<b id="selName">' + COLOR_NAME[selColor] + '</b></div>'
+      } else if (myTurn) {
+        html += '<div class="row" style="margin:4px 0 10px"><span class="tiny">Warna untuk wild:</span>'
+          + ['red','yellow','green','blue'].map(c => '<button class="colorpick c-' + c + (selColor === c ? ' on' : '') + '" data-color="' + c + '" type="button" title="' + COLOR_NAME[c] + '" aria-label="' + COLOR_NAME[c] + '"></button>').join('')
+          + '<b id="selName">' + COLOR_NAME[selColor] + '</b></div>'
       }
-      html += '<div>' + st.hand.map((card, i) => {
+      html += '<div class="handwrap">' + (st.hand.length ? st.hand.map((card, i) => {
         const cd = sideKey ? card.d : card.l
-        return '<button class="unocard c-' + cd[0] + (myTurn ? '' : ' no') + '" data-card="' + i + '">' + cd[1] + '<br><small>' + (COLOR_NAME[cd[0]] || '') + '</small></button>'
-      }).join('') + '</div>'
-      if (myTurn) html += '<div class="row" style="margin-top:12px"><button class="btn" id="drawBtn">🃏 Ambil Kartu &amp; Lewati</button></div>'
-    } else html += '<p class="sub">Kamu penonton. Verifikasi untuk ikut main di room berikutnya.</p>'
+        return '<button class="unocard c-' + cd[0] + (myTurn ? '' : ' no') + '" data-card="' + i + '" type="button">' + esc(cd[1]) + '<small>' + (COLOR_NAME[cd[0]] || '') + '</small></button>'
+      }).join('') : '<span class="tiny">Kartumu habis.</span>') + '</div>'
+      if (myTurn) html += '<div class="row" style="margin-top:14px"><button class="btn" id="drawBtn" type="button">🃏 Ambil kartu &amp; lewati</button></div>'
+    } else html += '<p class="sub">Kamu penonton. Duduk di meja untuk ikut main.</p>'
     A.innerHTML = html
-    A.querySelectorAll('[data-color]').forEach(b => b.onclick = () => { selColor = b.dataset.color; render() })
-    A.querySelectorAll('[data-card]').forEach(b => b.onclick = () => { if (myTurn) act({ type:'play', card:Number(b.dataset.card), color: selColor }) })
+    /* Pilih warna cukup mengganti penanda, tanpa membangun ulang seluruh meja —
+     * rebuild penuh bikin kartu berkedip tiap kali warna dipilih. */
+    A.querySelectorAll('[data-color]').forEach(b => b.onclick = () => {
+      selColor = b.dataset.color
+      A.querySelectorAll('[data-color]').forEach(x => x.classList.toggle('on', x === b))
+      const n = $('selName'); if (n) n.textContent = COLOR_NAME[selColor]
+    })
+    A.querySelectorAll('[data-card]').forEach(b => b.onclick = () => { if (myTurn) act({ type:'play', card:Number(b.dataset.card), color:selColor }) })
     const d = $('drawBtn'); if (d) d.onclick = () => act({ type:'draw' })
   }
 
   const CH = { k:'♚', q:'♛', r:'♜', b:'♝', n:'♞', p:'♟' }
-  function renderChess(A, s, me) {
+  function renderChess(A, s) {
     const st = s.state
     const myColor = s.viewer === 0 ? 'w' : s.viewer === 1 ? 'b' : null
-    const myTurn = myColor && st.turn === myColor && !st.winner
+    const over = st.winner !== null && st.winner !== undefined
+    const myTurn = !!myColor && !over && st.turn === myColor
+    if (!myTurn) chessSel = -1
     const hints = {}
-    if (chessSel >= 0 && st.legal) st.legal.filter(m => m.from === chessSel).forEach(m => hints[m.to] = true)
+    if (chessSel >= 0 && st.legal) st.legal.filter(m => m.from === chessSel).forEach(m => { hints[m.to] = true })
     let html = '<h2>♟️ Catur</h2>'
-    if (st.winner === 'draw') html += '<div class="notice">🤝 Seri!</div>'
-    else if (st.winner !== null && st.winner !== undefined) html += '<div class="notice">🏆 <b>' + esc(s.seats[st.winner].name) + '</b> menang skakmat!</div>'
-    else html += '<p class="sub">Giliran: <b>' + (st.turn === 'w' ? '⚪ Putih — ' + esc(s.seats[0].name) : '⚫ Hitam — ' + esc(s.seats[1].name)) + '</b>' + (myTurn ? ' · <span style="color:var(--lime)">giliranmu, klik bidak lalu kotak tujuan</span>' : '') + '</p>'
+    if (st.winner === 'draw') html += '<div class="notice">🤝 Seri (stalemate).</div>'
+    else if (over) html += '<div class="notice good">🏆 <b>' + esc(s.seats[st.winner] ? s.seats[st.winner].name : 'Pemain') + '</b> menang skakmat!</div>'
+    else html += '<p class="sub">Giliran <b>' + (st.turn === 'w' ? '⚪ Putih — ' + esc(s.seats[0] ? s.seats[0].name : '') : '⚫ Hitam — ' + esc(s.seats[1] ? s.seats[1].name : '')) + '</b>'
+      + (myTurn ? ' · <span style="color:var(--lime)">klik bidakmu, lalu kotak tujuan</span>' : '') + '</p>'
     html += '<div class="board">'
     for (let y = 0; y < 8; y++) for (let x = 0; x < 8; x++) {
       const i = y * 8 + x
@@ -362,84 +759,95 @@ if (isRoom) {
         + (p ? '<span class="' + (p.c === 'w' ? 'pw' : 'pb') + '">' + CH[p.t] + '</span>' : '') + '</div>'
     }
     html += '</div>'
-    html += '<div class="log" style="max-height:130px">' + st.history.map(esc).map(t => '<div>' + t + '</div>').join('') + '</div>'
+    html += '<h3>Riwayat langkah</h3><div class="log" style="max-height:130px">'
+      + (st.history.length ? st.history.map(t => '<div>' + esc(t) + '</div>').join('') : '<div class="tiny">Belum ada langkah.</div>') + '</div>'
     A.innerHTML = html
     A.querySelectorAll('[data-sq]').forEach(el => el.onclick = () => {
-      if (!myTurn) return
+      if (!myTurn) return toast('Bukan giliranmu.', 'bad')
       const sq = Number(el.dataset.sq)
       const p = st.board[sq]
-      if (chessSel >= 0 && hints[sq]) { act({ type:'move', from: chessSel, to: sq }); chessSel = -1; return }
+      if (chessSel >= 0 && hints[sq]) { act({ type:'move', from:chessSel, to:sq }); chessSel = -1; return }
       if (p && p.c === myColor) { chessSel = sq; render() }
+      else if (p) toast('Itu bidak lawan.', 'bad')
     })
   }
 
-  function renderSnakes(A, s, me) {
+  function renderSnakes(A, s) {
     const st = s.state
-    const myTurn = st.turn === s.viewer && st.winner === null
+    const over = st.winner !== null && st.winner !== undefined
+    const myTurn = !over && st.turn === s.viewer
     let html = '<h2>🐍 Ular Tangga</h2>'
-    if (st.winner !== null) html += '<div class="notice">🏆 <b>' + esc(s.seats[st.winner].name) + '</b> menang!</div>'
-    else html += '<p class="sub">Giliran: <b>' + esc(s.seats[st.turn].name) + '</b>' + (st.dice ? ' · dadu terakhir: 🎲 ' + st.dice : '') + '</p>'
+    if (over) html += '<div class="notice good">🏆 <b>' + esc(s.seats[st.winner] ? s.seats[st.winner].name : 'Pemain') + '</b> mencapai kotak 100!</div>'
+    else html += '<p class="sub">Giliran <b>' + esc(s.seats[st.turn] ? s.seats[st.turn].name : '—') + '</b>' + (st.dice ? ' · dadu terakhir 🎲 ' + st.dice : '') + '</p>'
     html += '<div class="snakeboard">'
     for (let cell = 100; cell >= 1; cell--) {
       const pawns = st.pos.map((p, i) => p === cell ? i : -1).filter(i => i >= 0)
       const cls = st.ladders[cell] ? 'lad' : st.snakes[cell] ? 'snk' : ''
       const icon = st.ladders[cell] ? '🪜' : st.snakes[cell] ? '🐍' : ''
-      html += '<div class="cell ' + cls + '"><span>' + cell + ' ' + icon + '</span><span class="pawn">' + pawns.map(i => ['🔴','🔵','🟢','🟣','🟠','🟡'][i] || '⚪').join('') + '</span></div>'
+      html += '<div class="cell ' + cls + '"><span>' + cell + ' ' + icon + '</span><span class="pawn">' + pawns.map(i => PIONS[i] || '⚪').join('') + '</span></div>'
     }
-    html += '</div><p class="sub">Posisi: ' + s.seats.map((seat, i) => ['🔴','🔵','🟢','🟣','🟠','🟡'][i] + ' ' + esc(seat.name) + ' = ' + st.pos[i]).join(' · ') + '</p>'
-    if (myTurn) html += '<button class="btn btn-pri" id="rollBtn">🎲 Lempar Dadu</button>'
+    html += '</div><p class="tiny">' + s.seats.map((seat, i) => PIONS[i] + ' ' + esc(seat.name) + ' = ' + st.pos[i]).join(' · ') + '</p>'
+    if (myTurn) html += '<button class="btn btn-pri" id="rollBtn" type="button">🎲 Lempar dadu</button>'
     A.innerHTML = html
     const r = $('rollBtn'); if (r) r.onclick = () => act({ type:'roll' })
   }
 
-  function renderMonopoly(A, s, me) {
+  function renderMonopoly(A, s) {
     const st = s.state
-    const myTurn = (st.turn === s.viewer || st.pendingBuy === s.viewer) && st.winner === null
-    let html = '<h2>🏠 Monopoli <small style="color:var(--muted)">(ringkas)</small></h2>'
-    if (st.winner !== null) html += '<div class="notice">🏆 <b>' + esc(s.seats[st.winner].name) + '</b> menang!</div>'
-    else html += '<p class="sub">Giliran: <b>' + esc(s.seats[st.turn].name) + '</b> · Uangmu: <b>Rp' + (s.viewer >= 0 ? st.cash[s.viewer] : '-') + '</b>' + (st.dice ? ' · 🎲 ' + st.dice : '') + '</p>'
+    const over = st.winner !== null && st.winner !== undefined
+    const buying = st.pendingBuy === s.viewer
+    const myTurn = !over && (buying || st.turn === s.viewer)
+    let html = '<h2>🏠 Monopoli <span class="tiny" style="font-weight:500">(versi ringkas)</span></h2>'
+    if (over) html += '<div class="notice good">🏆 <b>' + esc(s.seats[st.winner] ? s.seats[st.winner].name : 'Pemain') + '</b> jadi juragan terakhir!</div>'
+    else html += '<p class="sub">Giliran <b>' + esc(s.seats[st.turn] ? s.seats[st.turn].name : '—') + '</b>'
+      + (s.viewer >= 0 ? ' · uangmu <b>Rp' + st.cash[s.viewer] + '</b>' : '') + (st.dice ? ' · 🎲 ' + st.dice : '') + '</p>'
     html += '<div class="tiles">' + st.tiles.map((tile, i) => {
       const here = st.pos.map((p, pi) => p === i && st.solvent[pi] ? pi : -1).filter(x => x >= 0)
       const owner = st.owners[i]
       return '<div class="tile' + (here.length ? ' here' : '') + '"><b>' + (i + 1) + '. ' + esc(tile.name) + '</b><br>'
-        + (tile.type === 'prop' ? 'Rp' + tile.price + ' · sewa Rp' + tile.rent + (owner >= 0 ? '<br>👤 ' + esc(s.seats[owner].name) : '<br><i>belum ada pemilik</i>') : tile.type)
-        + (here.length ? '<br>' + here.map(pi => ['🔴','🔵','🟢','🟣'][pi]).join(' ') : '') + '</div>'
+        + (tile.type === 'prop'
+          ? 'Rp' + tile.price + ' · sewa Rp' + tile.rent + (owner >= 0 ? '<br>👤 ' + esc(s.seats[owner] ? s.seats[owner].name : '') : '<br><i>belum ada pemilik</i>')
+          : tile.type)
+        + (here.length ? '<br>' + here.map(pi => PIONS[pi]).join(' ') : '') + '</div>'
     }).join('') + '</div>'
-    if (st.pendingBuy === s.viewer) {
+    if (buying) {
       const tile = st.tiles[st.pos[s.viewer]]
-      html += '<div class="notice warn">Kamu mendarat di <b>' + esc(tile.name) + '</b> (Rp' + tile.price + '). Beli?</div><div class="row" style="margin-top:10px"><button class="btn btn-lime" id="buyBtn">🏠 Beli</button><button class="btn" id="passBtn">Lewati</button></div>'
-    } else if (myTurn) html += '<button class="btn btn-pri" id="rollBtn">🎲 Lempar Dadu</button>'
+      html += '<div class="notice warn">Kamu mendarat di <b>' + esc(tile.name) + '</b> (Rp' + tile.price + '). Beli?</div>'
+        + '<div class="row" style="margin-top:12px"><button class="btn btn-lime" id="buyBtn" type="button">🏠 Beli</button><button class="btn" id="passBtn" type="button">Lewati</button></div>'
+    } else if (myTurn) html += '<button class="btn btn-pri" id="rollBtn" type="button">🎲 Lempar dadu</button>'
     A.innerHTML = html
     const r = $('rollBtn'); if (r) r.onclick = () => act({ type:'roll' })
     const b = $('buyBtn'); if (b) b.onclick = () => act({ type:'buy' })
     const p = $('passBtn'); if (p) p.onclick = () => act({ type:'pass' })
   }
 
-  const ROLE_ID = { werewolf:'🐺 Werewolf', seer:'🔮 Peramal (Seer)', doctor:'💉 Dokter', villager:'🧑‍🌾 Warga' }
-  function renderWerewolf(A, s, me) {
+  const ROLE_ID = { werewolf:'🐺 Werewolf', seer:'🔮 Peramal', doctor:'💉 Dokter', villager:'🧑‍🌾 Warga' }
+  function renderWerewolf(A, s) {
     const st = s.state
-    let html = '<h2>🐺 Werewolf — Hari ke-' + st.day + ' · ' + (st.phase === 'night' ? '🌙 Malam' : '☀️ Siang') + '</h2>'
-    if (st.winner) html += '<div class="notice">🏆 ' + (st.winner === 'werewolf' ? 'WEREWOLF menang!' : 'WARGA menang!') + '</div>'
-    if (st.myRole) html += '<div class="notice">Peran rahasiamu: <b>' + ROLE_ID[st.myRole] + '</b>' + (st.alive[s.viewer] ? '' : ' — kamu sudah mati, hanya bisa menonton & chat.') + '</div>'
-    if (st.peeked) html += '<div class="notice warn">🔮 Hasil terawanganmu: <b>' + esc(s.seats[st.peeked.target].name) + '</b> adalah <b>' + ROLE_ID[st.peeked.role] + '</b>.</div>'
+    let html = '<h2>🐺 Werewolf — hari ' + st.day + ' · ' + (st.phase === 'night' ? '🌙 malam' : '☀️ siang') + '</h2>'
+    if (st.winner) html += '<div class="notice good">🏆 ' + (st.winner === 'werewolf' ? 'WEREWOLF menang!' : 'WARGA menang!') + '</div>'
+    if (st.myRole) html += '<div class="notice">Peran rahasiamu: <b>' + ROLE_ID[st.myRole] + '</b>' + (s.viewer >= 0 && st.alive[s.viewer] ? '' : ' — kamu sudah mati, hanya bisa menonton &amp; chat.') + '</div>'
+    if (st.peeked) html += '<div class="notice warn">🔮 Terawanganmu: <b>' + esc(s.seats[st.peeked.target] ? s.seats[st.peeked.target].name : '') + '</b> adalah <b>' + ROLE_ID[st.peeked.role] + '</b>.</div>'
     html += '<p class="sub">' + esc(st.lastNews || '') + '</p>'
     const iAmAlive = s.viewer >= 0 && st.alive[s.viewer]
-    const needNight = st.phase === 'night' && iAmAlive && ['werewolf','seer','doctor'].includes(st.myRole) && !st.winner
+    const needNight = st.phase === 'night' && iAmAlive && ['werewolf','seer','doctor'].indexOf(st.myRole) >= 0 && !st.winner
     const needVote = st.phase === 'day' && iAmAlive && !st.winner
-    if (needNight) html += '<h3>Pilih target malam ini' + (st.nightActed ? ' ✅ (sudah memilih, tunggu yang lain)' : '') + ':</h3>'
-    if (needVote) html += '<h3>Voting: siapa yang digantung?' + (st.voted !== undefined ? ' ✅ (sudah memilih)' : '') + '</h3>'
+    if (needNight) html += '<h3>Pilih target malam ini' + (st.nightActed ? ' ✅ (sudah, tunggu yang lain)' : '') + '</h3>'
+    if (needVote) html += '<h3>Voting — siapa yang digantung?' + (st.voted !== undefined && st.voted !== null ? ' ✅ (sudah memilih)' : '') + '</h3>'
     if (needNight || needVote) {
       html += '<div class="row">' + s.seats.map((seat, i) => {
         if (!st.alive[i] || i === s.viewer) return ''
-        const cnt = st.phase === 'day' && st.voteCounts ? ' (' + (st.voteCounts[i] || 0) + ' suara)' : ''
-        return '<button class="btn" data-target="' + i + '">' + (st.phase === 'night' ? '🎯 ' : '⚖️ ') + esc(seat.name) + cnt + '</button>'
+        const cnt = st.phase === 'day' && st.voteCounts ? ' (' + (st.voteCounts[i] || 0) + ')' : ''
+        return '<button class="btn btn-sm" data-target="' + i + '" type="button">' + (st.phase === 'night' ? '🎯 ' : '⚖️ ') + esc(seat.name) + cnt + '</button>'
       }).join('') + '</div>'
     }
     if (st.phase === 'night' && iAmAlive && st.myRole === 'villager') html += '<p class="sub">😴 Kamu warga biasa — tidur nyenyak, tunggu pagi.</p>'
-    if (st.roles) html += '<h3>Peran semua pemain:</h3><p>' + s.seats.map((seat, i) => esc(seat.name) + ' = ' + ROLE_ID[st.roles[i]]).join('<br>') + '</p>'
+    if (st.roles) html += '<h3>Peran semua pemain</h3><p class="tiny">' + s.seats.map((seat, i) => esc(seat.name) + ' = ' + ROLE_ID[st.roles[i]]).join('<br>') + '</p>'
     A.innerHTML = html
-    A.querySelectorAll('[data-target]').forEach(b => b.onclick = () => act({ type: st.phase === 'night' ? 'night' : 'vote', target: Number(b.dataset.target) }))
+    A.querySelectorAll('[data-target]').forEach(b => b.onclick = () => act({ type: st.phase === 'night' ? 'night' : 'vote', target:Number(b.dataset.target) }))
   }
+
+  connect()
 }
 </script>
 </body>

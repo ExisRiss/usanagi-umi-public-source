@@ -9,6 +9,11 @@ const TOKEN = process.env.UMI_GAME_TOKEN || (() => {
 })()
 if (!TOKEN) { console.error('Token game tidak ditemukan: isi UMI_GAME_TOKEN atau /home/user/.secrets/game-token.env'); process.exit(1) }
 const AUTH = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' }
+/* Mode masuk bebas mengubah status kursi yang diminta dari web (verified, bukan
+ * pending). Uji ini mengikuti setelan server, bukan mengasumsikan satu mode. */
+let OPEN_JOIN = false
+try { OPEN_JOIN = !!(await (await fetch(BASE + '/health')).json()).openJoinDefault } catch {}
+console.log(`(server: ${BASE}, mode masuk bebas = ${OPEN_JOIN ? 'AKTIF' : 'mati'})`)
 let pass = 0, fail = 0
 const ok = (cond, label) => { if (cond) { pass++; console.log('  ✔', label) } else { fail++; console.log('  ✘ GAGAL:', label) } }
 const post = async (path, body, headers) => {
@@ -23,11 +28,16 @@ console.log('UNO:')
 let r = await post('/api/rooms', { game: 'uno', name: 'Pemilik', number: '628111111111' }, AUTH)
 ok(r.status === 200 && r.json.roomId, 'buat room via bot')
 const unoId = r.json.roomId, hostToken = r.json.token
+// Room yang dibuat bot selalu pakai verifikasi normal, walaupun server sedang
+// dalam mode masuk bebas — kalau bot hidup, verifikasi memang bisa dijalankan.
+let rs = (await get(`/api/rooms/${unoId}/state?token=${hostToken}`)).json
+ok(rs.openJoin === false, 'room buatan bot tetap wajib verifikasi WhatsApp')
+const ROOM_OPEN = !!rs.openJoin
 r = await post(`/api/rooms/${unoId}/claim`, { name: 'Teman', number: '628222222222' })
-ok(r.status === 200 && r.json.status === 'pending', 'klaim kursi web = pending')
+ok(r.status === 200 && r.json.status === (ROOM_OPEN ? 'verified' : 'pending'), 'klaim kursi web = ' + (ROOM_OPEN ? 'verified (mode masuk bebas)' : 'pending'))
 const friendToken = r.json.token
 r = await post(`/api/rooms/${unoId}/action`, { token: friendToken, action: { type: 'chat', text: 'halo' } })
-ok(r.status === 403, 'kursi pending tidak bisa bertindak')
+ok(r.status === (ROOM_OPEN ? 200 : 403), ROOM_OPEN ? 'kursi mode masuk bebas boleh bertindak' : 'kursi pending tidak bisa bertindak')
 r = await post(`/api/rooms/${unoId}/verify`, { name: 'Teman', number: '628222222222' }, AUTH)
 ok(r.status === 200 && r.json.entryCode, 'verifikasi via WA dapat kode masuk')
 const code = r.json.entryCode

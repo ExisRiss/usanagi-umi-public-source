@@ -1738,3 +1738,267 @@ Symlink `/home/user/tools` **hilang** saat snapshot dipulihkan (symlink tidak ik
 tersimpan), sedangkan direktori repo, `.secrets/`, dan `restore/bot-latest.tar.gz`
 (24 MB) utuh. Perbaikan: `ln -sfn /home/user/usanagi-umi-public-source/tools /home/user/tools`,
 atau panggil alat dengan jalur lengkap.
+
+---
+
+## 🚚 Pindah ke panel2 — bot + mirror + game hidup lagi (16 Oktober 2026)
+
+Host beyy tetap mati, jadi pemilik memberi kredensial panel2
+(`panel2.ikyhost.cloud`, akun `alzz` id 20, admin) dan meminta server dibuat
+bebas. Semua layanan dipindahkan ke sana.
+
+### Server baru (nest 5 "Bot Hosting", egg 15 `kaizenmfh`, Node 1 = node2.ikyhost.cloud)
+
+| Server | id | uuid | alokasi | RAM/disk/CPU | CMD_RUN |
+|---|---|---|---|---|---|
+| `umi-bot` | 59 | `c2b5fd9a` | 159.223.57.221:3330 | 3072 MB / 8192 MB / 100% | `npm run tunnel-start` |
+| `umi-mirror-games` | 60 | `df6a073f` | 159.223.57.221:2844 | 1024 MB / 5120 MB / 50% | `npm start` |
+
+Docker `ghcr.io/parkervcp/yolks:nodejs_23` (egg menyediakan 15–24; dipilih 23
+agar sama dengan lingkungan yang sudah terbukti jalan di beyy). `start_on_boot`
+dan `oom_disabled` dikirim `true` saat pembuatan — **tidak bisa diverifikasi
+lewat API** karena panel ini hanya mengizinkan GET/HEAD/DELETE untuk
+`/api/application/servers/{id}` (PATCH dan PUT → 405). Perlu dicek di UI admin.
+
+### config.js tidak ada di mana pun — disusun ulang
+
+`config.js` tidak ikut cadangan (dikonfirmasi: `bot.tar.gz` generasi
+`hourly_20261015220003187` hanya berisi `config.example.js`), tidak ada di repo,
+dan tidak pernah diunduh dari server lama. Nilai dipulihkan dari:
+
+- `config.example.js` → bentuk `global.owner` / `global.mainBot` / `global.jadibotPlatform`
+- Supabase `users` (kunci service_role) → `role=owner` = **akunindo2011264@gmail.com**
+  (username `AlzRiss`); ada juga 2 `admin` (`okthaaa01@gmail.com`,
+  `riskyggriskyop@gmail.com`) yang **tidak** dimasukkan ke `ownerEmails`
+- default `locked_owner_number` di `public/assets/app.js` → **6287813709432**
+- `.secrets/sb-keys.json` → `supabaseUrl` + `supabaseAnonKey`
+
+Bukti berhasil: log bot `Config loaded`, `Repairing database... Repair selesai
+(0 field diperbaiki)`, `[JADIBOT-API] Aktif di 0.0.0.0:3854`,
+`Successfully Loaded 2038 Plugins`, `Bot siap digunakan!`
+
+Isi cadangan yang dipakai: `database.json` (1.630.107 B), `data/jadibot-platform.json`,
+`sessions/*/bot-config.json`, `lib/webgame.json` (token game-nya **cocok** dengan
+yang baru). Sumber kode dari repo (terbukti identik produksi lewat drift-scan)
++ `scripts/ config/ assets/ font/ json/` yang memang hanya ada di repo.
+Paket 43 MB diunggah sekali lalu `decompress` (3.708 berkas).
+
+### Pairing bot utama DIMATIKAN (permintaan pemilik)
+
+`.main-bot.env` → `MAIN_BOT_ENABLED=false`. Terverifikasi dua kali: log boot
+`⚙️ Bot utama: NONAKTIF (diatur dari website > halaman Bot Utama)`, dan API
+`POST /api/owner-console/main-bot` → `{"ok":true,"enabled":false,
+"status":{"status":"unpaired","pairing_active":false}}`.
+Sesi jadibot tetap mencoba pairing ulang karena `creds.json` memang tidak ikut
+cadangan (by design).
+
+### Bug yang ketemu: EACCES cloudflared
+
+`server.log` (pencatatan baru) menunjukkan `[tunnel] gagal start: spawn
+/home/container/cloudflared EACCES` — biner yang diunggah lewat Client API
+**kehilangan bit eksekusi**. Di beyy tidak pernah kena karena `server.js`
+mengunduh cloudflared sendiri lalu `chmod 0o755`. Diperbaiki permanen di
+`db-mirror/server.js`: `ensureCloudflared()` kini selalu `chmodSync(0o755)`.
+Setelah itu cloudflared mendaftar 4 koneksi (sin16/sin13/sin14/sin09).
+
+### Alat baru & perbaikan alat
+
+- `tools/ptero-console.mjs` — klien WebSocket Pterodactyl **tanpa dependensi**
+  (Node 20 belum punya WebSocket global; `node_modules` tidak ikut snapshot).
+  Menangani dua bentuk respons: `data.socket` (panel lama) dan `data.token`
+  (panel baru — URL disusun dari klaim `aud` + `server_uuid` di JWT).
+  Catatan: Wings di panel2 menolak upgrade dengan **403**, jadi alat ini belum
+  bisa dipakai di sana; sebagai gantinya `db-mirror/server.js` kini menulis
+  `server.log` yang bisa dibaca lewat Client API.
+- `tools/recover-after-outage.mjs` diarahkan ke panel2. Sempat rusak karena
+  perintah `sed` yang salah kutip menimpa baris `CRED` menjadi `X` — dan
+  `node --check` tetap lolos karena `X` ekspresi valid. Pelajaran: syntax check
+  bukan verifikasi; alatnya kini dijalankan sungguhan (`--once` → exit 0).
+
+### Verifikasi akhir
+
+| Target | Hasil |
+|---|---|
+| `https://api.gwenna.my.id/` | **401** (API bot hidup) |
+| tunnel `umi-api-gwenna` | **4 konektor, healthy** |
+| `https://game.gwenna.my.id/health` | **200**, 6 permainan |
+| `http://159.223.57.221:2844/health` | **200** `umi-db-mirror` |
+| `tools/test-webgame.mjs` | **25 lolos, 0 gagal** (live) |
+| `tools/test-webmultiplayer-plugin.mjs` | **15 lolos, 0 gagal** (modul plugin asli) |
+| cron backup `hourly_20261016031934676` | website 1.392.371 B, bot 13.116.169 B, jadibot 1.914 B, website-db 31.311 B — **semua mendarat di mirror baru**, SHA-256 cocok |
+| website | `dpl_DqxT4Rq3iBXEpgPz7EG2juxELf8T` READY; `index.html`/`app.js`/`app.css` identik sebelum & sesudah |
+
+`UMI_MIRROR_URL` Vercel dipindah ke `http://159.223.57.221:2844`.
+
+### Rotation kunci
+
+Tetap **tidak dilakukan** atas keputusan pemilik. Kunci panel2 baru disimpan di
+`.secrets/panel2-credentials.env` (600).
+
+---
+
+## 🎮 Website game: bug diperbaiki + UI dirombak (16 Oktober 2026)
+
+### Bug yang ditemukan (semuanya dibuktikan lewat permintaan nyata, bukan tebakan)
+
+1. **Meja tidak bisa dimainkan sama sekali.** Room yang dibuat dari website
+   memberi kursi berstatus `pending`, dan *semua* aksi dikunci untuk kursi
+   pending — termasuk `start`. Bukti: `POST /api/rooms` → `verified:false`,
+   lalu `start` → `403 "Kursimu belum terverifikasi WhatsApp."` Verifikasi itu
+   sendiri mustahil jalan karena bot utama `connected:false` /
+   `connection:close` (pairing memang diminta off).
+2. **Perintah verifikasi salah untuk 3 dari 6 game.** Halaman menyuruh kirim
+   `/catur`, `/ulartangga`, `/werewolf`; plugin bot hanya menerima `caturweb`,
+   `utweb`, `wwweb` (akhiran `web` sengaja, karena nama polosnya sudah dipakai
+   game WhatsApp lama).
+3. **Prefix tidak konsisten**: lobi menulis `.uno`, halaman room menulis
+   `/uno`. Prefix aktif bot adalah `/` (`config.js` → `defaultPrefix:'/'`).
+4. **Werewolf macet selamanya** kalau pemain manusia berperan warga biasa (atau
+   sudah mati). Pergantian malam→siang hanya dipicu dari `werewolfAction`, jadi
+   tanpa aksi manusia tidak ada yang memicu `werewolfResolveNight`. Terlihat
+   sebagai kegagalan uji yang kadang muncul kadang tidak — ternyata deadlock,
+   bukan uji flaky.
+5. **Unggahan mendarat di folder yang salah.** Berkas yang dijalankan ada di
+   root container (`/game.js`, `/game.html`), bukan `/db-mirror/`. Unggahan
+   pertama tidak berdampak apa pun; ketahuan karena `/health` tetap tanpa
+   `openJoinDefault` dan md5 halaman tidak berubah.
+
+### Yang diperbaiki
+
+**Server (`db-mirror/game.js`)**
+- Mode masuk bebas (`UMI_GAME_OPEN_JOIN`, default aktif): kursi dari website
+  langsung terverifikasi, `claim` ikut menyesuaikan, host boleh
+  menyalakan/mematikannya per meja lewat aksi `openjoin`. Room buatan bot
+  **selalu** tetap wajib verifikasi.
+- Deadlock werewolf: `werewolfPendingHumans` + `werewolfMaybeResolve` +
+  `werewolfScheduleResolve` (jeda 2,5 detik supaya malam tidak berlalu
+  sekejap). Kedua pemeriksaan lama di `werewolfAction` diganti pemanggilan ini.
+- `state.waCommand` dikirim server, jadi halaman tidak menebak nama perintah.
+- `game.html` dibaca ulang berdasarkan mtime → unggah halaman baru tidak perlu
+  restart container.
+- `/health` menambah `openJoinDefault`.
+
+**Halaman (`db-mirror/game.html`) — ditulis ulang**
+- Perintah verifikasi diambil dari `state.waCommand`, prefix konsisten `/`.
+- `alert()` diganti toast; panel verifikasi tidak lagi dibangun ulang tiap
+  siaran (kode yang sedang diketik tidak hilang); gulir log/chat hanya ikut ke
+  bawah kalau pembaca memang di bawah; pilih warna tidak lagi merender ulang
+  seluruh meja; tombol salin tautan; indikator koneksi SSE; state "room tidak
+  ada" yang jelas; skeleton saat memuat; layout & tipografi mobile dirapikan.
+- UI: hierarki kartu jelas, kartu game punya warna aksen per permainan, tombol
+  primary/ghost, chip pemain dengan avatar, formulir berlabel dengan focus ring.
+
+### Uji
+
+| Suite | Hasil |
+|---|---|
+| `tools/test-webgame.mjs` (produksi) | **26 lolos, 0 gagal** |
+| `tools/test-game-live.mjs` (produksi, main sampai selesai) | **58 lolos, 0 gagal** |
+| `tools/test-game-page.mjs` (render `game.html` di jsdom) | **42 lolos, 0 gagal** |
+
+Dua suite baru: `test-game-live.mjs` (memainkan keenam meja di server hidup,
+termasuk regresi deadlock werewolf dan mode masuk bebas) dan
+`test-game-page.mjs` (memuat halaman di DOM sungguhan — `node --check` tidak
+menangkap error saat dijalankan, jadi halaman benar-benar dijalankan).
+
+Selama pengerjaan, tiga asumsi ujiku sendiri juga salah dan diperbaiki: budget
+giliran terlalu kecil, predikat "hari bertambah" untuk warga biasa (yang benar
+fasenya yang berpindah), dan state pemain yang sudah terverifikasi dipakai untuk
+menguji panel verifikasi.
+
+Alur web end-to-end diverifikasi ulang di produksi: buat room dari web →
+`verified:true` → host `start` **berhasil** → host tetap punya kursi (viewer 0)
+→ monopoli dimainkan 120 langkah bersama 2 bot.
+
+---
+
+## 2026-10-16 — Situs unggah khusus pemilik (`upload-owner`)
+
+Situs tersendiri untuk pemilik menaruh **contoh website game** sebagai bahan
+yang nanti dikembangkan. Terpisah dari website jadibot supaya tidak saling
+menimpa.
+
+- Produksi: **https://upload-owner.gwenna.my.id** (proyek Vercel `upload-owner`, region `sin1`)
+- Domain lama `upload.gwenna.my.id` juga masih aktif
+- Sumber: `upload-owner/` — `index.html` statis tanpa build + `api/*.js` + `lib/`
+- Deploy: `node tools/deploy-website.mjs --dir upload-owner --project upload-owner --no-sync`
+- Kredensial: `/home/user/.secrets/upload-owner.env` (tidak di-commit)
+
+### Kemampuan
+
+Masuk dengan kata sandi pemilik → unggah berkas (drag-drop, progress, maks 4 MB)
+atau **simpan dari URL** (server yang menarik, tidak kena batas body) → daftar
+dengan pratinjau, cari, salin path, catatan, unduh, hapus. Agent membaca tanpa
+kata sandi lewat `Authorization: Bearer <UMI_UPLOAD_API_TOKEN>`.
+
+### Bug yang ditemukan dan diperbaiki
+
+Empat di antaranya hanya muncul saat dijalankan, tidak terdeteksi `node --check`:
+
+1. **formidable v3** menyelesaikan `parse()` dengan `[fields, files]`, bukan
+   objek — destructure objek membuat setiap unggahan 500.
+2. **`get()` mengembalikan `null`** saat blob belum ada, bukan melempar 404.
+3. **`put()` menolak pathname yang sudah ada** tanpa `allowOverwrite: true`,
+   jadi katalog tidak pernah bisa diperbarui setelah tulis pertama.
+4. **Katalog tunggal yang ditimpa tidak bisa dipakai.** Diukur di store ini:
+
+   | Pola | Baru terlihat setelah |
+   |---|---|
+   | blob write-once baru, dibaca isinya | ~0,6 detik |
+   | blob baru muncul di `list()` | ~4,5 detik |
+   | pathname lama ditimpa, dibaca lagi | **lebih dari 16 detik** |
+
+   Akibatnya penghapusan tepat setelah unggah menjawab 404, dan dua instance
+   yang menulis berbarengan saling menimpa katalog sehingga entri hilang (pernah
+   terekam: store berisi 5 entri, instance mengira 2). Perbaikan pertama
+   (menunggu propagasi sebelum menjawab) **tidak cukup** — uji produksi masih
+   flaky 18/0, 17/1, 12/6.
+
+   Desain diganti jadi **sidecar write-once per berkas**: `uploads/<id>/berkas`
+   + `uploads/<id>/meta.json`, daftar diturunkan dari `list()`. Tidak ada
+   baca-ubah-tulis, jadi tidak ada data hilang. UI menyisipkan entri baru secara
+   optimis karena `list()` butuh ~4,5 detik. Setelah itu produksi stabil.
+
+Aturan turunannya: pathname tidak pernah dipakai ulang (path bekas hapus gagal
+3/3, path baru stabil 3/3), dan `uploads/_katalog.json` yang lama dibuang.
+
+### Uji
+
+| Suite | Hasil |
+|---|---|
+| `tools/test-upload-site.mjs` (handler asli + Blob asli + jsdom) | **65 lolos, 0 gagal** |
+| `tools/test-upload-live.mjs` (produksi, 3× beruntun) | **18 lolos, 0 gagal** |
+
+Suite lokal menjalankan route handler sungguhan di server Node terhadap Blob
+store sungguhan, lalu memuat `index.html` di jsdom (masuk lewat formulir →
+unggah → entri tampil). Suite produksi menembak `upload-owner.vercel.app` dan
+membersihkan berkas ujinya sendiri — store dipakai bersama, jadi tidak ada
+reset menyeluruh.
+
+### Yang belum
+
+`upload-owner.my.id` belum punya DNS dan token Cloudflare yang ada hanya melihat
+zone `gwenna.my.id`, jadi domain itu tidak bisa dibuat atau diarahkan dari sini.
+Situs tayang di `upload-owner.vercel.app`; langkah DNS diserahkan ke pemilik.
+
+## XERYU MD Feature Extraction (2026-10-16)
+User uploaded "XERYU MD V16 X AUTO ORDER" ZIP (9.8MB, 36K+ lines) via jadibot website.
+Extracted key features as clean-room implementations:
+
+### New Plugins (commit cc5a6f3)
+| Plugin | Path | Description |
+|--------|------|-------------|
+| store-autoorder.js | bot/plugins/store/ | Digital store with stock management, auto-delivery, order tracking |
+| rich-music.js | bot/plugins/music/ | YouTube search with interactive carousel cards |
+| game-hub.js | bot/plugins/game/ | Interactive game menu carousel (19 games listed) |
+| game-spaceshooter.js | bot/plugins/game/ | HTML5 Space Shooter arcade game (rich HTML) |
+| rpg-activity.js | bot/plugins/economy/ | RPG economy: work/hunt/mine/farm/fish/rob/adventure/daily |
+
+### Plugin Details
+- **store-autoorder**: Owner creates products with price+stock, users buy with balance, auto-delivers digital items
+- **rich-music**: YouTube search via yt-search, shows results as WhatsApp carousel cards, downloads via savetube CDN
+- **game-hub**: Lists all 19 available games in interactive carousel format
+- **game-spaceshooter**: Full HTML5 arcade shooter with touch controls, waves, scoring
+- **rpg-activity**: 8 activity types with cooldowns, monsters, minerals, fish, crops, adventures, leaderboard
+
+All plugins: ESM format, node --check clean, no ||= / ??= operators (max ES2020 compatible).
