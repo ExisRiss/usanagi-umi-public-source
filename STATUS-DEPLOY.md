@@ -241,7 +241,16 @@ menimpa env asli, disebar ke proses anak bot & game). Setelah restart:
 - `UMI_MIRROR_URL` dihapus dari env Vercel (host mirror `159.223.57.221:2844` sudah mati / HTTP 000)
   supaya backup tidak menggantung menunggu mirror.
 
-**Catatan.** Klik ACC Top Up dari sesi login owner tetap perlu sekali percobaan nyata (sandbox tidak
+**Bukti akhir (klik nyata dari akun owner).** Dua permintaan top up yang tertunda diproses pemilik
+lewat website dan **berhasil** — tidak ada lagi pesan "akun owner tidak sah":
+- `tu_mvb595vb_2c6f25c7297f5111` Rp1.000.000 → `PAID` 2026-10-16T20:29:05Z
+- `tu_mvba676h_67f3718cf797c3df` Rp1.000.000 → `PAID` 2026-10-16T20:29:08Z
+- keduanya dicatat `approvedBy: owner:3b193ec9-6eab-4b59-bbeb-b6f4f0b0fa6d` (auth_id owner)
+  dan masuk ledger `TOPUP_MANUAL` "Top up DANA manual disetujui owner"; saldo akun jadi Rp1.990.000.
+- Rantai tiket: browser owner → `website/api/platform.js` (HMAC `UMI_CONSOLE_RELAY_SECRET`) → bot
+  → `.owner-console-relay.env` yang sudah berisi rahasia asli → **diterima**. Selesai.
+
+**Catatan.** Verifikasi tombol Auto Read & Bot Utama masih perlu sekali klik nyata (sandbox tidak
 punya sesi Supabase) — namun tiket yang dikirim website bentuknya identik dengan tiket uji yang
 sudah lolos 200. Metadata git lokal juga diperbaiki: `.git/config` hilang karena pemulihan snapshot,
 remote `origin` dipasang ulang, HEAD diselaraskan ke `3fe84f2` (berkas kerja tidak diubah).
@@ -250,8 +259,8 @@ remote `origin` dipasang ulang, HEAD diselaraskan ke `3fe84f2` (berkas kerja tid
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
 - Payment gateway (TriPay) belum dikonfigurasi (saat ini manual DANA)
-- **Perlu 1x klik nyata dari akun owner** (sandbox tak punya sesi Supabase): ACC Top Up di
-  halaman Panel, tombol Auto Read & Bot Utama di halaman Bot Utama
+- ACC Top Up **sudah terbukti jalan** dari akun owner (2 permintaan Rp1.000.000 di-approve 20:29Z)
+- **Perlu 1x klik nyata dari akun owner**: tombol Auto Read & Bot Utama di halaman Bot Utama
 - Uji end-to-end WhatsApp: kirim `.daftar` dan `@verify` → akun trading otomatis muncul di
   papan peringkat (harness lokal sudah lolos, belum dari WA asli)
 - Harness plugin `bot/plugins/game/trading-umi.js` (unit/integration test) belum ditulis
