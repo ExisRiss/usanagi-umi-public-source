@@ -48,3 +48,7 @@ db-mirror/tunnel-token.txt
 db-mirror/game-token.txt
 db-mirror/service-token.txt
 db-mirror/trading-data.json
+
+# state runtime di server (berisi token sesi / nomor) — jangan di-commit
+bot/lib/trading-links.json
+.main-bot.env

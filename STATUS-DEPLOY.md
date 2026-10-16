@@ -126,6 +126,75 @@ maks Rp200.000. Bot memakai `UMI_GAME_TOKEN` + `UMI_GAME_INTERNAL_URL` (dipasang
 semua posisi uji sudah ditutup dan sisa Rp hasil uji ditarik kembali (saldo Rp 0), lalu diberi
 kompensasi `$AS 100` agar tunai tidak negatif. Riwayat transaksi memuat jejak uji tersebut.
 
+## Task 14 — Aset/logo, integrasi trading ↔ bot, leaderboard, /tradingoffline (2026-10-17 02.00 WITA)
+
+**Aset & identitas visual (asli, dibuat dari repo).** `tools/make-assets.mjs` (ikon/logo SVG+PNG,
+manifest PWA, gambar OG 1200×630) dan `tools/make-art.mjs` (5 banner SVG 480×160: kartu UNO,
+papan catur, ular tangga, monopoli, werewolf) — semuanya digambar sendiri, tanpa aset pihak ketiga.
+Diverifikasi visual dengan `@resvg/resvg-js` (ImageMagick di sandbox salah render gradien/`<defs>`,
+jadi tidak dipakai sebagai acuan). Semua dipasang di halaman lewat rute game:
+`/assets/<nama>`, `/favicon.ico|svg`, `/apple-touch-icon.png`, `/icon-192|512.png`, `/og.png`,
+`/manifest.webmanifest`. `game.html` + `trading.html` kini memakai logo/ikon yang sama
+(sebelumnya menunjuk berkas `.png` yang sudah tidak ada di server → logo rusak/404).
+
+**Akun trading dengan identitas WhatsApp.** `wa:<nomor>` vs `web:<hash token>`; username akun =
+nomor WhatsApp. Auto-provision: `bot/lib/trading-provision.js` dipanggil dari
+`plugins/economy/xp-register.js` (perintah `.daftar`) dan `plugins/_system/@verify.js`, jadi begitu
+user terdaftar lewat **bot utama atau jadibot**, akun `$AS`-nya langsung dibuat (saldo awal 100 +
+bonus harian 10) dan barisnya ikut muncul di caption pendaftaran. Kalau server game sedang mati,
+pendaftaran tetap sukses dan akun dibuat menyusul saat `.trading` dikirim.
+
+**Kendali dari WhatsApp.** Plugin `bot/plugins/game/trading-umi.js`:
+`.trading [token|off]` (ringkasan akun; kalau diisi token akun website → tampil status akun itu,
+token disimpan per nomor), `.tradingkaya` / `.tradingmiskin` / `.peringkat kaya|miskin`,
+`.pasar`, `.belisaham <kode> <lot>`, `.jualsaham`, `.redeem <kode>`,
+`.tradinglogin` (kode 6 digit + tautan), `.tradingoffline` (kirim berkas game offline).
+Nama perintah diberi akhiran `trading/saham` supaya tidak bentrok dengan plugin lama
+(`kaya`, `miskin`, `beli`, `jual`, `market` sudah dipakai plugin lain — handler memilih plugin
+pertama yang cocok, jadi bentrok = fitur saling menutup).
+
+**`/tradingoffline`.** `db-mirror/trading-offline.html` = game trading mandiri: 10 saham, tick
+3 detik, candlestick canvas, order beli/jual, portofolio, redeem, bonus harian, semua data di
+**localStorage** (jalan tanpa internet). `tools/make-offline.mjs` membundelnya jadi satu berkas
+(aset jadi data URI) → `assets/trading-offline.bot.html` (35 KB) yang dikirim bot sebagai dokumen
+`UMI-TRADE-OFFLINE.html`. Tersedia juga di web: `/trading-offline` (versi biasa) dan
+`/trading-offline.bot.html` (versi bundel). Diuji jsdom: beli 5 lot → kas turun, jual balik, redeem
+`TRADING` +25, tanpa galat JS.
+
+**Papan peringkat.** `GET /api/trading/leaderboard` → `{total, richest[12], poorest[12]}`
+(nilai aset, bukan hanya kas). Tampil di tab **Peringkat** halaman trading, kartu ringkas di lobi
+game (`/`), dan lewat perintah bot.
+
+**Setelan bot utama di website.** Tombol **Bot Utama ON/OFF** (sudah ada) + tombol baru
+**Auto Read ON/OFF** di halaman Bot Utama: `POST /api/platform/main-console/autoread`
+(owner-only, rute Vercel) → relay tiket HMAC → `POST /api/owner-console/autoread` (bot)
+→ menulis `global.db.data.settings[<jid sesi>].autoread` + `db.write()`; efeknya langsung
+(handler membacanya tiap pesan) tanpa restart. Helper-nya diuji unit (4 skenario lolos).
+
+**Deploy & verifikasi live (2026-10-17 02.10 WITA).**
+- `tools/deploy-game.mjs` diperluas: kini ikut mengunggah `trading-offline.html` + seluruh
+  `db-mirror/assets/*` → `/game/assets/` (20 berkas).
+- Bukti live: `/health` `2.0.0`, `/` 55.434 B (kartu status pasar + papan peringkat di lobi),
+  `/trading` 70.191 B, `/trading-offline.html` 29.201 B, `/trading-offline.bot.html` 35.279 B,
+  aset `200` (`logo-umi-games.svg`, `kartu-uno.svg`, `papan-catur.svg`, `werewolf.svg`, manifest,
+  `og.png`, `favicon.ico`), `/api/trading/session` + `/api/trading/leaderboard` `200`.
+- Bot: `/api/health` `200 v1.4.0`, `2044 plugin` termuat tanpa galat; token game di dalam
+  container dipasang ulang `scripts/companion.js` dari `game-token.txt` (`[game] token bot siap`).
+- Website READY; halaman memuat tombol `toggleAutoread` + `app.js` versi `20261016-autoread1`.
+- Uji lokal berulang di :3902 (data produksi disalin): migrasi 2 akun lama, register WA,
+  login kode 6 digit, trade, dan papan peringkat.
+
+**Catatan & tindak lanjut.**
+- Sesi naik **harian 00.00–02.00 WITA** sudah aktif (label `SESI NAIK · sampai 02.00 WITA`).
+  Karena deploy selesai 02.10 WITA, jendela malam ini baru saja lewat; jendela berikutnya
+  malam ini 00.00–02.00. Sesi tambahan bisa disetel lewat `POST /api/trading/session/config`
+  (bot) kalau mau diperpanjang.
+- Verifikasi tombol Auto Read/Bot Utama perlu sesi login Supabase owner (dari sandbox tidak ada),
+  jadi bagian HTTP relay-nya diverifikasi struktural + unit test helper; coba klik sekali di
+  halaman Bot Utama.
+- Berkas uji lokal (`db-mirror/trading-data.json`, `db-mirror/game-token.txt`) sudah masuk
+  `.gitignore` dan tidak ikut ke server produksi (data produksi tetap 2 akun asli).
+
 ## Pending
 
 - Feedback auto-report sudah jalan, brat.js sudah di-fix (error reports berkurang)

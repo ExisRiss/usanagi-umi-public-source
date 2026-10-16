@@ -6,6 +6,20 @@
 <title>Umi Games — Multiplayer WhatsApp</title>
 <meta name="description" content="Main UNO, UNO Flip, Catur, Ular Tangga, Monopoli & Werewolf bareng teman — room dibuat dari WhatsApp atau web, kursi bisa diisi bot AI kalau pemain kurang.">
 <meta name="theme-color" content="#070d18">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="UMI GAMES">
+<link rel="icon" href="/assets/logo-umi-games.svg" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta property="og:type" content="website">
+<meta property="og:title" content="UMI GAMES — Multiplayer WhatsApp">
+<meta property="og:description" content="6 meja: UNO, UNO Flip, Catur, Ular Tangga, Monopoli, Werewolf. Room dibuat dari WhatsApp, kursi bisa diisi bot AI.">
+<meta property="og:image" content="/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="/og.png">
 <style>
   :root{
     color-scheme:dark;
@@ -266,7 +280,7 @@
 </head>
 <body>
 <header class="top"><div class="top-in">
-  <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo-umi-games.png" alt="UMI" style="width:36px;height:36px;border-radius:8px"></span><span><b>UMI GAMES</b><small>MULTIPLAYER · WHATSAPP</small></span></a>
+  <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo-umi-games.svg" alt="UMI" style="width:36px;height:36px;border-radius:8px"></span><span><b>UMI GAMES</b><small>MULTIPLAYER · WHATSAPP</small></span></a>
   <div class="top-right">
     <span class="pill hidden" id="connPill"><span class="dot"></span><span id="connText">menyambung…</span></span>
     <a class="btn btn-sm btn-lime" href="/trading" title="Pasar saham $AS">📈 $AS TRADE</a>
@@ -309,6 +323,23 @@
           <button class="btn btn-lime btn-block" id="jnBtn" type="submit">Masuk meja</button>
         </form>
         <p class="tiny" style="margin:14px 0 0">Tanpa kode pun tetap bisa: buka tautannya, lalu ikuti petunjuk di halaman room.</p>
+      </div>
+    </div>
+
+    <div class="glass card" id="tradeCard" style="margin-top:16px">
+      <h2>📈 Pasar $AS — UMI TRADE</h2>
+      <div class="cols" style="gap:14px">
+        <div>
+          <div class="tag" id="tradeSession" style="font-size:12.5px">memuat status pasar…</div>
+          <div id="tradeStats" class="grid" style="grid-template-columns:1fr 1fr;gap:10px;margin-top:12px"></div>
+          <p class="tiny" style="margin:12px 0 0">Trading saham antar pemain: harga naik-turun tiap 3 detik, saldo $AS, papan peringkat trader terkaya &amp; termiskin. Bisa juga dari WhatsApp: <b class="mono">.trading</b>, <b class="mono">.pasar</b>, <b class="mono">.belisaham UMI 5</b>, <b class="mono">.tradingoffline</b>.</p>
+        </div>
+        <div>
+          <h2 style="margin-bottom:8px">🏆 Papan peringkat</h2>
+          <div id="tradeBoard" class="tiny">memuat…</div>
+          <a class="btn btn-lime btn-block" href="/trading" style="margin-top:12px">Buka UMI TRADE →</a>
+          <a class="btn btn-ghost btn-block" href="/trading-offline" style="margin-top:8px">Main offline (tanpa internet)</a>
+        </div>
       </div>
     </div>
 
@@ -366,12 +397,12 @@ const PREFIX = '/'
  * dan werewolf memakai akhiran `web` karena nama polosnya sudah dipakai game
  * WhatsApp yang lama — kalau salah, bot tidak akan menjawab sama sekali. */
 const GAME_INFO = {
-  uno:      { label:'UNO', emoji:'🃏', desc:'Kartu +2, skip, reverse, wild', min:2, max:10, cmd:'uno', accent:'#e5484d', img:'/assets/kartu-uno.png' },
-  unoflip:  { label:'UNO Flip', emoji:'🔄', desc:'Dua sisi kartu, gelap & terang', min:2, max:10, cmd:'unoflip', accent:'#8e4ec6', img:'/assets/kartu-uno.png' },
-  chess:    { label:'Catur', emoji:'♟️', desc:'Klasik, ada skakmat & rokade', min:2, max:2, cmd:'caturweb', accent:'#c4cfe8', img:'/assets/papan-catur.png' },
-  snakes:   { label:'Ular Tangga', emoji:'🐍', desc:'Balapan ke kotak 100', min:2, max:6, cmd:'utweb', accent:'#3ddc9a', img:'/assets/papan-ular-tangga.png' },
-  monopoly: { label:'Monopoli', emoji:'🏠', desc:'Versi ringkas 16 petak', min:2, max:4, cmd:'monopoli', accent:'#5b7cfa', img:'/assets/papan-monopoli.png' },
-  werewolf: { label:'Werewolf', emoji:'🐺', desc:'Peran rahasia, voting siang hari', min:5, max:12, cmd:'wwweb', accent:'#9b6bff', img:'/assets/werewolf.png' },
+  uno:      { label:'UNO', emoji:'🃏', desc:'Kartu +2, skip, reverse, wild', min:2, max:10, cmd:'uno', accent:'#e5484d', img:'/assets/kartu-uno.svg' },
+  unoflip:  { label:'UNO Flip', emoji:'🔄', desc:'Dua sisi kartu, gelap & terang', min:2, max:10, cmd:'unoflip', accent:'#8e4ec6', img:'/assets/kartu-uno.svg' },
+  chess:    { label:'Catur', emoji:'♟️', desc:'Klasik, ada skakmat & rokade', min:2, max:2, cmd:'caturweb', accent:'#c4cfe8', img:'/assets/papan-catur.svg' },
+  snakes:   { label:'Ular Tangga', emoji:'🐍', desc:'Balapan ke kotak 100', min:2, max:6, cmd:'utweb', accent:'#3ddc9a', img:'/assets/papan-ular-tangga.svg' },
+  monopoly: { label:'Monopoli', emoji:'🏠', desc:'Versi ringkas 16 petak', min:2, max:4, cmd:'monopoli', accent:'#5b7cfa', img:'/assets/papan-monopoli.svg' },
+  werewolf: { label:'Werewolf', emoji:'🐺', desc:'Peran rahasia, voting siang hari', min:5, max:12, cmd:'wwweb', accent:'#9b6bff', img:'/assets/werewolf.svg' },
 }
 const parts = location.pathname.split('/').filter(Boolean)
 const isRoom = parts.length === 2 && !!GAME_INFO[parts[0]]
@@ -425,6 +456,40 @@ function stickBottom(el) {
 
 /* ============================== LOBI ============================== */
 if (!isRoom) {
+  /* ---------- status pasar $AS (UMI TRADE) ---------- */
+  const rp = (n) => 'Rp' + Number(n || 0).toLocaleString('id-ID')
+  const asNum = (n) => Number(n || 0).toLocaleString('id-ID', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  async function loadTrade() {
+    const sesBox = $('tradeSession'), stats = $('tradeStats'), board = $('tradeBoard')
+    if (!sesBox) return
+    try {
+      const [ses, lb] = await Promise.all([
+        fetch('/api/trading/session').then((r) => r.json()),
+        fetch('/api/trading/leaderboard').then((r) => r.json()),
+      ])
+      sesBox.className = 'tag ' + (ses.active ? 'cmd' : '')
+      sesBox.textContent = (ses.active ? '🚀 ' : '🌙 ') + (ses.label || 'Pasar normal') + (ses.boostPct ? ` · boost +${asNum(ses.boostPct)}%` : '')
+      const rows = lb.richest || []
+      const total = Number(lb.total || 0)
+      const richest = rows[0]
+      const avg = rows.length ? rows.reduce((a, r) => a + Number(r.netWorth || 0), 0) / rows.length : 0
+      stats.innerHTML = [
+        ['TRADER', String(total), ''],
+        ['TERKAYA', richest ? richest.username : '—', 'up'],
+        ['ASET TERKAYA', richest ? '$AS ' + asNum(richest.netWorth) : '—', 'up'],
+        ['RATA-RATA TOP 12', '$AS ' + asNum(avg), ''],
+      ].map(([k, v, c]) => `<div class="tag" style="display:block;padding:9px 11px"><span style="display:block;font-size:9.5px;color:var(--muted);letter-spacing:.08em">${k}</span><b style="font-size:15px" class="${c}">${esc(v)}</b></div>`).join('')
+      const line = (row) => `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;border-bottom:1px solid var(--line)"><b style="min-width:22px;color:var(--gold)">${row.rank}</b><span style="flex:1;color:var(--ink)">${esc(row.username)}</span><b class="mono" style="color:var(--lime)">$${'AS'} ${asNum(row.netWorth)}</b></div>`
+      board.innerHTML = rows.slice(0, 5).map(line).join('') + (total > 5 ? `<div class="tiny" style="margin-top:8px">+${total - 5} trader lain — lihat semua di halaman UMI TRADE.</div>` : '')
+    } catch (error) {
+      sesBox.className = 'tag'
+      sesBox.textContent = '⚠️ status pasar belum bisa dimuat'
+      stats.innerHTML = ''
+      board.innerHTML = '<div class="tiny">Papan peringkat belum tersedia.</div>'
+    }
+  }
+  loadTrade()
+
   const grid = $('gameGrid')
   for (const [key, g] of Object.entries(GAME_INFO)) {
     const d = document.createElement('button')

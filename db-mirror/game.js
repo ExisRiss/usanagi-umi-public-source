@@ -36,7 +36,7 @@ import { fileURLToPath } from 'node:url'
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 let GAME_TOKEN = ''
 try { GAME_TOKEN = fs.readFileSync(path.join(process.cwd(), 'game-token.txt'), 'utf8').trim() } catch {}
-if (!GAME_TOKEN) GAME_TOKEN = String(process.env.UMI_GAME_TOKEN || '').trim()
+if (!GAME_TOKEN) GAME_TOKEN = String(process.env.UMI_GAME_TOKEN || process.env.GAME_TOKEN || '').trim()
 
 /*
  * Mode masuk bebas (open join).
@@ -60,6 +60,8 @@ const OPEN_JOIN_DEFAULT = String(process.env.UMI_GAME_OPEN_JOIN || '1').toLowerC
  *   POST { token } -> { ok, user:{ username, roles, owner } }
  * Bisa ditimpa lewat env UMI_VERIFY_URL kalau backend pindah lagi. */
 const VERIFY_URL = String(process.env.UMI_VERIFY_URL || 'https://jadibot-alzriss.gwenna.my.id/api/platform/verify-token').trim()
+/* Alamat publik game dipakai saat bot mengirim tautan trading. */
+const PUBLIC_URL = String(process.env.UMI_GAME_PUBLIC_URL || 'https://game.gwenna.my.id').trim().replace(/\/+$/, '')
 /* Endpoint top up: tarik saldo UMI (Rp) jadi $AS lewat platform. */
 const TOPUP_URL = String(process.env.UMI_TOPUP_URL || 'https://jadibot-alzriss.gwenna.my.id/api/platform/game-topup').trim()
 
@@ -802,17 +804,31 @@ export async function gameHandler(req, res) {
         const url = new URL(req.url || '/', 'http://localhost')
         const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
         try {
-            if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'umi-web-games', rooms: rooms.size, games: Object.keys(GAMES), openJoinDefault: OPEN_JOIN_DEFAULT, time: new Date().toISOString() })
+            if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'umi-web-games', version: '2.0.0', rooms: rooms.size, games: Object.keys(GAMES), openJoinDefault: OPEN_JOIN_DEFAULT, trading: { accounts: Object.keys(tradingDB.accounts || {}).length, session: sessionInfo().label }, time: new Date().toISOString() })
             /* Aset statis: logo, dadu, kartu, papan game */
             if (req.method === 'GET' && parts[0] === 'assets' && parts.length === 2 && /^[a-z0-9._-]+$/i.test(parts[1])) {
                 const file = path.join(HERE, 'assets', parts[1])
                 try {
                     const buf = fs.readFileSync(file)
                     const ext = path.extname(file).toLowerCase()
-                    const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' }[ext] || 'application/octet-stream'
+                    const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon', '.woff2': 'font/woff2' }[ext] || 'application/octet-stream'
                     res.writeHead(200, { 'Content-Type': mime, 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=86400' })
                     return res.end(buf)
                 } catch {}
+            }
+            /* Ikon & manifest: dipakai browser (favicon/PWA) dan preview tautan.
+             * Semua berkasnya ada di /assets supaya satu tempat. */
+            if (req.method === 'GET') {
+                const iconFile = { '/favicon.ico': 'icon-32.png', '/favicon.svg': 'favicon.svg', '/favicon.png': 'icon-32.png', '/apple-touch-icon.png': 'apple-touch-icon.png', '/apple-touch-icon-precomposed.png': 'apple-touch-icon.png', '/icon-192.png': 'icon-192.png', '/icon-512.png': 'icon-512.png', '/og.png': 'og-umi-trade.png', '/manifest.webmanifest': 'manifest.webmanifest', '/site.webmanifest': 'manifest.webmanifest' }[url.pathname]
+                if (iconFile) {
+                    try {
+                        const buf = fs.readFileSync(path.join(HERE, 'assets', iconFile))
+                        const ext = path.extname(iconFile).toLowerCase()
+                        const mime = { '.png': 'image/png', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon' }[ext] || 'application/octet-stream'
+                        res.writeHead(200, { 'Content-Type': mime, 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=604800' })
+                        return res.end(buf)
+                    } catch { }
+                }
             }
             /* Trading page */
             if (req.method === 'GET' && (url.pathname === '/trading' || url.pathname === '/trading/')) {
@@ -822,6 +838,27 @@ export async function gameHandler(req, res) {
                     return res.end(tradingHtml)
                 } catch (e) {
                     return sendJson(res, 500, { error: 'Trading page not found' })
+                }
+            }
+            /* Trading offline: game trading mandiri (localStorage) untuk command /tradingoffline.
+             * `/trading-offline.html` versi normal (aset dari /assets), `/trading-offline.bot.html`
+             * versi bundel satu berkas (semua aset data-URI) yang dikirim bot sebagai dokumen. */
+            if (req.method === 'GET' && ['/trading-offline', '/trading-offline.html', '/offline'].includes(url.pathname)) {
+                try {
+                    const offlineHtml = fs.readFileSync(path.join(HERE, 'trading-offline.html'), 'utf8')
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(offlineHtml), 'Cache-Control': 'no-cache' })
+                    return res.end(offlineHtml)
+                } catch (e) {
+                    return sendJson(res, 500, { error: 'Halaman trading offline belum tersedia' })
+                }
+            }
+            if (req.method === 'GET' && ['/trading-offline.bot.html', '/trading-offline-bundle.html'].includes(url.pathname)) {
+                try {
+                    const bundle = fs.readFileSync(path.join(HERE, 'assets', 'trading-offline.bot.html'))
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': bundle.length, 'Cache-Control': 'public, max-age=3600' })
+                    return res.end(bundle)
+                } catch (e) {
+                    return sendJson(res, 404, { error: 'Bundel offline belum tersedia' })
                 }
             }
             /* Trading API */
@@ -971,6 +1008,57 @@ const frac = (n) => { const v = Math.sin(n * 12.9898) * 43758.5453; return v - M
 const noise = (seed, x) => { const i = Math.floor(x), f = x - i, a = frac(i * 1.7 + seed), b = frac((i + 1) * 1.7 + seed), u = f * f * (3 - 2 * f); return a + (b - a) * u }
 
 /** Harga mentah satu saham pada tick tertentu (deterministik). */
+/* ── SESI NAIK ────────────────────────────────────────────────────────────
+ * Setiap hari 00.00–02.00 WITA pasar naik terus (+0,20% per menit), lalu
+ * diturunkan perlahan sampai 06.00 supaya tidak ada jurang harga. Bisa juga
+ * dinyalakan di luar jadwal lewat tradingDB.market.pump {start,end,rate,cap}.
+ * Semua faktor hanya fungsi dari tick + konfigurasi, jadi setiap klien
+ * menghitung harga yang sama. */
+function pumpFactor(tick) {
+    const ms = tick * TICK_MS
+    let pct = 0
+    const win = (tradingDB && tradingDB.market && tradingDB.market.pump) || null
+    if (win && ms > Number(win.start || 0) && ms < Number(win.end || 0)) {
+        const rate = Number(win.rate) || PUMP_SESSION_RATE
+        const cap = Number(win.cap) || PUMP_SESSION_CAP
+        pct += Math.min(cap, ((ms - Number(win.start)) / 60000) * rate)
+    }
+    const localMin = ((ms + PUMP_TZ_OFFSET) % 86400000) / 60000
+    if (localMin >= PUMP_SESSION_START_MIN && localMin < PUMP_SESSION_END_MIN) {
+        pct += Math.min(PUMP_SESSION_CAP, (localMin - PUMP_SESSION_START_MIN) * PUMP_SESSION_RATE)
+    } else if (localMin >= PUMP_SESSION_END_MIN && localMin < PUMP_SESSION_END_MIN + PUMP_DECAY_MIN) {
+        pct += Math.max(0, PUMP_SESSION_CAP * (1 - (localMin - PUMP_SESSION_END_MIN) / PUMP_DECAY_MIN))
+    }
+    return 1 + pct
+}
+
+/** Info sesi untuk klien/bot: aktif atau tidak, sampai kapan, naik berapa persen. */
+function sessionInfo(tick = nowTick()) {
+    const ms = tick * TICK_MS
+    const localMin = ((ms + PUMP_TZ_OFFSET) % 86400000) / 60000
+    const win = (tradingDB && tradingDB.market && tradingDB.market.pump) || null
+    const dailyActive = localMin >= PUMP_SESSION_START_MIN && localMin < PUMP_SESSION_END_MIN
+    const winActive = Boolean(win && ms > Number(win.start || 0) && ms < Number(win.end || 0))
+    const local = new Date(ms + PUMP_TZ_OFFSET)
+    const endOfSession = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), PUMP_SESSION_END_MIN / 60, 0) - PUMP_TZ_OFFSET)
+    let until = dailyActive ? endOfSession.getTime() : null
+    if (winActive) until = Math.min(until || Infinity, Number(win.end)) || Number(win.end)
+    const boost = round2((pumpFactor(tick) - 1) * 100)
+    return {
+        active: dailyActive || winActive, boostPct: boost, until,
+        timezone: 'WITA (UTC+8)',
+        label: dailyActive ? 'SESI NAIK · sampai 02.00 WITA' : winActive ? 'SESI NAIK · jadwal khusus' : 'Pasar normal',
+        next: nextSessionStart(ms),
+    }
+}
+
+function nextSessionStart(ms) {
+    const local = new Date(ms + PUMP_TZ_OFFSET)
+    const localMidnight = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate(), 0, 0, 0) - PUMP_TZ_OFFSET
+    const todayStart = localMidnight
+    return todayStart > ms ? todayStart : todayStart + 86400000
+}
+
 function priceAt(sym, tick) {
     const item = MARKET_BY_SYM[sym]
     if (!item) return 1
@@ -978,7 +1066,7 @@ function priceAt(sym, tick) {
     const trend = (noise(s, tick / 4800) - 0.5) * 0.30    // tren beberapa jam
     const swing = (noise(s + 13, tick / 240) - 0.5) * 0.13 // ayunan puluhan menit
     const micro = (noise(s + 41, tick / 8) - 0.5) * 0.015  // gerak tiap tick
-    return Math.max(0.05, item.base * (1 + trend + swing + micro))
+    return Math.max(0.05, item.base * (1 + trend + swing + micro) * pumpFactor(tick))
 }
 const round2 = (n) => Math.round(n * 100) / 100
 
@@ -1082,6 +1170,11 @@ function candlesOf(sym, ticksPerCandle = 20, limit = 96, tick = nowTick()) {
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * TRADING SYSTEM - $AS (Dollar AS)
+ *
+ * Identitas akun:
+ *   wa:<nomor>   akun dari bot (pendaftaran WhatsApp — bot utama/jadibot)
+ *   web:<hash>   akun dari website (login memakai token akun)
+ *   Satu nomor bisa dipakai bot & website lewat kode taut (link code).
  * ═══════════════════════════════════════════════════════════════════════════ */
 const TRADING_DB_FILE = path.join(HERE, 'trading-data.json')
 const INITIAL_BALANCE = 100
@@ -1095,35 +1188,109 @@ const REDEEM_CODES = {
     'WELCOME': { amount: 15, maxUses: 200, used: 0 },
     'BONUS': { amount: 10, maxUses: 500, used: 0 },
 }
-let tradingDB = { users: {}, lastDailyReset: '', deposits: {} }
-const realTrades = new Map() // sym -> transaksi asli pemain (in-memory)
+const PUMP_TZ_OFFSET = 8 * 3600 * 1000           // WITA (Asia/Makassar)
+const PUMP_SESSION_START_MIN = 0                 // sesi harian: 00.00
+const PUMP_SESSION_END_MIN = 120                 // sampai 02.00 WITA
+const PUMP_SESSION_RATE = 0.0020                 // +0,20% per menit dalam sesi
+const PUMP_SESSION_CAP = 0.25                    // maksimal +25% dari sesi harian
+const PUMP_DECAY_MIN = 360                       // sesudah 02.00 diturunkan perlahan s/d 06.00
+
+let tradingDB = { users: {}, accounts: {}, sessions: {}, loginCodes: {}, lastDailyReset: '', deposits: {}, market: {} }
+const realTrades = new Map()
+const codeTimers = new Map()
+
+/* ── akun ───────────────────────────────────────────────────────────────── */
+function hashToken(token) { return crypto.createHash('sha1').update(String(token)).digest('hex').slice(0, 16) }
+const accountIdForNumber = (number) => `wa:${String(number).replace(/\D/g, '')}`
+const accountIdForToken = (token) => `web:${hashToken(token)}`
+
 function loadTradingDB() {
     try {
         const parsed = JSON.parse(fs.readFileSync(TRADING_DB_FILE, 'utf8'))
-        tradingDB = { users: parsed.users || {}, lastDailyReset: parsed.lastDailyReset || '', deposits: parsed.deposits || {} }
-    } catch { tradingDB = { users: {}, lastDailyReset: '', deposits: {} }; saveTradingDB() }
+        tradingDB = {
+            users: parsed.users || {},
+            accounts: parsed.accounts || {},
+            sessions: parsed.sessions || {},
+            loginCodes: parsed.loginCodes || {},
+            lastDailyReset: parsed.lastDailyReset || '',
+            deposits: parsed.deposits || {},
+            market: parsed.market || {},
+        }
+    } catch { tradingDB = { users: {}, accounts: {}, sessions: {}, loginCodes: {}, lastDailyReset: '', deposits: {}, market: {} } }
+    /* migrasi akun lama (key = token) → accounts + sessions */
+    let migrated = 0
+    for (const [key, user] of Object.entries(tradingDB.users || {})) {
+        const id = accountIdForToken(key)
+        if (!tradingDB.accounts[id]) {
+            tradingDB.accounts[id] = {
+                id, number: String(user.number || ''), username: String(user.username || ''),
+                source: 'web', balance: Number(user.balance) || 0, portfolio: user.portfolio || {},
+                history: Array.isArray(user.history) ? user.history : [], realized: Number(user.realized) || 0,
+                deposits: Array.isArray(user.deposits) ? user.deposits : [], createdAt: user.createdAt || new Date().toISOString(),
+            }
+            migrated++
+        }
+        tradingDB.sessions[key] = id
+    }
+    if (migrated) console.log(`[trading] migrasi ${migrated} akun lama ke model akun baru`)
+    /* buang kode login kedaluwarsa */
+    const now = Date.now()
+    for (const [code, info] of Object.entries(tradingDB.loginCodes || {})) if (!info || info.expiresAt < now) delete tradingDB.loginCodes[code]
+    saveTradingDB()
 }
 function saveTradingDB() { try { fs.writeFileSync(TRADING_DB_FILE, JSON.stringify(tradingDB, null, 2)) } catch (e) { console.log('[trading] save error:', e.message) } }
-function getTradingUser(token) {
-    if (!tradingDB.users[token]) {
-        tradingDB.users[token] = { balance: INITIAL_BALANCE, portfolio: {}, history: [], lastDailyBonus: '', realized: 0, deposits: [] }
-        saveTradingDB()
+
+function ensureAccount(accountId, patch = {}) {
+    let account = tradingDB.accounts[accountId]
+    if (!account) {
+        account = {
+            id: accountId, number: '', username: '', source: accountId.startsWith('wa:') ? 'bot' : 'web',
+            balance: INITIAL_BALANCE, portfolio: {}, history: [], realized: 0, deposits: [],
+            createdAt: new Date().toISOString(),
+        }
+        tradingDB.accounts[accountId] = account
+        account.history.push({ type: 'bonus', amount: INITIAL_BALANCE, time: account.createdAt, symbol: '$AS', note: 'Saldo awal $AS' })
     }
-    return tradingDB.users[token]
+    Object.assign(account, patch)
+    account.balance = round2(Number(account.balance) || 0)
+    if (!account.portfolio || typeof account.portfolio !== 'object') account.portfolio = {}
+    if (!Array.isArray(account.history)) account.history = []
+    if (!Array.isArray(account.deposits)) account.deposits = []
+    return account
 }
-function checkDailyBonus(user) {
+
+/** Akun untuk sebuah token sesi (login website atau kode bot). */
+function accountForToken(token) {
+    const key = String(token || '')
+    if (!key) return null
+    let id = tradingDB.sessions[key]
+    if (!id || !tradingDB.accounts[id]) {
+        id = accountIdForToken(key)
+        tradingDB.sessions[key] = id
+    }
+    return ensureAccount(id)
+}
+function accountForNumber(number) { return ensureAccount(accountIdForNumber(number)) }
+
+function accountPublic(account) {
+    if (!account) return null
+    return { id: account.id, username: account.username || '', number: account.number || '', source: account.source || 'web', joined: account.createdAt }
+}
+
+function checkDailyBonus(account) {
     const today = new Date().toISOString().split('T')[0]
-    if (user.lastDailyBonus !== today) {
-        user.balance += DAILY_BONUS; user.lastDailyBonus = today
-        user.history.push({ type: 'daily', amount: DAILY_BONUS, time: new Date().toISOString(), symbol: '$AS' })
+    if (account.lastDailyBonus !== today) {
+        account.balance = round2(account.balance + DAILY_BONUS)
+        account.lastDailyBonus = today
+        account.history.push({ type: 'daily', amount: DAILY_BONUS, time: new Date().toISOString(), symbol: '$AS' })
         saveTradingDB(); return true
     }
     return false
 }
 
 /** Nilai portofolio pada harga sekarang + P/L belum terealisasi. */
-function portfolioView(user, tick = nowTick()) {
-    const rows = Object.entries(user.portfolio || {}).map(([sym, pos]) => {
+function portfolioView(account, tick = nowTick()) {
+    const rows = Object.entries(account.portfolio || {}).map(([sym, pos]) => {
         const price = MARKET_BY_SYM[sym] ? priceAt(sym, tick) : pos.avgPrice
         const value = price * pos.qty, cost = pos.avgPrice * pos.qty
         return {
@@ -1137,8 +1304,38 @@ function portfolioView(user, tick = nowTick()) {
     return {
         rows, equity: round2(equity), cost: round2(cost),
         unrealized: round2(equity - cost),
-        netWorth: round2(user.balance + equity),
+        netWorth: round2(account.balance + equity),
     }
+}
+
+/** Ringkasan singkat akun — dipakai bot & leaderboard. */
+function accountSummary(account, tick = nowTick()) {
+    const view = portfolioView(account, tick)
+    const board = leaderboardRows(tick)
+    const me = board.find((row) => row.id === account.id)
+    return {
+        username: account.username || account.number || 'Trader',
+        number: account.number || '',
+        balance: round2(account.balance), equity: view.equity, netWorth: view.netWorth,
+        unrealized: view.unrealized, realized: round2(account.realized || 0),
+        positions: view.rows, rank: me ? me.rank : null, total: board.length,
+        richest: board[0] || null, poorest: board[board.length - 1] || null,
+    }
+}
+
+/** Papan peringkat: terkaya sampai termiskin (nilai aset, bukan hanya kas). */
+function leaderboardRows(tick = nowTick()) {
+    const rows = Object.values(tradingDB.accounts || {}).map((account) => {
+        const view = portfolioView(account, tick)
+        return {
+            id: account.id, username: account.username || account.number || 'Trader', number: account.number || '',
+            source: account.source || 'web', netWorth: view.netWorth, balance: round2(account.balance),
+            equity: view.equity, pl: round2(view.unrealized + (account.realized || 0)), positions: view.rows.length,
+        }
+    })
+    rows.sort((a, b) => b.netWorth - a.netWorth)
+    rows.forEach((row, index) => { row.rank = index + 1 })
+    return rows
 }
 
 function pushRealTrade(sym, side, price, qty, username) {
@@ -1159,11 +1356,46 @@ function feedOf(sym, limit = 40) {
 }
 
 function mapQuotes(tick = nowTick()) { return MARKETS.map((m) => quoteOf(m.sym, tick)) }
-function mapTraffic(ticks = 100) { return MARKETS.map((m) => { const q = quoteOf(m.sym), t = trafficOf(m.sym, ticks); return { ...t, name: q.name, price: q.price, changePct: q.changePct } }) }
+function mapTraffic(ticks = 100) { return MARKETS.map((m) => { const q = quoteOf(m.sym); const t = trafficOf(m.sym, ticks); return { ...t, name: q.name, price: q.price, changePct: q.changePct } }) }
+
+/* ── kode login & kode taut (dibuat bot, dipakai di website) ─────────────── */
+function createLoginCode(accountId, kind = 'login', minutes = 20) {
+    const code = String(crypto.randomInt(100000, 999999))
+    tradingDB.loginCodes[code] = { accountId, kind, expiresAt: Date.now() + minutes * 60000, createdAt: Date.now() }
+    saveTradingDB()
+    if (!codeTimers.has(code)) {
+        const timer = setTimeout(() => { delete tradingDB.loginCodes[code]; codeTimers.delete(code); saveTradingDB() }, minutes * 60000)
+        if (timer.unref) timer.unref()
+        codeTimers.set(code, timer)
+    }
+    return { code, expiresAt: tradingDB.loginCodes[code].expiresAt }
+}
+
+/** Gabungkan akun dari website ke akun WhatsApp (dipakai kode "link"). */
+function mergeAccounts(fromId, toId) {
+    if (fromId === toId) return tradingDB.accounts[toId]
+    const from = tradingDB.accounts[fromId], to = ensureAccount(toId)
+    if (!from) return to
+    to.balance = round2(to.balance + from.balance)
+    for (const [sym, pos] of Object.entries(from.portfolio || {})) {
+        const target = to.portfolio[sym]
+        if (!target) { to.portfolio[sym] = { qty: pos.qty, avgPrice: pos.avgPrice }; continue }
+        const qty = target.qty + pos.qty
+        target.avgPrice = ((target.avgPrice * target.qty) + (pos.avgPrice * pos.qty)) / (qty || 1)
+        target.qty = round2(qty)
+    }
+    to.realized = round2((to.realized || 0) + (from.realized || 0))
+    to.history = [...(from.history || []), { type: 'merge', time: new Date().toISOString(), symbol: '$AS', note: `Akun website digabung ke akun WhatsApp (+$${'AS'} ${round2(from.balance).toFixed(2)})` }, ...(to.history || [])]
+    to.deposits = [...(from.deposits || []), ...(to.deposits || [])]
+    delete tradingDB.accounts[fromId]
+    for (const [key, id] of Object.entries(tradingDB.sessions)) if (id === fromId) tradingDB.sessions[key] = toId
+    saveTradingDB()
+    return to
+}
 
 async function handleTradingAPI(req, res, url, parts) {
     try {
-        /* ── Masuk / verifikasi token ── */
+        /* ── Masuk dengan token akun website ── */
         if (req.method === 'POST' && parts[0] === 'login') {
             const body = await readBody(req)
             const token = String(body.token || '')
@@ -1180,40 +1412,95 @@ async function handleTradingAPI(req, res, url, parts) {
                 if (!vd.ok) return sendJson(res, 401, { error: vd.error || 'Token tidak valid' })
                 verifiedUser = vd.user || {}
             } catch (e) { return sendJson(res, 500, { error: 'Verifikasi gagal: ' + e.message }) }
-            const user = getTradingUser(token)
-            const hadBonus = checkDailyBonus(user)
-            const view = portfolioView(user)
+            const account = accountForToken(token)
+            account.username = String(verifiedUser.username || account.username || '')
+            const hadBonus = checkDailyBonus(account)
+            const view = portfolioView(account)
             saveTradingDB()
             return sendJson(res, 200, {
                 ok: true, token,
                 user: { username: verifiedUser.username || '', roles: verifiedUser.roles || [], owner: Boolean(verifiedUser.owner), joined: verifiedUser.joined || null },
-                balance: round2(user.balance), portfolio: user.portfolio, equity: view.equity, netWorth: view.netWorth,
-                realized: round2(user.realized || 0),
-                history: (user.history || []).slice(-200), dailyBonus: hadBonus ? DAILY_BONUS : 0,
-                deposits: (user.deposits || []).slice(-50),
-                market: mapQuotes(),
+                account: accountPublic(account),
+                balance: round2(account.balance), portfolio: account.portfolio, equity: view.equity, netWorth: view.netWorth,
+                realized: round2(account.realized || 0),
+                history: (account.history || []).slice(-200), dailyBonus: hadBonus ? DAILY_BONUS : 0,
+                deposits: (account.deposits || []).slice(-50),
+                market: mapQuotes(), session: sessionInfo(),
             })
+        }
+
+        /* ── Masuk dengan kode dari bot ── */
+        if (req.method === 'POST' && parts[0] === 'code-login') {
+            const body = await readBody(req)
+            const code = String(body.code || '').replace(/\D/g, '')
+            const entry = tradingDB.loginCodes[code]
+            if (!entry || entry.expiresAt < Date.now()) return sendJson(res, 400, { error: 'Kode tidak valid atau sudah kedaluwarsa. Kirim ulang perintah di bot.' })
+            if (entry.kind === 'link') return sendJson(res, 400, { error: 'Kode ini untuk menautkan akun website, bukan untuk masuk.' })
+            const account = ensureAccount(entry.accountId)
+            const sessionToken = `bot-${crypto.randomBytes(16).toString('base64url')}`
+            tradingDB.sessions[sessionToken] = account.id
+            delete tradingDB.loginCodes[code]
+            const hadBonus = checkDailyBonus(account)
+            saveTradingDB()
+            const view = portfolioView(account)
+            return sendJson(res, 200, {
+                ok: true, token: sessionToken, viaBot: true,
+                user: { username: account.username || account.number || 'Trader', roles: ['user'], owner: false, joined: account.createdAt },
+                account: accountPublic(account),
+                balance: round2(account.balance), portfolio: account.portfolio, equity: view.equity, netWorth: view.netWorth,
+                realized: round2(account.realized || 0), history: (account.history || []).slice(-200),
+                dailyBonus: hadBonus ? DAILY_BONUS : 0, deposits: (account.deposits || []).slice(-50),
+                market: mapQuotes(), session: sessionInfo(),
+            })
+        }
+
+        /* ── Tautkan akun website ke akun WhatsApp ── */
+        if (req.method === 'POST' && parts[0] === 'link') {
+            const body = await readBody(req)
+            const token = String(body.token || '')
+            const code = String(body.code || '').replace(/\D/g, '')
+            if (!token) return sendJson(res, 401, { error: 'Masuk dulu dengan token website.' })
+            const entry = tradingDB.loginCodes[code]
+            if (!entry || entry.expiresAt < Date.now() || entry.kind !== 'link') return sendJson(res, 400, { error: 'Kode taut tidak valid atau kedaluwarsa.' })
+            const fromAccount = accountForToken(token)
+            const merged = mergeAccounts(fromAccount.id, entry.accountId)
+            delete tradingDB.loginCodes[code]
+            saveTradingDB()
+            const view = portfolioView(merged)
+            return sendJson(res, 200, { ok: true, account: accountPublic(merged), balance: round2(merged.balance), portfolio: merged.portfolio, equity: view.equity, netWorth: view.netWorth, positions: view.rows, history: (merged.history || []).slice(-200) })
         }
 
         /* ── Data akun ── */
         if (req.method === 'GET' && parts[0] === 'me') {
             const token = url.searchParams.get('token')
             if (!token) return sendJson(res, 400, { error: 'Token diperlukan' })
-            const user = getTradingUser(token); checkDailyBonus(user)
-            const view = portfolioView(user)
+            const account = accountForToken(token); checkDailyBonus(account)
+            const view = portfolioView(account)
             return sendJson(res, 200, {
-                ok: true, balance: round2(user.balance), portfolio: user.portfolio,
+                ok: true, account: accountPublic(account), balance: round2(account.balance), portfolio: account.portfolio,
                 equity: view.equity, netWorth: view.netWorth, unrealized: view.unrealized,
-                positions: view.rows, realized: round2(user.realized || 0),
-                history: (user.history || []).slice(-200),
-                deposits: (user.deposits || []).slice(-50),
+                positions: view.rows, realized: round2(account.realized || 0),
+                history: (account.history || []).slice(-200), deposits: (account.deposits || []).slice(-50),
+                session: sessionInfo(),
             })
+        }
+
+        /* ── Papan peringkat ── */
+        if (req.method === 'GET' && parts[0] === 'leaderboard') {
+            const rows = leaderboardRows()
+            const withPhoto = rows.map((row) => ({
+                rank: row.rank, username: row.username, number: row.number, source: row.source,
+                netWorth: row.netWorth, balance: row.balance, equity: row.equity, pl: row.pl, positions: row.positions,
+            }))
+            return sendJson(res, 200, { ok: true, total: withPhoto.length, richest: withPhoto.slice(0, 12), poorest: [...withPhoto].reverse().slice(0, 12), time: Date.now() })
         }
 
         /* ── Pasar ── */
         if (req.method === 'GET' && parts[0] === 'market') {
-            const view = portfolioView(getTradingUser(String(url.searchParams.get('token') || '')))
-            return sendJson(res, 200, { ok: true, symbols: mapQuotes(), time: Date.now(), tickMs: TICK_MS, holdings: view.rows })
+            const token = String(url.searchParams.get('token') || '')
+            const account = token ? accountForToken(token) : null
+            const view = account ? portfolioView(account) : { rows: [], equity: 0, unrealized: 0, netWorth: 0 }
+            return sendJson(res, 200, { ok: true, symbols: mapQuotes(), time: Date.now(), tickMs: TICK_MS, holdings: view.rows, session: sessionInfo() })
         }
         if (req.method === 'GET' && parts[0] === 'candles') {
             const sym = String(url.searchParams.get('symbol') || 'UMI').toUpperCase()
@@ -1234,6 +1521,7 @@ async function handleTradingAPI(req, res, url, parts) {
         if (req.method === 'GET' && parts[0] === 'codes') {
             return sendJson(res, 200, { ok: true, codes: Object.entries(REDEEM_CODES).map(([code, c]) => ({ code, amount: c.amount, left: Math.max(0, c.maxUses - c.used) })) })
         }
+        if (req.method === 'GET' && parts[0] === 'session') return sendJson(res, 200, { ok: true, ...sessionInfo() })
 
         /* ── Stream real-time (SSE) ── */
         if (req.method === 'GET' && parts[0] === 'stream') {
@@ -1244,15 +1532,13 @@ async function handleTradingAPI(req, res, url, parts) {
                     const current = nowTick()
                     if (current !== last) {
                         last = current
-                        res.write(`data: ${JSON.stringify({ type: 'market', time: Date.now(), symbols: mapQuotes(current), traffic: mapTraffic(100) })}\n\n`)
-                    } else {
-                        res.write(': ping\n\n')
-                    }
+                        res.write(`data: ${JSON.stringify({ type: 'market', time: Date.now(), symbols: mapQuotes(current), traffic: mapTraffic(100), session: sessionInfo() })}\n\n`)
+                    } else res.write(': ping\n\n')
                 } catch { cleanup() }
             }
             const timer = setInterval(tick, 2000)
             const cleanup = () => { clearInterval(timer) }
-            res.write(`data: ${JSON.stringify({ type: 'hello', tickMs: TICK_MS, symbols: mapQuotes(), traffic: mapTraffic(100) })}\n\n`)
+            res.write(`data: ${JSON.stringify({ type: 'hello', tickMs: TICK_MS, symbols: mapQuotes(), traffic: mapTraffic(100), session: sessionInfo() })}\n\n`)
             req.on('close', cleanup)
             return
         }
@@ -1270,41 +1556,41 @@ async function handleTradingAPI(req, res, url, parts) {
             if (!Number.isFinite(amount) || amount <= 0) return sendJson(res, 400, { error: 'Jumlah lot tidak valid.' })
             if (amount > 1000000) return sendJson(res, 400, { error: 'Jumlah terlalu besar.' })
             const price = round2(priceAt(sym, nowTick()))
-            const user = getTradingUser(token)
+            const account = accountForToken(token)
             const total = round2(amount * price)
             if (side === 'buy') {
-                if (user.balance < total) {
+                if (account.balance < total) {
                     return sendJson(res, 400, {
-                        error: `Saldo tidak cukup. Butuh $AS ${total.toFixed(2)} (${amount} × ${price.toFixed(2)}), saldo kamu $AS ${Number(user.balance).toFixed(2)}.`,
-                        code: 'INSUFFICIENT', need: total, balance: round2(user.balance), maxAmount: Math.floor((user.balance / price) * 100) / 100,
+                        error: `Saldo tidak cukup. Butuh $AS ${total.toFixed(2)} (${amount} × ${price.toFixed(2)}), saldo kamu $AS ${Number(account.balance).toFixed(2)}.`,
+                        code: 'INSUFFICIENT', need: total, balance: round2(account.balance), maxAmount: Math.floor((account.balance / price) * 100) / 100,
                     })
                 }
-                user.balance = round2(user.balance - total)
-                const pos = user.portfolio[sym] || { qty: 0, avgPrice: 0 }
+                account.balance = round2(account.balance - total)
+                const pos = account.portfolio[sym] || { qty: 0, avgPrice: 0 }
                 const nq = pos.qty + amount
                 pos.avgPrice = ((pos.avgPrice * pos.qty) + total) / nq
                 pos.qty = nq
-                user.portfolio[sym] = pos
+                account.portfolio[sym] = pos
             } else {
-                const pos = user.portfolio[sym]
+                const pos = account.portfolio[sym]
                 if (!pos || pos.qty < amount) {
                     return sendJson(res, 400, { error: `Posisi ${sym} tidak cukup. Kamu punya ${pos ? pos.qty.toFixed(2) : '0'} lot.`, code: 'NO_POSITION', holding: pos ? pos.qty : 0 })
                 }
-                user.balance = round2(user.balance + total)
-                user.realized = round2((user.realized || 0) + (price - pos.avgPrice) * amount)
+                account.balance = round2(account.balance + total)
+                account.realized = round2((account.realized || 0) + (price - pos.avgPrice) * amount)
                 pos.qty = round2(pos.qty - amount)
-                if (pos.qty <= 0.000001) delete user.portfolio[sym]
+                if (pos.qty <= 0.000001) delete account.portfolio[sym]
             }
-            user.history.push({ type: side, symbol: sym, amount, price, total, time: new Date().toISOString() })
-            pushRealTrade(sym, side, price, amount, '')
+            account.history.push({ type: side, symbol: sym, amount, price, total, time: new Date().toISOString() })
+            pushRealTrade(sym, side, price, amount, account.username)
             saveTradingDB()
-            const view = portfolioView(user)
+            const view = portfolioView(account)
             return sendJson(res, 200, {
                 ok: true, symbol: sym, side, amount, price, total,
-                balance: round2(user.balance), portfolio: user.portfolio, positions: view.rows,
+                balance: round2(account.balance), portfolio: account.portfolio, positions: view.rows,
                 equity: view.equity, netWorth: view.netWorth, unrealized: view.unrealized,
-                realized: round2(user.realized || 0),
-                history: (user.history || []).slice(-200),
+                realized: round2(account.realized || 0),
+                history: (account.history || []).slice(-200),
             })
         }
 
@@ -1313,15 +1599,15 @@ async function handleTradingAPI(req, res, url, parts) {
             const body = await readBody(req)
             const { token, code } = body
             if (!token || !code) return sendJson(res, 400, { error: 'Token dan kode diperlukan' })
-            const user = getTradingUser(token); const key = String(code).toUpperCase().trim()
+            const account = accountForToken(token); const key = String(code).toUpperCase().trim()
             const rc = REDEEM_CODES[key]
             if (!rc) return sendJson(res, 400, { error: 'Kode tidak valid.' })
             if (rc.used >= rc.maxUses) return sendJson(res, 400, { error: 'Kode sudah habis.' })
-            if ((user.history || []).some(h => h.type === 'redeem' && h.code === key)) return sendJson(res, 400, { error: 'Kode sudah kamu pakai.' })
-            user.balance = round2(user.balance + rc.amount); rc.used++
-            user.history.push({ type: 'redeem', code: key, amount: rc.amount, time: new Date().toISOString() })
+            if ((account.history || []).some(h => h.type === 'redeem' && h.code === key)) return sendJson(res, 400, { error: 'Kode sudah kamu pakai.' })
+            account.balance = round2(account.balance + rc.amount); rc.used++
+            account.history.push({ type: 'redeem', code: key, amount: rc.amount, time: new Date().toISOString() })
             saveTradingDB()
-            return sendJson(res, 200, { ok: true, code: key, amount: rc.amount, balance: round2(user.balance) })
+            return sendJson(res, 200, { ok: true, code: key, amount: rc.amount, balance: round2(account.balance) })
         }
 
         /* ── Top up $AS dari saldo UMI (Rp) ── */
@@ -1329,7 +1615,6 @@ async function handleTradingAPI(req, res, url, parts) {
             const body = await readBody(req)
             const token = String(body.token || '')
             if (!token) return sendJson(res, 401, { error: 'Token diperlukan. Masuk dulu.' })
-            /* status saldo UMI tanpa menarik dana */
             if (body.action === 'status') {
                 try {
                     const r = await fetch(TOPUP_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, action: 'status' }), signal: AbortSignal.timeout(15000) })
@@ -1342,10 +1627,10 @@ async function handleTradingAPI(req, res, url, parts) {
                 return sendJson(res, 400, { error: `Nominal top up harus Rp${MIN_TOPUP_IDR.toLocaleString('id-ID')} – Rp${MAX_TOPUP_IDR.toLocaleString('id-ID')}.` })
             }
             const reference = String(body.reference || `${token.slice(0, 8)}-${Date.now()}`)
-            const user = getTradingUser(token)
-            user.deposits = user.deposits || []
-            const done = user.deposits.find(d => d.reference === reference)
-            if (done) return sendJson(res, 200, { ok: true, duplicate: true, credited: done.credit, idr: done.idr, balance: round2(user.balance), walletBalance: done.walletBalance })
+            const account = accountForToken(token)
+            account.deposits = account.deposits || []
+            const done = account.deposits.find(d => d.reference === reference)
+            if (done) return sendJson(res, 200, { ok: true, duplicate: true, credited: done.credit, idr: done.idr, balance: round2(account.balance), walletBalance: done.walletBalance })
             let payload
             try {
                 const r = await fetch(TOPUP_URL, {
@@ -1357,14 +1642,14 @@ async function handleTradingAPI(req, res, url, parts) {
                 if (!r.ok || !payload.ok) return sendJson(res, r.status === 402 ? 402 : 400, { ok: false, error: payload.error || 'Top up gagal.' })
             } catch (e) { return sendJson(res, 502, { ok: false, error: 'Tidak bisa menghubungi platform: ' + e.message }) }
             const credit = round2(Number(payload.credited) || 0)
-            user.balance = round2(user.balance + credit)
-            user.deposits.push({ reference, idr: amountIdr, credit, walletBalance: payload.walletBalance, time: new Date().toISOString() })
-            user.history.push({ type: 'topup', amount: credit, idr: amountIdr, reference, time: new Date().toISOString() })
+            account.balance = round2(account.balance + credit)
+            account.deposits.push({ reference, idr: amountIdr, credit, walletBalance: payload.walletBalance, time: new Date().toISOString() })
+            account.history.push({ type: 'topup', amount: credit, idr: amountIdr, reference, time: new Date().toISOString() })
             saveTradingDB()
-            return sendJson(res, 200, { ok: true, credited: credit, idr: amountIdr, balance: round2(user.balance), walletBalance: payload.walletBalance, rate: payload.rate })
+            return sendJson(res, 200, { ok: true, credited: credit, idr: amountIdr, balance: round2(account.balance), walletBalance: payload.walletBalance, rate: payload.rate })
         }
 
-        /* ── Kredit dari platform (internal) ── */
+        /* ── Kredit/debit dari bot (internal) ── */
         if (req.method === 'POST' && parts[0] === 'credit') {
             const body = await readBody(req)
             if (!GAME_TOKEN || String(body.token || '') !== GAME_TOKEN) return sendJson(res, 401, { error: 'Tidak sah.' })
@@ -1372,16 +1657,69 @@ async function handleTradingAPI(req, res, url, parts) {
             const credit = round2(Number(body.amount) || 0)
             const reference = String(body.reference || '')
             if (!target || !Number.isFinite(credit) || credit === 0) return sendJson(res, 400, { error: 'Parameter tidak lengkap.' })
-            const user = getTradingUser(target)
-            /* idempoten: referensi yang sama tidak boleh dikredit dua kali
-             * (termasuk nilai negatif untuk koreksi/refund dari bot). */
-            if (reference && (user.history || []).some(h => h.type === 'topup' && h.reference === reference)) {
-                return sendJson(res, 200, { ok: true, duplicate: true, balance: round2(user.balance) })
+            const account = accountForToken(target)
+            if (reference && (account.history || []).some(h => h.type === 'topup' && h.reference === reference)) {
+                return sendJson(res, 200, { ok: true, duplicate: true, balance: round2(account.balance) })
             }
-            user.balance = round2(user.balance + credit)
-            user.history.push({ type: 'topup', amount: credit, reference, time: new Date().toISOString() })
+            account.balance = round2(account.balance + credit)
+            account.history.push({ type: 'topup', amount: credit, reference, time: new Date().toISOString() })
             saveTradingDB()
-            return sendJson(res, 200, { ok: true, balance: round2(user.balance) })
+            return sendJson(res, 200, { ok: true, balance: round2(account.balance) })
+        }
+
+        /* ═══ Endpoint bot (dipakai bot utama & jadibot) ═══ */
+        const botAuthed = GAME_TOKEN && String((req.headers['x-umi-game-token'] || '')).trim() === GAME_TOKEN
+
+        /* Atur sesi pump pasar (bot/website owner). contoh: {minutes: 1440, rate: 0.0006} */
+        if (req.method === 'POST' && parts[0] === 'session' && parts[1] === 'config') {
+            if (!botAuthed) return sendJson(res, 401, { error: 'Butuh X-UMI-Game-Token.' })
+            const body = await readBody(req)
+            if (body.off === true) {
+                delete tradingDB.market.pump
+                saveTradingDB()
+                return sendJson(res, 200, { ok: true, off: true, session: sessionInfo() })
+            }
+            const minutes = Math.max(1, Math.min(2880, Number(body.minutes) || 60))
+            const rate = Math.max(0.0001, Math.min(0.02, Number(body.rate) || 0.0006))
+            const cap = Math.max(0.02, Math.min(1, Number(body.cap) || 0.40))
+            const end = Number(body.until) || (Date.now() + minutes * 60000)
+            tradingDB.market.pump = { start: Date.now(), end, rate, cap, note: String(body.note || '').slice(0, 120), by: String(body.by || 'bot').slice(0, 60) }
+            saveTradingDB()
+            return sendJson(res, 200, { ok: true, pump: tradingDB.market.pump, session: sessionInfo() })
+        }
+        if (parts[0] === 'bot' && ['register', 'login-code', 'status'].includes(parts[1])) {
+            if (!botAuthed) return sendJson(res, 401, { error: 'Endpoint bot butuh X-UMI-Game-Token.' })
+            const body = req.method === 'POST' ? await readBody(req) : {}
+            const number = String(body.number || url.searchParams.get('number') || '').replace(/\D/g, '')
+            if (number.length < 8) return sendJson(res, 400, { error: 'Nomor WhatsApp tidak valid.' })
+
+            if (parts[1] === 'register') {
+                const existed = Boolean(tradingDB.accounts[accountIdForNumber(number)])
+                const account = accountForNumber(number)
+                account.username = String(body.username || account.username || number).slice(0, 60)
+                account.number = number
+                account.source = 'bot'
+                if (body.name) account.name = String(body.name).slice(0, 60)
+                const hadBonus = checkDailyBonus(account)
+                saveTradingDB()
+                return sendJson(res, 200, { ok: true, created: !existed, dailyBonus: hadBonus ? DAILY_BONUS : 0, summary: accountSummary(account) })
+            }
+
+            if (parts[1] === 'login-code') {
+                const account = accountForNumber(number)
+                if (!account.username) account.username = number
+                account.number = number
+                const kind = body.kind === 'link' ? 'link' : 'login'
+                const { code, expiresAt } = createLoginCode(account.id, kind)
+                saveTradingDB()
+                return sendJson(res, 200, { ok: true, code, kind, expiresAt, minutes: Math.round((expiresAt - Date.now()) / 60000), link: `${PUBLIC_URL}/trading?code=${code}`, summary: accountSummary(account), verifyUrl: `${PUBLIC_URL}/trading` })
+            }
+
+            /* status: ringkasan akun user berdasarkan nomor */
+            const account = tradingDB.accounts[accountIdForNumber(number)]
+            if (!account) return sendJson(res, 404, { ok: false, error: 'Akun trading belum terdaftar. Kirim perintah daftar dulu.', number })
+            checkDailyBonus(account); saveTradingDB()
+            return sendJson(res, 200, { ok: true, summary: accountSummary(account) })
         }
 
         return sendJson(res, 404, { error: 'Endpoint tidak ditemukan' })

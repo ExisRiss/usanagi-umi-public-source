@@ -724,6 +724,22 @@ export default async function handler(req, res) {
       return send(res, 200, result)
     }
 
+    // Auto read (centang biru otomatis) bot utama — dibaca handler bot dari
+    // settings[<jid bot>].autoread, jadi tidak perlu restart bot.
+    if (path === 'main-console/autoread' && req.method === 'GET') {
+      requireOwner(profile)
+      return send(res, 200, await botConsoleRequest('autoread', user))
+    }
+    if (path === 'main-console/autoread' && req.method === 'POST') {
+      requireOwner(profile)
+      rateLimit(req, `platform:main-autoread:${user.id}`, 30, 60 * 1000)
+      const enabled = req.body?.enabled
+      if (typeof enabled !== 'boolean') return send(res, 400, { error: 'Nilai enabled harus true atau false.' })
+      const result = await botConsoleRequest('autoread', user, { method: 'POST', body: { enabled } })
+      await audit(user, `main_bot.autoread_${enabled ? 'on' : 'off'}`, null, { sessions: Number(result.jids) || 0 })
+      return send(res, 200, result)
+    }
+
     if (path === 'main-console/main-bot' && req.method === 'POST') {
       requireOwner(profile)
       rateLimit(req, `platform:main-bot-toggle:${user.id}`, 20, 60 * 1000)

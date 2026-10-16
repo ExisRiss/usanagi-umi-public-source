@@ -1,5 +1,6 @@
 import { createHash } from 'crypto'
 import moment from 'moment-timezone'
+import { provisionTrading, tradingLine } from '../../lib/trading-provision.js'
 
 let Reg = /^([\w\s]+)\s*[,.|:\/-]\s*(\d{1,3})$/i
 
@@ -48,6 +49,18 @@ Gunakan format yang benar`)
   // sebelum jadwal autosave database berikutnya.
   await global.db.write().catch(error => console.error('[REGISTER SAVE]', error))
 
+  // Akun UMI TRADE ($AS) dibuat otomatis: username = nomor WhatsApp user.
+  // Kalau server game sedang tidak bisa dihubungi, user tetap terdaftar dan
+  // akun trading akan dibuat saat dia mengirim .trading.
+  let tradingInfo = ''
+  try {
+    const trading = await provisionTrading(m.sender, { username: name, name })
+    tradingInfo = tradingLine(trading)
+  } catch (error) {
+    console.error('[TRADING PROVISION]', error && error.message)
+    tradingInfo = '💹 Akun trading menyusul — kirim .trading untuk membuatnya'
+  }
+
   let caption = `
 🍓 PENDAFTARAN BERHASIL 🍓
 
@@ -59,6 +72,7 @@ Gunakan format yang benar`)
 🧃 Waktu   : ${time}
 
 ✨ Data berhasil disimpan di Usanagi Umi AI
+${tradingInfo ? '\n' + tradingInfo : ''}
 `.trim()
 
   await conn.sendMessage(m.chat, {

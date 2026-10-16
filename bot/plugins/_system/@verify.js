@@ -1,4 +1,5 @@
 import { createHash } from 'crypto'
+import { provisionTrading, tradingLine } from '../../lib/trading-provision.js'
 let handler = async (m, { text, usedPrefix }) => {
 let user = global.db.data.users[m.sender]
 if(user.registered !== false) throw 'Kamu Sudah mendaftar!!\nIngin daftar ulang? ketik unreg'
@@ -20,6 +21,17 @@ if(user.registered !== false) throw 'Kamu Sudah mendaftar!!\nIngin daftar ulang?
         { text:  `*[ V E R I F Y   S U C C E S ]*\n\n${p}`, timeout: 100 },
         { text:  `*[ V E R I F Y   S U C C E S S ]*\n\n${p}`, timeout: 100 },
     ];
+
+    // Akun UMI TRADE ($AS) langsung dibuat begitu verifikasi lewat bot selesai.
+    let tradingInfo = ''
+    try {
+        const owner = global.db.data.users[m.sender] || {}
+        const trading = await provisionTrading(m.sender, { username: owner.name || '', name: owner.name || '' })
+        tradingInfo = tradingLine(trading)
+    } catch (error) {
+        console.error('[TRADING PROVISION]', error && error.message)
+        tradingInfo = '💹 Akun trading menyusul — kirim .trading untuk membuatnya'
+    }
 
     const lll = await conn.sendMessage(m.chat, { text: 'Sedang menverifikasi....' }, { quoted: m });
 

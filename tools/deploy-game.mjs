@@ -85,12 +85,24 @@ async function main() {
   // pastikan /game ada
   await api('/files/create-folder', { method: 'POST', body: JSON.stringify({ root: '/', name: 'game' }) })
 
-  for (const name of ['game.js', 'game.html', 'trading.html']) {
+  for (const name of ['game.js', 'game.html', 'trading.html', 'trading-offline.html']) {
     const file = src(name)
     if (!fs.existsSync(file)) { log(`lewat ${name} (tidak ada)`); continue }
     await signedUpload(file, '/', name)
     await move(`/${name}`, `/game/${name}`)
   }
+
+  // aset gambar/ikon/offline bundle -> /game/assets (dibuat sekali, lalu diisi)
+  const assetsDir = path.join(MIRROR, 'assets')
+  if (fs.existsSync(assetsDir)) {
+    await api('/files/create-folder', { method: 'POST', body: JSON.stringify({ root: '/game', name: 'assets' }) })
+    const names = fs.readdirSync(assetsDir).filter((n) => fs.statSync(path.join(assetsDir, n)).isFile()).sort()
+    for (const name of names) {
+      await signedUpload(path.join(assetsDir, name), '/', name)
+      await move(`/${name}`, `/game/assets/${name}`)
+    }
+    log(`assets: ${names.length} berkas -> /game/assets`)
+  } else log('db-mirror/assets tidak ada — lewati')
 
   if (!FILES_ONLY) {
     const tokenEnv = fs.existsSync(path.join(SECRETS, 'game-token.env'))
