@@ -60,6 +60,8 @@ const OPEN_JOIN_DEFAULT = String(process.env.UMI_GAME_OPEN_JOIN || '1').toLowerC
  *   POST { token } -> { ok, user:{ username, roles, owner } }
  * Bisa ditimpa lewat env UMI_VERIFY_URL kalau backend pindah lagi. */
 const VERIFY_URL = String(process.env.UMI_VERIFY_URL || 'https://jadibot-alzriss.gwenna.my.id/api/platform/verify-token').trim()
+/* Endpoint top up: tarik saldo UMI (Rp) jadi $AS lewat platform. */
+const TOPUP_URL = String(process.env.UMI_TOPUP_URL || 'https://jadibot-alzriss.gwenna.my.id/api/platform/game-topup').trim()
 
 /* `cmd` adalah nama perintah WhatsApp yang benar-benar diterima plugin
  * bot/plugins/game/game-webmultiplayer.js. Catur, ular tangga, dan werewolf
@@ -937,23 +939,174 @@ export async function gameHandler(req, res) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+ * MARKET ENGINE — saham $AS
+ *
+ * Harga dihitung dari derau halus (value noise) atas "tick" 3 detik, jadi
+ * SEMUA pemain melihat pasar yang sama tanpa server perlu menyimpan riwayat.
+ * Grafik, volume, order book, dan feed transaksi diturunkan dari fungsi yang
+ * sama, sehingga tampilan konsisten di setiap klien.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+const TICK_MS = 3000
+const TICKS_PER_DAY = Math.round(86400000 / TICK_MS)
+/* Harga dasar sengaja di kisaran $AS 0,40–3,20 supaya ekonomi tetap sama
+ * dengan versi lama (saldo awal $AS 100, bonus harian 10) — pemain bisa beli
+ * puluhan lot tanpa harus menunggu top up besar. */
+const MARKETS = [
+    { sym: 'UMI', name: 'Usanagi Umi Corp',   sector: 'Teknologi',     base: 1.24 },
+    { sym: 'JDB', name: 'Jadibot Studio',     sector: 'Teknologi',     base: 2.05 },
+    { sym: 'WAG', name: 'WhatsApp Group Inc', sector: 'Komunikasi',    base: 0.86 },
+    { sym: 'PNL', name: 'Panel Hosting',      sector: 'Infrastruktur', base: 1.62 },
+    { sym: 'GME', name: 'Umi Games',          sector: 'Hiburan',       base: 0.54 },
+    { sym: 'DAN', name: 'DANA Finance',       sector: 'Keuangan',      base: 3.10 },
+    { sym: 'SRV', name: 'Server VPS',         sector: 'Infrastruktur', base: 0.94 },
+    { sym: 'BOT', name: 'Bot AI',             sector: 'Teknologi',     base: 1.78 },
+    { sym: 'TRD', name: 'Trader $AS',         sector: 'Keuangan',      base: 0.42 },
+    { sym: 'HBG', name: 'Bandwidth Hosting',  sector: 'Infrastruktur', base: 1.10 },
+]
+const MARKET_BY_SYM = Object.fromEntries(MARKETS.map((m) => [m.sym, m]))
+const TIMEFRAMES = { '1m': 20, '5m': 100, '15m': 300, '1h': 1200 } // tick per candle
+const nowTick = (time = Date.now()) => Math.floor(time / TICK_MS)
+const fnv = (text) => { let h = 2166136261; for (let i = 0; i < text.length; i++) { h ^= text.charCodeAt(i); h = Math.imul(h, 16777619) } return (h >>> 0) % 100000 }
+const frac = (n) => { const v = Math.sin(n * 12.9898) * 43758.5453; return v - Math.floor(v) }
+const noise = (seed, x) => { const i = Math.floor(x), f = x - i, a = frac(i * 1.7 + seed), b = frac((i + 1) * 1.7 + seed), u = f * f * (3 - 2 * f); return a + (b - a) * u }
+
+/** Harga mentah satu saham pada tick tertentu (deterministik). */
+function priceAt(sym, tick) {
+    const item = MARKET_BY_SYM[sym]
+    if (!item) return 1
+    const s = fnv(sym)
+    const trend = (noise(s, tick / 4800) - 0.5) * 0.30    // tren beberapa jam
+    const swing = (noise(s + 13, tick / 240) - 0.5) * 0.13 // ayunan puluhan menit
+    const micro = (noise(s + 41, tick / 8) - 0.5) * 0.015  // gerak tiap tick
+    return Math.max(0.05, item.base * (1 + trend + swing + micro))
+}
+const round2 = (n) => Math.round(n * 100) / 100
+
+/** Transaksi pasar sintetis pada satu tick — bikin feed selalu hidup. */
+function syntheticTrades(sym, tick) {
+    const s = fnv(sym) + 7
+    const count = Math.floor(noise(s + 3, tick / 5) * 4)
+    const price = priceAt(sym, tick)
+    const out = []
+    for (let k = 0; k < count; k++) {
+        const r = frac(tick * 31.7 + k * 17.3 + s)
+        const r2 = frac(tick * 11.3 + k * 7.1 + s)
+        const side = r > 0.5 ? 'buy' : 'sell'
+        out.push({
+            side,
+            price: round2(price * (1 + (r2 - 0.5) * 0.004)),
+            qty: 1 + Math.floor(r2 * 40),
+            at: tick * TICK_MS + Math.floor(r * TICK_MS),
+            market: true,
+        })
+    }
+    return out
+}
+
+/** Ringkasan kuotasi: harga, perubahan 24 jam, high/low, volume, tren. */
+function quoteOf(sym, tick = nowTick()) {
+    const item = MARKET_BY_SYM[sym]
+    const price = priceAt(sym, tick)
+    const prevClose = priceAt(sym, tick - TICKS_PER_DAY)
+    let high = price, low = price, spark = []
+    for (let i = 119; i >= 0; i--) {
+        const v = priceAt(sym, tick - i)
+        if (v > high) high = v
+        if (v < low) low = v
+        if (i % 3 === 0) spark.push(round2(v))
+    }
+    let volume = 0
+    for (let i = 0; i < 300; i++) volume += syntheticTrades(sym, tick - i).reduce((sum, t) => sum + t.qty, 0)
+    const change = price - prevClose
+    return {
+        sym, name: item.name, sector: item.sector,
+        price: round2(price), prevClose: round2(prevClose),
+        change: round2(change), changePct: round2((change / prevClose) * 100),
+        high: round2(high), low: round2(low), volume,
+        spark,
+        up: change >= 0,
+    }
+}
+
+/** Traffic buy/sell: tekanan beli vs jual pada jendela waktu tertentu. */
+function trafficOf(sym, ticks = 100, tick = nowTick()) {
+    let buy = 0, sell = 0, trades = 0
+    for (let i = 0; i < ticks; i++) {
+        for (const t of syntheticTrades(sym, tick - i)) {
+            trades++
+            if (t.side === 'buy') buy += t.qty; else sell += t.qty
+        }
+    }
+    const total = buy + sell || 1
+    const from = priceAt(sym, tick - ticks), to = priceAt(sym, tick)
+    return {
+        sym,
+        buy, sell, buyPct: round2((buy / total) * 100),
+        trades,
+        move: round2(((to - from) / from) * 100),
+    }
+}
+
+/** Order book simulasi (kedalaman pasar) di sekitar harga terakhir. */
+function depthOf(sym, tick = nowTick()) {
+    const price = priceAt(sym, tick)
+    const s = fnv(sym) + 29
+    const spread = Math.max(0.005, price * 0.0008)
+    const bids = [], asks = []
+    for (let i = 0; i < 8; i++) {
+        const q = (n) => 20 + Math.floor(noise(n, (tick + i) / 4) * 480)
+        bids.push({ price: round2(price - spread * (i + 1)), qty: q(s + i) })
+        asks.push({ price: round2(price + spread * (i + 1)), qty: q(s + 50 + i) })
+    }
+    return { bids, asks, spread: round2(spread) }
+}
+
+/** Lilin (candle) untuk grafik: o/h/l/c + volume per rentang waktu. */
+function candlesOf(sym, ticksPerCandle = 20, limit = 96, tick = nowTick()) {
+    const out = []
+    for (let c = limit - 1; c >= 0; c--) {
+        const end = tick - c * ticksPerCandle
+        let o = priceAt(sym, end - ticksPerCandle + 1), h = o, l = o, cl = o, v = 0
+        for (let i = 0; i < ticksPerCandle; i++) {
+            const t = end - ticksPerCandle + 1 + i
+            const p = priceAt(sym, t)
+            if (p > h) h = p
+            if (p < l) l = p
+            cl = p
+            v += syntheticTrades(sym, t).reduce((sum, x) => sum + x.qty, 0)
+        }
+        out.push({ t: (end - ticksPerCandle + 1) * TICK_MS, o: round2(o), h: round2(h), l: round2(l), c: round2(cl), v })
+    }
+    return out
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
  * TRADING SYSTEM - $AS (Dollar AS)
  * ═══════════════════════════════════════════════════════════════════════════ */
 const TRADING_DB_FILE = path.join(HERE, 'trading-data.json')
 const INITIAL_BALANCE = 100
 const DAILY_BONUS = 10
+const MIN_TOPUP_IDR = 5000
+const MAX_TOPUP_IDR = 200000
+const AS_PER_1000_IDR = Number(process.env.UMI_AS_PER_1000_IDR || 10) // Rp1.000 = $AS 10
 const REDEEM_CODES = {
     'UMI2024': { amount: 50, maxUses: 100, used: 0 },
     'TRADING': { amount: 25, maxUses: 50, used: 0 },
     'WELCOME': { amount: 15, maxUses: 200, used: 0 },
     'BONUS': { amount: 10, maxUses: 500, used: 0 },
 }
-let tradingDB = { users: {}, lastDailyReset: '' }
-function loadTradingDB() { try { tradingDB = JSON.parse(fs.readFileSync(TRADING_DB_FILE, 'utf8')) } catch { tradingDB = { users: {}, lastDailyReset: '' }; saveTradingDB() } }
+let tradingDB = { users: {}, lastDailyReset: '', deposits: {} }
+const realTrades = new Map() // sym -> transaksi asli pemain (in-memory)
+function loadTradingDB() {
+    try {
+        const parsed = JSON.parse(fs.readFileSync(TRADING_DB_FILE, 'utf8'))
+        tradingDB = { users: parsed.users || {}, lastDailyReset: parsed.lastDailyReset || '', deposits: parsed.deposits || {} }
+    } catch { tradingDB = { users: {}, lastDailyReset: '', deposits: {} }; saveTradingDB() }
+}
 function saveTradingDB() { try { fs.writeFileSync(TRADING_DB_FILE, JSON.stringify(tradingDB, null, 2)) } catch (e) { console.log('[trading] save error:', e.message) } }
 function getTradingUser(token) {
     if (!tradingDB.users[token]) {
-        tradingDB.users[token] = { balance: INITIAL_BALANCE, portfolio: {}, history: [], lastDailyBonus: '' }
+        tradingDB.users[token] = { balance: INITIAL_BALANCE, portfolio: {}, history: [], lastDailyBonus: '', realized: 0, deposits: [] }
         saveTradingDB()
     }
     return tradingDB.users[token]
@@ -967,8 +1120,50 @@ function checkDailyBonus(user) {
     }
     return false
 }
+
+/** Nilai portofolio pada harga sekarang + P/L belum terealisasi. */
+function portfolioView(user, tick = nowTick()) {
+    const rows = Object.entries(user.portfolio || {}).map(([sym, pos]) => {
+        const price = MARKET_BY_SYM[sym] ? priceAt(sym, tick) : pos.avgPrice
+        const value = price * pos.qty, cost = pos.avgPrice * pos.qty
+        return {
+            sym, qty: round2(pos.qty), avgPrice: round2(pos.avgPrice),
+            price: round2(price), value: round2(value), cost: round2(cost),
+            pl: round2(value - cost), plPct: round2(cost ? ((value - cost) / cost) * 100 : 0),
+        }
+    })
+    const equity = rows.reduce((sum, r) => sum + r.value, 0)
+    const cost = rows.reduce((sum, r) => sum + r.cost, 0)
+    return {
+        rows, equity: round2(equity), cost: round2(cost),
+        unrealized: round2(equity - cost),
+        netWorth: round2(user.balance + equity),
+    }
+}
+
+function pushRealTrade(sym, side, price, qty, username) {
+    const list = realTrades.get(sym) || []
+    list.push({ side, price: round2(price), qty, at: Date.now(), user: username || 'Trader', real: true })
+    while (list.length > 60) list.shift()
+    realTrades.set(sym, list)
+}
+
+/** Feed gabungan: transaksi pemain asli + pasar sintetis. */
+function feedOf(sym, limit = 40) {
+    const tick = nowTick()
+    const items = []
+    for (let i = 0; i < Math.min(120, limit * 2); i++) items.push(...syntheticTrades(sym, tick - i))
+    items.push(...(realTrades.get(sym) || []))
+    items.sort((a, b) => b.at - a.at)
+    return items.slice(0, limit)
+}
+
+function mapQuotes(tick = nowTick()) { return MARKETS.map((m) => quoteOf(m.sym, tick)) }
+function mapTraffic(ticks = 100) { return MARKETS.map((m) => { const q = quoteOf(m.sym), t = trafficOf(m.sym, ticks); return { ...t, name: q.name, price: q.price, changePct: q.changePct } }) }
+
 async function handleTradingAPI(req, res, url, parts) {
     try {
+        /* ── Masuk / verifikasi token ── */
         if (req.method === 'POST' && parts[0] === 'login') {
             const body = await readBody(req)
             const token = String(body.token || '')
@@ -987,48 +1182,208 @@ async function handleTradingAPI(req, res, url, parts) {
             } catch (e) { return sendJson(res, 500, { error: 'Verifikasi gagal: ' + e.message }) }
             const user = getTradingUser(token)
             const hadBonus = checkDailyBonus(user)
-            return sendJson(res, 200, { ok: true, token, user: { username: verifiedUser.username || '', roles: verifiedUser.roles || [], owner: Boolean(verifiedUser.owner) }, balance: user.balance, portfolio: user.portfolio, history: user.history, dailyBonus: hadBonus ? DAILY_BONUS : 0 })
+            const view = portfolioView(user)
+            saveTradingDB()
+            return sendJson(res, 200, {
+                ok: true, token,
+                user: { username: verifiedUser.username || '', roles: verifiedUser.roles || [], owner: Boolean(verifiedUser.owner), joined: verifiedUser.joined || null },
+                balance: round2(user.balance), portfolio: user.portfolio, equity: view.equity, netWorth: view.netWorth,
+                realized: round2(user.realized || 0),
+                history: (user.history || []).slice(-200), dailyBonus: hadBonus ? DAILY_BONUS : 0,
+                deposits: (user.deposits || []).slice(-50),
+                market: mapQuotes(),
+            })
         }
+
+        /* ── Data akun ── */
         if (req.method === 'GET' && parts[0] === 'me') {
             const token = url.searchParams.get('token')
             if (!token) return sendJson(res, 400, { error: 'Token diperlukan' })
             const user = getTradingUser(token); checkDailyBonus(user)
-            return sendJson(res, 200, { ok: true, balance: user.balance, portfolio: user.portfolio, history: user.history })
+            const view = portfolioView(user)
+            return sendJson(res, 200, {
+                ok: true, balance: round2(user.balance), portfolio: user.portfolio,
+                equity: view.equity, netWorth: view.netWorth, unrealized: view.unrealized,
+                positions: view.rows, realized: round2(user.realized || 0),
+                history: (user.history || []).slice(-200),
+                deposits: (user.deposits || []).slice(-50),
+            })
         }
+
+        /* ── Pasar ── */
+        if (req.method === 'GET' && parts[0] === 'market') {
+            const view = portfolioView(getTradingUser(String(url.searchParams.get('token') || '')))
+            return sendJson(res, 200, { ok: true, symbols: mapQuotes(), time: Date.now(), tickMs: TICK_MS, holdings: view.rows })
+        }
+        if (req.method === 'GET' && parts[0] === 'candles') {
+            const sym = String(url.searchParams.get('symbol') || 'UMI').toUpperCase()
+            if (!MARKET_BY_SYM[sym]) return sendJson(res, 404, { error: 'Saham tidak dikenal' })
+            const tf = TIMEFRAMES[String(url.searchParams.get('tf') || '1m')] || 20
+            const limit = Math.max(20, Math.min(180, Number(url.searchParams.get('limit')) || 96))
+            return sendJson(res, 200, { ok: true, symbol: sym, tickPerCandle: tf, candles: candlesOf(sym, tf, limit) })
+        }
+        if (req.method === 'GET' && parts[0] === 'traffic') {
+            const ticks = Math.max(20, Math.min(600, Number(url.searchParams.get('ticks')) || 100))
+            return sendJson(res, 200, { ok: true, window: ticks * TICK_MS, rows: mapTraffic(ticks), time: Date.now() })
+        }
+        if (req.method === 'GET' && parts[0] === 'feed') {
+            const sym = String(url.searchParams.get('symbol') || 'UMI').toUpperCase()
+            if (!MARKET_BY_SYM[sym]) return sendJson(res, 404, { error: 'Saham tidak dikenal' })
+            return sendJson(res, 200, { ok: true, symbol: sym, trades: feedOf(sym, 40), depth: depthOf(sym), quote: quoteOf(sym) })
+        }
+        if (req.method === 'GET' && parts[0] === 'codes') {
+            return sendJson(res, 200, { ok: true, codes: Object.entries(REDEEM_CODES).map(([code, c]) => ({ code, amount: c.amount, left: Math.max(0, c.maxUses - c.used) })) })
+        }
+
+        /* ── Stream real-time (SSE) ── */
+        if (req.method === 'GET' && parts[0] === 'stream') {
+            res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
+            let last = 0
+            const tick = async () => {
+                try {
+                    const current = nowTick()
+                    if (current !== last) {
+                        last = current
+                        res.write(`data: ${JSON.stringify({ type: 'market', time: Date.now(), symbols: mapQuotes(current), traffic: mapTraffic(100) })}\n\n`)
+                    } else {
+                        res.write(': ping\n\n')
+                    }
+                } catch { cleanup() }
+            }
+            const timer = setInterval(tick, 2000)
+            const cleanup = () => { clearInterval(timer) }
+            res.write(`data: ${JSON.stringify({ type: 'hello', tickMs: TICK_MS, symbols: mapQuotes(), traffic: mapTraffic(100) })}\n\n`)
+            req.on('close', cleanup)
+            return
+        }
+
+        /* ── Beli / jual (harga dari server, bukan dari klien) ── */
         if (req.method === 'POST' && parts[0] === 'trade') {
             const body = await readBody(req)
-            const { token, symbol, side, amount, price } = body
-            if (!token || !symbol || !side || !amount || !price) return sendJson(res, 400, { error: 'Parameter tidak lengkap' })
+            const token = String(body.token || '')
+            const sym = String(body.symbol || '').toUpperCase()
+            const side = String(body.side || '').toLowerCase()
+            const amount = Number(body.amount)
+            if (!token) return sendJson(res, 401, { error: 'Token diperlukan. Masuk dulu.' })
+            if (!MARKET_BY_SYM[sym]) return sendJson(res, 400, { error: 'Saham tidak dikenal.' })
+            if (!['buy', 'sell'].includes(side)) return sendJson(res, 400, { error: 'Aksi harus beli atau jual.' })
+            if (!Number.isFinite(amount) || amount <= 0) return sendJson(res, 400, { error: 'Jumlah lot tidak valid.' })
+            if (amount > 1000000) return sendJson(res, 400, { error: 'Jumlah terlalu besar.' })
+            const price = round2(priceAt(sym, nowTick()))
             const user = getTradingUser(token)
-            const total = Number(amount) * Number(price)
+            const total = round2(amount * price)
             if (side === 'buy') {
-                if (user.balance < total) return sendJson(res, 400, { error: 'Saldo tidak cukup' })
-                user.balance -= total
-                if (!user.portfolio[symbol]) user.portfolio[symbol] = { qty: 0, avgPrice: 0 }
-                const pos = user.portfolio[symbol]; const nq = pos.qty + Number(amount)
-                pos.avgPrice = ((pos.avgPrice * pos.qty) + total) / nq; pos.qty = nq
-            } else if (side === 'sell') {
-                if (!user.portfolio[symbol] || user.portfolio[symbol].qty < Number(amount)) return sendJson(res, 400, { error: 'Posisi tidak cukup' })
-                user.balance += total; user.portfolio[symbol].qty -= Number(amount)
-                if (user.portfolio[symbol].qty <= 0) delete user.portfolio[symbol]
-            } else return sendJson(res, 400, { error: 'Side tidak valid' })
-            user.history.push({ type: side, symbol, amount: Number(amount), price: Number(price), total, time: new Date().toISOString() })
+                if (user.balance < total) {
+                    return sendJson(res, 400, {
+                        error: `Saldo tidak cukup. Butuh $AS ${total.toFixed(2)} (${amount} × ${price.toFixed(2)}), saldo kamu $AS ${Number(user.balance).toFixed(2)}.`,
+                        code: 'INSUFFICIENT', need: total, balance: round2(user.balance), maxAmount: Math.floor((user.balance / price) * 100) / 100,
+                    })
+                }
+                user.balance = round2(user.balance - total)
+                const pos = user.portfolio[sym] || { qty: 0, avgPrice: 0 }
+                const nq = pos.qty + amount
+                pos.avgPrice = ((pos.avgPrice * pos.qty) + total) / nq
+                pos.qty = nq
+                user.portfolio[sym] = pos
+            } else {
+                const pos = user.portfolio[sym]
+                if (!pos || pos.qty < amount) {
+                    return sendJson(res, 400, { error: `Posisi ${sym} tidak cukup. Kamu punya ${pos ? pos.qty.toFixed(2) : '0'} lot.`, code: 'NO_POSITION', holding: pos ? pos.qty : 0 })
+                }
+                user.balance = round2(user.balance + total)
+                user.realized = round2((user.realized || 0) + (price - pos.avgPrice) * amount)
+                pos.qty = round2(pos.qty - amount)
+                if (pos.qty <= 0.000001) delete user.portfolio[sym]
+            }
+            user.history.push({ type: side, symbol: sym, amount, price, total, time: new Date().toISOString() })
+            pushRealTrade(sym, side, price, amount, '')
             saveTradingDB()
-            return sendJson(res, 200, { ok: true, balance: user.balance, portfolio: user.portfolio, history: user.history })
+            const view = portfolioView(user)
+            return sendJson(res, 200, {
+                ok: true, symbol: sym, side, amount, price, total,
+                balance: round2(user.balance), portfolio: user.portfolio, positions: view.rows,
+                equity: view.equity, netWorth: view.netWorth, unrealized: view.unrealized,
+                realized: round2(user.realized || 0),
+                history: (user.history || []).slice(-200),
+            })
         }
+
+        /* ── Redeem kode ── */
         if (req.method === 'POST' && parts[0] === 'redeem') {
             const body = await readBody(req)
             const { token, code } = body
             if (!token || !code) return sendJson(res, 400, { error: 'Token dan kode diperlukan' })
-            const user = getTradingUser(token); const rc = REDEEM_CODES[String(code).toUpperCase()]
-            if (!rc) return sendJson(res, 400, { error: 'Kode tidak valid' })
-            if (rc.used >= rc.maxUses) return sendJson(res, 400, { error: 'Kode sudah habis' })
-            if (user.history.some(h => h.type === 'redeem' && h.code === String(code).toUpperCase())) return sendJson(res, 400, { error: 'Kode sudah digunakan' })
-            user.balance += rc.amount; rc.used++
-            user.history.push({ type: 'redeem', code: String(code).toUpperCase(), amount: rc.amount, time: new Date().toISOString() })
+            const user = getTradingUser(token); const key = String(code).toUpperCase().trim()
+            const rc = REDEEM_CODES[key]
+            if (!rc) return sendJson(res, 400, { error: 'Kode tidak valid.' })
+            if (rc.used >= rc.maxUses) return sendJson(res, 400, { error: 'Kode sudah habis.' })
+            if ((user.history || []).some(h => h.type === 'redeem' && h.code === key)) return sendJson(res, 400, { error: 'Kode sudah kamu pakai.' })
+            user.balance = round2(user.balance + rc.amount); rc.used++
+            user.history.push({ type: 'redeem', code: key, amount: rc.amount, time: new Date().toISOString() })
             saveTradingDB()
-            return sendJson(res, 200, { ok: true, balance: user.balance, amount: rc.amount })
+            return sendJson(res, 200, { ok: true, code: key, amount: rc.amount, balance: round2(user.balance) })
         }
+
+        /* ── Top up $AS dari saldo UMI (Rp) ── */
+        if (req.method === 'POST' && parts[0] === 'topup') {
+            const body = await readBody(req)
+            const token = String(body.token || '')
+            if (!token) return sendJson(res, 401, { error: 'Token diperlukan. Masuk dulu.' })
+            /* status saldo UMI tanpa menarik dana */
+            if (body.action === 'status') {
+                try {
+                    const r = await fetch(TOPUP_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, action: 'status' }), signal: AbortSignal.timeout(15000) })
+                    const d = await r.json().catch(() => ({}))
+                    return sendJson(res, r.ok ? 200 : 502, d)
+                } catch (e) { return sendJson(res, 502, { ok: false, error: 'Tidak bisa menghubungi platform: ' + e.message }) }
+            }
+            const amountIdr = Math.floor(Number(body.amountIdr))
+            if (!Number.isFinite(amountIdr) || amountIdr < MIN_TOPUP_IDR || amountIdr > MAX_TOPUP_IDR) {
+                return sendJson(res, 400, { error: `Nominal top up harus Rp${MIN_TOPUP_IDR.toLocaleString('id-ID')} – Rp${MAX_TOPUP_IDR.toLocaleString('id-ID')}.` })
+            }
+            const reference = String(body.reference || `${token.slice(0, 8)}-${Date.now()}`)
+            const user = getTradingUser(token)
+            user.deposits = user.deposits || []
+            const done = user.deposits.find(d => d.reference === reference)
+            if (done) return sendJson(res, 200, { ok: true, duplicate: true, credited: done.credit, idr: done.idr, balance: round2(user.balance), walletBalance: done.walletBalance })
+            let payload
+            try {
+                const r = await fetch(TOPUP_URL, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ token, amountIdr, reference, source: 'umi-games' }),
+                    signal: AbortSignal.timeout(25000),
+                })
+                payload = await r.json().catch(() => ({}))
+                if (!r.ok || !payload.ok) return sendJson(res, r.status === 402 ? 402 : 400, { ok: false, error: payload.error || 'Top up gagal.' })
+            } catch (e) { return sendJson(res, 502, { ok: false, error: 'Tidak bisa menghubungi platform: ' + e.message }) }
+            const credit = round2(Number(payload.credited) || 0)
+            user.balance = round2(user.balance + credit)
+            user.deposits.push({ reference, idr: amountIdr, credit, walletBalance: payload.walletBalance, time: new Date().toISOString() })
+            user.history.push({ type: 'topup', amount: credit, idr: amountIdr, reference, time: new Date().toISOString() })
+            saveTradingDB()
+            return sendJson(res, 200, { ok: true, credited: credit, idr: amountIdr, balance: round2(user.balance), walletBalance: payload.walletBalance, rate: payload.rate })
+        }
+
+        /* ── Kredit dari platform (internal) ── */
+        if (req.method === 'POST' && parts[0] === 'credit') {
+            const body = await readBody(req)
+            if (!GAME_TOKEN || String(body.token || '') !== GAME_TOKEN) return sendJson(res, 401, { error: 'Tidak sah.' })
+            const target = String(body.userToken || '')
+            const credit = round2(Number(body.amount) || 0)
+            const reference = String(body.reference || '')
+            if (!target || !Number.isFinite(credit) || credit === 0) return sendJson(res, 400, { error: 'Parameter tidak lengkap.' })
+            const user = getTradingUser(target)
+            /* idempoten: referensi yang sama tidak boleh dikredit dua kali
+             * (termasuk nilai negatif untuk koreksi/refund dari bot). */
+            if (reference && (user.history || []).some(h => h.type === 'topup' && h.reference === reference)) {
+                return sendJson(res, 200, { ok: true, duplicate: true, balance: round2(user.balance) })
+            }
+            user.balance = round2(user.balance + credit)
+            user.history.push({ type: 'topup', amount: credit, reference, time: new Date().toISOString() })
+            saveTradingDB()
+            return sendJson(res, 200, { ok: true, balance: round2(user.balance) })
+        }
+
         return sendJson(res, 404, { error: 'Endpoint tidak ditemukan' })
     } catch (error) {
         console.log('[trading] Error:', error.message)

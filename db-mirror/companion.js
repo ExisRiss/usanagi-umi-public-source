@@ -29,8 +29,20 @@ function keep(name, command, args, env = process.env, delay = 5000) {
 
 const has = (p) => { try { fs.accessSync(path.join(ROOT, p)); return true } catch { return false } }
 
+/* Token bersama bot <-> game: dipakai endpoint internal /api/trading/credit
+ * supaya konversi saldo Rp -> $AS hanya bisa dilakukan bot, bukan dari luar. */
+const gameToken = (() => {
+  const fromEnv = String(process.env.UMI_GAME_TOKEN || process.env.GAME_TOKEN || '').trim()
+  if (fromEnv) return fromEnv
+  try { return fs.readFileSync(path.join(ROOT, 'game-token.txt'), 'utf8').trim() } catch { return '' }
+})()
+
 if (has('game/game.js')) {
-  keep('game', process.execPath, ['game/game.js'], { ...process.env, GAME_PORT: process.env.GAME_PORT || '3900' })
+  keep('game', process.execPath, ['game/game.js'], {
+    ...process.env,
+    GAME_PORT: process.env.GAME_PORT || '3900',
+    ...(gameToken ? { GAME_TOKEN: gameToken } : {}),
+  })
 } else bump('game/game.js tidak ada — dilewati')
 
 if (has('cloudflared') && has('tunnel-games.yml')) {
@@ -39,5 +51,15 @@ if (has('cloudflared') && has('tunnel-games.yml')) {
 } else bump('cloudflared / tunnel-games.yml tidak ada — tunnel dilewati')
 
 bump('menjalankan bot: node scripts/boot.js')
-const bot = spawn(process.execPath, ['scripts/boot.js'], { cwd: ROOT, stdio: 'inherit' })
+const bot = spawn(process.execPath, ['scripts/boot.js'], {
+  cwd: ROOT,
+  stdio: 'inherit',
+  env: {
+    ...process.env,
+    ...(gameToken ? { UMI_GAME_TOKEN: gameToken, GAME_TOKEN: gameToken } : {}),
+    UMI_GAME_INTERNAL_URL: process.env.UMI_GAME_INTERNAL_URL || 'http://127.0.0.1:3900',
+    UMI_GAME_VERIFY_URL: process.env.UMI_GAME_VERIFY_URL || 'https://jadibot-alzriss.gwenna.my.id/api/platform/verify-token',
+    UMI_TOPUP_URL: process.env.UMI_TOPUP_URL || 'https://jadibot-alzriss.gwenna.my.id/api/platform/game-topup',
+  },
+})
 bot.on('exit', (code) => { bump(`bot berhenti (code ${code})`); process.exit(code ?? 0) })

@@ -10,14 +10,16 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import dns from 'node:dns/promises'
 import net from 'node:net'
+import { creditWallet as creditWalletCore, debitWallet as debitWalletCore, DATA_DIR, readWalletFile, WALLET_FILE, writeWalletFile } from './wallet-core.js'
 
 const ROOT = process.cwd()
-const DATA_DIR = path.join(ROOT, 'data', 'panel-autoorder')
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.enc.json')
-const WALLET_FILE = path.join(DATA_DIR, 'wallet-ledger.json')
 const AUDIT_FILE = path.join(DATA_DIR, 'audit.jsonl')
 const TRIPAY_CREATE_URL = 'https://tripay.co.id/api/transaction/create'
 const TOPUP_MIN_IDR = 10_000
+const GAME_TOPUP_MIN_IDR = Math.max(1000, Number(process.env.UMI_GAME_TOPUP_MIN || 5000))
+const GAME_TOPUP_MAX_IDR = Math.max(GAME_TOPUP_MIN_IDR, Number(process.env.UMI_GAME_TOPUP_MAX || 200000))
+function gameAsRate() { const rate = Number(process.env.UMI_GAME_AS_PER_1000 || 10); return Number.isFinite(rate) && rate > 0 ? rate : 10 }
 const TOPUP_MAX_IDR = 5_000_000
 const TOPUP_EXPIRY_SECONDS = 24 * 60 * 60
 const MAX_LEDGER_PER_USER = 50
@@ -120,24 +122,36 @@ function writeRaw(next) { writeJsonAtomic(SETTINGS_FILE, next) }
 
 function defaultWallet() { return { version: 1, accounts: {}, ledger: [], topups: {}, orders: {} } }
 
-function readWallet() {
-  ensureDir()
-  try {
-    const data = JSON.parse(fs.readFileSync(WALLET_FILE, 'utf8'))
-    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('invalid wallet')
-    return {
-      version: 1,
-      accounts: data.accounts && typeof data.accounts === 'object' ? data.accounts : {},
-      ledger: Array.isArray(data.ledger) ? data.ledger : [],
-      topups: data.topups && typeof data.topups === 'object' ? data.topups : {},
-      orders: data.orders && typeof data.orders === 'object' ? data.orders : {},
-    }
-  } catch {
-    return defaultWallet()
-  }
+function readWallet() { return readWalletFile() }
+
+function writeWallet(wallet) { writeWalletFile(wallet) }
+
+/** Kredit saldo Wallet (idempoten per referensi) — dipakai integrasi game web & refund. */
+export function creditWalletForGame(input) {
+  const result = creditWalletCore(input)
+  audit('wallet.game.credit', { userId: input?.userId, amount: input?.amount, reference: input?.reference, duplicate: result.duplicate })
+  return result
 }
 
-function writeWallet(wallet) { writeJsonAtomic(WALLET_FILE, wallet) }
+/** Debit saldo Wallet (idempoten per referensi) — dipakai saat tukar Rp → $AS. */
+export function debitWalletForGame(input) {
+  const result = debitWalletCore(input)
+  audit('wallet.game.debit', { userId: input?.userId, amount: input?.amount, reference: input?.reference, duplicate: result.duplicate })
+  return result
+}
+
+/** Koreksi manual owner (amount negatif = tarik, positif = tambah) dengan catatan audit. */
+export function adjustWallet({ userId, amount, reference, description = '', actor = 'owner' }) {
+  const value = Math.trunc(Number(amount))
+  if (!Number.isFinite(value) || value === 0) throw Object.assign(new Error('Jumlah koreksi tidak valid.'), { status: 400 })
+  const ref = safeText(reference, 120) || `adjust-${Date.now()}`
+  const note = safeText(description, 180) || 'Koreksi manual owner'
+  const result = value < 0
+    ? debitWalletCore({ userId, amount: Math.abs(value), reference: ref, type: 'ADJUSTMENT', description: `${note} (${actor})` })
+    : creditWalletCore({ userId, amount: value, reference: ref, type: 'ADJUSTMENT', description: `${note} (${actor})` })
+  audit('wallet.adjust', { actor, userId, amount: value, reference: ref, duplicate: result.duplicate })
+  return { ...walletView(userId), duplicate: result.duplicate, reference: ref }
+}
 
 function publicPackages(value) {
   return (Array.isArray(value) ? value : []).map(item => ({
@@ -398,6 +412,7 @@ function walletView(userId) {
   const account = accountFor(wallet, userId)
   return {
     balance: safeBalance(account.balance), currency: 'IDR', minimumTopupIdr: TOPUP_MIN_IDR, maximumTopupIdr: TOPUP_MAX_IDR,
+    gameConversion: { enabled: true, asPer1000Idr: gameAsRate(), minIdr: GAME_TOPUP_MIN_IDR, maxIdr: GAME_TOPUP_MAX_IDR, currency: 'AS' },
     ledger: wallet.ledger.filter(item => item.userId === userId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, MAX_LEDGER_PER_USER).map(publicLedger),
     topups: Object.values(wallet.topups).filter(item => item.userId === userId).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))).slice(0, MAX_TOPUPS_PER_USER).map(publicTopup),
   }

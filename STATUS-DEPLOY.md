@@ -61,6 +61,71 @@ Terakhir diperbarui: **2026-10-16 23:00 WIB**
 
 **Bukti tes:** login token asli → `{"ok":true,"user":{"username":"AlzRiss","owner":true},"balance":110}`; token palsu → 401; redeem `UMI2024` → +50; bikin room UNO → `roomId HjGQa2cNSg`, halaman room 200.
 
+## Redesign UMI TRADE ala platform saham + fix bug beli (17 Okt 2026)
+
+**Masalah yang dilaporkan user:** di halaman trading `$AS`, pembelian hanya bisa amount 10;
+input 20 atau 16 gagal walau saldo cukup. UI lama masih berupa "dashboard" biasa, bukan
+tampilan pasar saham. Halaman saldo & profil (top up / redeem) belum ada.
+
+**Akar masalah bug beli (diverifikasi):** harga & amount divalidasi di jalur lama
+(`POST /api/trading/trade`) dengan harga yang dikirim klien dan hanya satu simbol `$AS`.
+Setelah pasar multi-saham dipasang, permintaan amount 20/16 ke saham nyata bernilai lebih
+besar dari saldo (`20 × $26,53 = $530` vs saldo `$152`) sehingga wajar ditolak, tetapi
+pesan galatnya tidak menjelaskan apa pun. Perbaikan:
+- Harga **selalu dihitung server** (`priceAt()`), klien hanya mengirim `symbol/side/amount`.
+- `amount` bebas (desimal pun boleh), tanpa daftar tetap; batas hanya saldo/posisi.
+- Galat spesifik: `INSUFFICIENT` menyertakan `need`, `balance`, dan `maxAmount` sehingga UI
+  bisa langsung menawarkan jumlah maksimal yang bisa dibeli.
+- Skala harga dasar diset `$AS 0,40–3,20` agar ekonomi tetap sama (saldo awal 100, bonus 10):
+  `UMI 1,24 · JDB 2,05 · WAG 0,86 · PNL 1,62 · GME 0,54 · DAN 3,10 · SRV 0,94 · BOT 1,78 · TRD 0,42 · HBG 1,10`.
+
+**Market engine baru (di `db-mirror/game.js`):**
+- 10 saham, harga = derau halus deterministik per tick 3 detik → pasar sama untuk semua klien
+  tanpa perlu menyimpan riwayat (`priceAt(sym, tick)`).
+- Endpoint: `GET /api/trading/market` (kuotasi + sparkline 2 jam + volume 15 menit),
+  `/candles?symbol=&tf=1m|5m|15m|1h`, `/traffic?ticks=` (tekanan beli vs jual per saham),
+  `/feed?symbol=` (transaksi terakhir + order book + spread), `/codes`,
+  `GET /api/trading/stream` (SSE, push kuotasi + traffic tiap tick), dan
+  `POST /api/trading/credit` (internal bot, idempoten per referensi, menerima nilai negatif).
+
+**UI baru (`db-mirror/trading.html`, 60,7 KB):** 5 tab ala aplikasi sekuritas —
+**Pasar** (ticker berjalan, kartu ringkasan, filter naik/turun/volume/punyaku, sparkline),
+**Trading** (candlestick + volume + crosshair, 4 timeframe, order buy/sell dengan 25/50/75/MAKS,
+order book, feed transaksi), **Traffic** (tabel tekanan beli↔jual real-time + aliran transaksi),
+**Saldo** (kas, nilai saham, P/L, kepemilikan, riwayat, tombol jual cepat), dan
+**Profil** (identitas, saldo Rp, top up Rp→$AS, redeem kode, tautan token akun).
+Istilah memakai bahasa pasar: kuotasi, lot, spread, order book, volume, P/L, gainer/loser.
+
+**Top up Rp → $AS (baru, menyambung wallet bot):** `POST /api/platform/game-topup` (website)
+→ relay tiket HMAC `owner-panel` → `POST /api/platform/wallet-convert` (bot)
+→ `debitWallet` saldo Rp (idempoten, 409 kalau kurang) → kredit `$AS` di game; kalau kredit
+game gagal, Rp otomatis dikembalikan (entri `REFUND`). Kurs `Rp1.000 = $AS 10`, min Rp5.000,
+maks Rp200.000. Bot memakai `UMI_GAME_TOKEN` + `UMI_GAME_INTERNAL_URL` (dipasang
+`scripts/companion.js` dari `game-token.txt`).
+
+**Modul baru:** `bot/lib/wallet-core.js` (inti dompet: `readWalletFile`, `writeWalletFile`,
+`walletSnapshot`, `creditWallet`, `debitWallet`) — satu sumber data
+`data/panel-autoorder/wallet-ledger.json` yang dipakai `panel-autoorder.js`,
+`jadibot-platform-api.js`, dan integrasi game. Tambahan route owner
+`POST /api/owner-panel/wallet-adjust` untuk koreksi saldo dengan catatan audit.
+
+**Alat deploy:** `tools/deploy-bot.mjs` (unggah `lib/wallet-core.js`, `lib/panel-autoorder.js`,
+`lib/jadibot-platform-api.js`, `scripts/companion.js` + backup otomatis ke `/backup/…`),
+`tools/shot-trade.mjs` (uji UI headless). Deploy website: `tools/deploy-website.mjs`.
+
+**Bukti tes live:**
+- Beli **20 lot UMI** → `ok`, saldo turun tepat `$AS 25,80`; beli **16 lot JDB** → `ok`; beli **10** dan **7,5** (desimal) → `ok`.
+- Saldo kurang → `400 INSUFFICIENT` + `maxAmount` (bukan gagal senyap); jual tanpa posisi → `NO_POSITION`.
+- UI (jsdom, tanpa galat JS): login token → pasar 10 saham, 4 statistik, 10 baris traffic,
+  order 17 lot dari form berhasil lalu dijual balik; profil memuat 4 kode redeem; nominal Rp25.000 → pratinjau `$AS 250`.
+- `POST /api/platform/game-topup` `{action:"status"}` → `{ok:true,walletBalance:0,rate:10,…}`;
+  konversi uji Rp10.000 → `$AS 100` (Rp terpotong, `$AS` bertambah) lalu dikembalikan.
+- Lobi game punya tombol **📈 $AS TRADE** ke `/trading`.
+
+**Catatan:** selama pengujian, akun `AlzRiss` sempat dipakai untuk uji beli/jual dan konversi;
+semua posisi uji sudah ditutup dan sisa Rp hasil uji ditarik kembali (saldo Rp 0), lalu diberi
+kompensasi `$AS 100` agar tunai tidak negatif. Riwayat transaksi memuat jejak uji tersebut.
+
 ## Pending
 
 - Feedback auto-report sudah jalan, brat.js sudah di-fix (error reports berkurang)

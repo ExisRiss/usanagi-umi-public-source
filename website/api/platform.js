@@ -345,6 +345,49 @@ export default async function handler(req, res) {
         },
       })
     }
+    /* Konversi saldo UMI (Rp) → $AS game — dipakai halaman UMI TRADE di game web.
+     * Saldo Rp tetap di bot; website hanya meneruskan dengan tiket relay. */
+    if (path === 'game-topup' && req.method === 'POST') {
+      rateLimit(req, 'platform:game-topup', 60, 60 * 1000)
+      const token = text(req.body?.token, 300)
+      if (token.length < 16) return send(res, 400, { ok: false, error: 'Token akun diperlukan.' })
+      let userId = ''
+      try {
+        const rows = await dataRequest(`platform_profiles?api_token=eq.${encodeURIComponent(token)}&select=auth_id,banned&limit=1`)
+        const profile = rows?.[0]
+        if (!profile) return send(res, 401, { ok: false, error: 'Token akun tidak dikenali. Buat token baru di halaman Profil.' })
+        if (profile.banned) return send(res, 403, { ok: false, error: 'Akun ini diblokir dari platform.' })
+        userId = profile.auth_id
+      } catch {
+        return send(res, 502, { ok: false, error: 'Verifikasi token sedang tidak tersedia.' })
+      }
+      let botConfig = null
+      try { botConfig = await getBotApiConfig() } catch {}
+      if (!botConfig?.origin) return send(res, 503, { ok: false, error: 'Relay bot belum siap. Coba lagi sebentar.' })
+      try {
+        const response = await fetch(`${String(botConfig.origin).replace(/\/+$/, '')}/api/platform/wallet-convert`, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-UMI-Panel-Ticket': ownerRelayTicket({ id: userId }, 'owner-panel'),
+          },
+          body: JSON.stringify({
+            token,
+            action: req.body?.action === 'status' ? 'status' : 'convert',
+            amountIdr: req.body?.amountIdr,
+            reference: text(req.body?.reference, 120),
+            source: text(req.body?.source, 40) || 'umi-games',
+          }),
+          signal: AbortSignal.timeout(40000),
+        })
+        const raw = await response.text(); let data
+        try { data = raw ? JSON.parse(raw) : {} } catch { data = { ok: false, error: raw } }
+        return send(res, response.status, data)
+      } catch (error) {
+        return send(res, 502, { ok: false, error: `Relay bot tidak merespons: ${String(error?.message || '').slice(0, 120)}` })
+      }
+    }
     /* Change password */
     if (path === 'auth/change-password' && req.method === 'POST') {
       const user = await authUser(req)
