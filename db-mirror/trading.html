@@ -735,13 +735,13 @@
     const box = $('sessionBanner')
     if (!box) return
     if (!info) { box.classList.add('hidden'); return }
-    const until = info.until ? new Date(info.until).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''
+    const until = info.until ? new Date(info.until).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Makassar' }) : ''
     if (info.active && info.boostPct > 0) {
       box.className = 'notice ok'
       box.innerHTML = `🚀 <b>${esc(info.label)}</b> — pasar sedang naik terus (boost +${money(info.boostPct)}%${until ? ` · sampai ${until}` : ''}). Waktu zona: ${esc(info.timezone || 'WITA')}.`
     } else {
       box.className = 'notice'
-      const next = info.next ? new Date(info.next).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
+      const next = info.next ? new Date(info.next).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Makassar' }) + ' WITA' : '—'
       box.innerHTML = `Sesi naik berikutnya: <b>${next}</b> (setiap 00.00–02.00 WITA). Boost sekarang +${money(info.boostPct)}%.`
     }
   }
@@ -1203,9 +1203,15 @@
     try {
       const d = await api('/api/trading/market')
       state.symbols = d.symbols || []
+      if (d.session) { state.session = d.session; renderSession() }
       $('loginMarket').innerHTML = state.symbols.slice(0, 5).map((s) => `<div class="dep"><span>${esc(s.sym)} · ${esc(s.name)}</span><b class="num ${cls(s.changePct)}">${money(s.price)} (${sgn(s.changePct)}${money(s.changePct)}%)</b></div>`).join('')
       renderTicker(state.symbols)
+      renderMarketList()
+      renderTradingHeader()
     } catch {}
+    // Pasar & papan peringkat bersifat publik: tampilkan walau belum masuk,
+    // supaya pengunjung langsung melihat harga hidup dan siapa yang terkaya.
+    try { await loadLeaderboard() } catch {}
     const urlCode = new URLSearchParams(location.search).get('code')
     if (urlCode) {
       $('codeInput').value = urlCode

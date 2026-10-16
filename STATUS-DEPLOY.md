@@ -185,10 +185,13 @@ game (`/`), dan lewat perintah bot.
   login kode 6 digit, trade, dan papan peringkat.
 
 **Catatan & tindak lanjut.**
-- Sesi naik **harian 00.00–02.00 WITA** sudah aktif (label `SESI NAIK · sampai 02.00 WITA`).
-  Karena deploy selesai 02.10 WITA, jendela malam ini baru saja lewat; jendela berikutnya
-  malam ini 00.00–02.00. Sesi tambahan bisa disetel lewat `POST /api/trading/session/config`
-  (bot) kalau mau diperpanjang.
+- Sesi naik **harian 00.00–02.00 WITA**: naik `+0,20%/menit` sampai batas `+25%` dari harga dasar
+  (`PUMP_SESSION_RATE` / `PUMP_SESSION_CAP` di `db-mirror/game.js`), lalu diturunkan perlahan
+  selama 6 jam (`PUMP_DECAY_MIN=360`, selesai 06.00) supaya tidak ada jurang harga. Label di
+  halaman trading + `/api/trading/session` memakai jam **WITA** dan menyebut sesi berikutnya.
+  Karena deploy selesai 02.10 WITA, jendela malam ini baru saja lewat; berikutnya mulai 00.00.
+  Sesi tambahan (mis. perpanjang sampai 02.00 besok) bisa disetel lewat
+  `POST /api/trading/session/config` `{minutes, rate, cap, note}` atau dibatikan dengan `{off:true}`.
 - Verifikasi tombol Auto Read/Bot Utama perlu sesi login Supabase owner (dari sandbox tidak ada),
   jadi bagian HTTP relay-nya diverifikasi struktural + unit test helper; coba klik sekali di
   halaman Bot Utama.
