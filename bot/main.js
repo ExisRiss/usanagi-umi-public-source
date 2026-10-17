@@ -21,6 +21,7 @@ import { syncMainPrefix } from './core/awang-prefix.js';
 import { getExplicitlyEnabledWelcomeGroups } from './core/awang-welcome.js';
 import { startJadibotPlatformApi } from './lib/jadibot-platform-api.js';
 import { installAutoBackup, updateAutoBackupConnection } from './lib/auto-backup.js';
+import { startJadibotSessionCleaner } from './lib/jadibot-session-cleaner.js';
 import { startVercelBackupScheduler } from './lib/vercel-backup-scheduler.js';
 import { readMainBotState, writeMainBotState, normalizeMainBotNumber } from './lib/main-bot-config.js';
 import {
@@ -290,6 +291,7 @@ global.conn.isJadibot = false;
 startJadibotPlatformApi();
 startVercelBackupScheduler();
 installAutoBackup(global.conn);
+startJadibotSessionCleaner();
 
 /* ============================================================
  * PAIRING FUNCTION

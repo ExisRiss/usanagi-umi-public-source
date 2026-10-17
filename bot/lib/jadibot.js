@@ -26,6 +26,13 @@ import {
     loadJadibotConfig,
     runWithBotConfig
 } from './bot-config.js';
+import {
+    noteSessionOnline,
+    noteSessionOffline,
+    noteSessionActivity,
+    forgetSession,
+    setSessionRemovalHook
+} from './jadibot-session-cleaner.js';
 
 const SESSIONS_DIR = './sessions/jadibot';
 
@@ -58,6 +65,18 @@ async function getCachedBaileysVersion() {
         .finally(() => { baileysVersionRequest = null; });
     return baileysVersionRequest;
 }
+
+setSessionRemovalHook(async number => {
+    clearJadibotReconnect(number);
+    clearJadibotWatchdog(number);
+    const conn = global.jadibotConns.get(number);
+    if (conn) {
+        try { conn.ev?.removeAllListeners?.(); } catch {}
+        try { conn.ws?.close?.(); } catch {}
+        try { conn.end?.(); } catch {}
+        global.jadibotConns.delete(number);
+    }
+});
 
 function clearJadibotWatchdog(number) {
     const timer = jadibotConnectWatchdogs.get(number);
@@ -99,6 +118,7 @@ function armJadibotConnectWatchdog({ number, sessionPath, mainConn, subConn }) {
         global.jadibotConns.delete(number);
         try { subConn.ev.removeAllListeners(); } catch {}
         try { subConn.ws?.close(); } catch {}
+        noteSessionOffline(number);
         scheduleJadibotReconnect({ number, sessionPath, mainConn });
     }, JADIBOT_CONNECT_TIMEOUT_MS);
     jadibotConnectWatchdogs.set(number, timer);
@@ -592,6 +612,7 @@ async function connectSubBot({
                 subConn.__jadibotConnected = true;
                 clearJadibotWatchdog(number);
                 clearJadibotReconnect(number);
+                noteSessionOnline(number);
                 global.jadibotConns.set(
                     number,
                     subConn
@@ -669,6 +690,9 @@ async function connectSubBot({
                     `[JADIBOT] ${number} disconnected (${statusCode || 'unknown'})`
                 );
 
+                // Mulai hitung mundur pembersihan otomatis (15 menit).
+                noteSessionOffline(number);
+
 
                 global.jadibotConns.delete(
                     number
@@ -697,6 +721,15 @@ async function connectSubBot({
                         );
 
                     } catch {}
+
+                    forgetSession(number);
+                    rmSync(
+                        join('sessions-backup', number),
+                        {
+                            recursive: true,
+                            force: true
+                        }
+                    );
 
 
                     console.log(
@@ -793,6 +826,8 @@ export async function startSubBot(
             number
         );
 
+    noteSessionActivity(number);
+
 
     await m.reply(
         `⏳ *Membuat sesi jadibot...*\n\n` +
@@ -862,6 +897,7 @@ export async function startSubBotForApi(rawNumber, mainConn = global.conn) {
         return { number, status: 'connected', code: null };
     }
 
+    noteSessionActivity(number);
     const sessionPath = join(SESSIONS_DIR, number);
     let resolveCode;
     let rejectCode;
@@ -901,6 +937,10 @@ export async function disconnectSubBot(rawNumber, { deleteSession = false } = {}
     }
     if (deleteSession) {
         try { rmSync(join(SESSIONS_DIR, number), { recursive: true, force: true }); } catch {}
+        try { rmSync(join('sessions-backup', number), { recursive: true, force: true }); } catch {}
+        forgetSession(number);
+    } else {
+        noteSessionOffline(number);
     }
     return Boolean(subConn || existsSync(join(SESSIONS_DIR, number)));
 }
@@ -909,6 +949,7 @@ export async function restartSubBot(rawNumber, mainConn = global.conn) {
     const number = normalizeNumber(rawNumber);
     const sessionPath = join(SESSIONS_DIR, number);
     if (!existsSync(join(sessionPath, 'creds.json'))) throw new Error('Session belum memiliki kredensial terdaftar.');
+    noteSessionActivity(number);
     await disconnectSubBot(number, { deleteSession: false });
     const conn = await connectSubBot({ number, sessionPath, mainConn, notifyChat: null, needsPairing: false });
     return conn;

@@ -2,7 +2,7 @@
 
 **Log lengkap:** [repo `STATUS-DEPLOY.md`](./usanagi-umi-public-source/STATUS-DEPLOY.md)
 
-Terakhir diperbarui: **2026-10-17 11.30 WITA**
+Terakhir diperbarui: **2026-10-17 12.45 WITA**
 
 ## Done
 
@@ -303,6 +303,56 @@ database gagal disimpan → bot balas 500 → `website/api/platform.js:1019` men
 - Jadibot `6282343823200` masih reconnect loop → perlu pairing ulang dari perangkat (sesi lama
   rusak/ter-logout). Setelah disk lega, pairing ulang seharusnya tidak lagi ENOSPC.
 
+## Task 17 — Sesi jadibot mati >15 menit dihapus otomatis + backup-nya (2026-10-17 12.45 WITA)
+
+**Permintaan.** "Kalo Sessions udah disconnect selama 15 menit hapus aja Sessions nya sama hapus juga backup nya."
+
+**Modul baru `bot/lib/jadibot-session-cleaner.js`.**
+- Memeriksa `sessions/jadibot/<nomor>` tiap **60 detik**. Sesi yang tidak tersambung
+  **15 menit** berturut-turut dihapus, berikut `sessions-backup/<nomor>`, lalu
+  `sessions-backup.tar.gz` dibangun ulang (hanya kalau ada yang dihapus).
+- Hitungan **disimpan di `data/jadibot-session-cleaner.json`** supaya restart container tidak
+  mengulang dari nol.
+- Reconnect otomatis **tidak** mereset hitungan (kalau direset, sesi reconnect-loop tidak akan
+  pernah dibersihkan). Hitungan hanya direset saat pengguna benar-benar meminta
+  (`.jadibot`/pairing/restart) atau saat sesi berhasil tersambung.
+- Sebelum folder dihapus, hook di `jadibot.js` mematikan timer reconnect + watchdog dan menutup
+  socket supaya tidak ada percobaan menyambung ke sesi yang sudah dibuang.
+- Sesi bot utama (`sessions/creds.json`) tidak pernah disentuh — pembersih hanya melihat
+  `sessions/jadibot`.
+- Jeda bisa diatur lewat env `JADIBOT_SESSION_TTL_MS` (default 15 menit).
+
+**Hook di `bot/lib/jadibot.js`.** `noteSessionOnline` saat `connection === 'open'`;
+`noteSessionOffline` saat `close` dan saat watchdog melepas socket; `noteSessionActivity` di
+`startSubBot`/`startSubBotForApi`/`restartSubBot`; `forgetSession` saat logout/stop (sekaligus
+hapus folder backup). `bot/main.js` memanggil `startJadibotSessionCleaner()` setelah
+`installAutoBackup()`.
+
+**Uji lokal (`/tmp/cleaner-test`), 8/8 lolos:** sesi tersambung tetap ada; putus 20 menit dihapus
++ backup-nya; putus 5 menit dibiarkan; sesi reconnect-loop 30 menit tetap dihapus; sesi bot utama
+utuh; hook pelepasan socket terpanggil. Uji juga menangkap bug: sapuan yang jalan sebelum
+`startJadibotSessionCleaner()` tidak memuat state dari disk → diperbaiki (`state.loaded`).
+
+**Bukti di produksi.**
+- `[JADIBOT-CLEANER] Aktif — sesi yang putus 15 menit dihapus beserta backup-nya.`
+- Sesi zombie `6282343823200` (reconnect-loop sejak sehari sebelumnya) dihapus:
+  `[JADIBOT-CLEANER] 6282343823200 putus 20 menit — session dihapus + backup dihapus`.
+  Folder sesi jadibot **6 → 5**, folder `sessions-backup` **3 → 2**, arsip tar dibangun ulang
+  (04:29), entri state ikut terbuang.
+- Deploy: `jadibot.js` (30.736 B), `jadibot-session-cleaner.js` (baru), `main.js` (43.489 B),
+  semuanya dengan backup `.bak` di `/backup/`; restart 204; `/api/health` 200, 2.044 plugin termuat.
+
+**Tambahan pada auto-backup.** `runFullBackup()` sekarang melewati percobaan saat socket WhatsApp
+belum terbuka (`global.stopped !== 'open'` dan `ws.readyState !== 1`) → alasan `connection-not-open`.
+Sebelumnya setiap percobaan menulis ratusan MB lalu gagal "Connection Closed". Diuji lokal:
+koneksi tertutup → dilewati, koneksi terbuka → jalan (1 bagian). Setelah deploy tidak ada lagi
+`[AUTO-BACKUP] Error: Connection Closed`.
+
+**Catatan.** Saat pemeriksaan, `.main-bot.env` berisi `MAIN_BOT_ENABLED=true` +
+`MAIN_BOT_PAIRING_NUMBER=<nomor>` — diisi lewat halaman Bot Utama (bukan dari sisi kami), jadi
+dibiarkan apa adanya. Tiga sesi lain (`…2084`, `…8221`, `…5317`) masih offline dan akan ikut
+dibersihkan pada sapuan 15 menit berikutnya kalau tidak kunjung tersambung.
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
@@ -314,6 +364,8 @@ database gagal disimpan → bot balas 500 → `website/api/platform.js:1019` men
 - Harness plugin `bot/plugins/game/trading-umi.js` (unit/integration test) belum ditulis
 - Plugin lama `bot/plugins/game/trading1.js` (37.464 B) masih menunggu keputusan: hapus atau
   pindahkan ke arsip supaya tidak dobel dengan `trading-umi.js`
-- Jadibot `6282343823200` masih reconnect loop → pairing ulang dari perangkat (sesi lama rusak)
+- ~~Jadibot `6282343823200` reconnect loop~~ **selesai**: sesi + backup dihapus otomatis (Task 17)
+- Sesi jadibot yang putus >15 menit kini dihapus otomatis (termasuk backup). Kalau ingin ambang
+  lebih longgar, setel env `JADIBOT_SESSION_TTL_MS` (mis. 3600000 = 1 jam)
 - Auto-backup WA masih gagal kirim (`Connection Closed`) → putuskan: matikan fitur ini (backup
   sudah rutin lewat Vercel) atau batasi hanya kalau ada koneksi WhatsApp yang sehat

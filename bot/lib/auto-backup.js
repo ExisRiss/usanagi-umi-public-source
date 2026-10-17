@@ -268,6 +268,12 @@ export async function runFullBackup({ conn = state.conn || global.conn, force = 
   if (!cfg.enabled && !force) return { skipped: true, reason: 'disabled' }
   if (state.running) return { skipped: true, reason: 'already-running' }
   if (!conn?.sendMessage || !conn?.user) return { skipped: true, reason: 'connection-not-ready' }
+  // Socket WhatsApp yang tertutup tidak bisa mengirim apa pun: percobaan hanya
+  // akan menulis ratusan MB lalu gagal. Lewati sampai koneksi benar-benar terbuka.
+  const socketOpen = typeof conn?.ws?.readyState === 'number' && conn.ws.readyState === 1
+  if (global.stopped !== 'open' && !socketOpen) {
+    return { skipped: true, reason: 'connection-not-open' }
+  }
 
   const owners = ownerJids()
   if (!owners.length) throw new Error('Nomor Owner backup tidak tersedia di config.js')
