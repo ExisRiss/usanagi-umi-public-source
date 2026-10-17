@@ -1461,6 +1461,39 @@ function mergeAccounts(fromId, toId) {
     return to
 }
 
+/* Token website diverifikasi ke platform; hasilnya di-cache 60 detik. */
+const ownerCache = new Map()
+async function verifyOwnerToken(token) {
+    const raw = String(token || '').trim()
+    if (!raw) return { ok: false, status: 401, error: 'Token diperlukan.' }
+    const key = crypto.createHash('sha1').update(raw).digest('hex')
+    const hit = ownerCache.get(key)
+    if (hit && Date.now() - hit.at < 60000) return hit.value
+    let value
+    try {
+        const res = await fetch(VERIFY_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: raw }),
+            signal: AbortSignal.timeout(15000),
+        })
+        const vd = await res.json().catch(() => ({}))
+        if (!vd.ok) value = { ok: false, status: 401, error: vd.error || 'Token tidak valid.' }
+        else if (!(vd.user && (vd.user.owner === true || (vd.user.roles || []).includes('owner')))) {
+            value = { ok: false, status: 403, error: 'Halaman ini khusus owner.' }
+        } else value = { ok: true, user: vd.user || {} }
+    } catch (error) {
+        return { ok: false, status: 502, error: 'Verifikasi token gagal: ' + (error && error.message ? error.message : error) }
+    }
+    if (value.ok) ownerCache.set(key, { at: Date.now(), value })
+    return value
+}
+
+async function ownerFromRequest(req, url) {
+    const header = String(req.headers['x-umi-owner-token'] || '').trim()
+    return verifyOwnerToken(header || url.searchParams.get('token') || '')
+}
+
 async function handleTradingAPI(req, res, url, parts) {
     try {
         /* ── Masuk dengan token akun website ── */
@@ -1773,9 +1806,10 @@ async function handleTradingAPI(req, res, url, parts) {
             saveTradingDB()
             return sendJson(res, 200, { ok: true, pump: tradingDB.market.pump, session: sessionInfo() })
         }
-        /* ═══ Endpoint admin trading (khusus owner lewat bot) ═══ */
-        if (parts[0] === 'admin' && parts[1] === 'accounts' && req.method === 'GET') {
-            if (!botAuthed) return sendJson(res, 401, { error: 'Butuh X-UMI-Game-Token.' })
+        /* ═══ Endpoint OWNER di website (login token pemilik) ═══ */
+        if (parts[0] === 'owner' && parts[1] === 'accounts' && req.method === 'GET') {
+            const who = await ownerFromRequest(req, url)
+            if (!who.ok) return sendJson(res, who.status, { error: who.error })
             const list = Object.values(tradingDB.accounts || {}).map((a) => {
                 const view = portfolioView(a)
                 return {
@@ -1788,12 +1822,13 @@ async function handleTradingAPI(req, res, url, parts) {
             return sendJson(res, 200, { ok: true, total: list.length, accounts: list })
         }
 
-        /* Set/tambah saldo $AS satu akun.
-         *   {account:'AlzRiss', amount:11000, mode:'set'}  → saldo jadi $AS 11.000
-         *   {account:'628xxxx', amount:500, mode:'add'}    → saldo +500 */
-        if (parts[0] === 'admin' && parts[1] === 'balance' && req.method === 'POST') {
-            if (!botAuthed) return sendJson(res, 401, { error: 'Butuh X-UMI-Game-Token.' })
+        /* Set/tambah saldo $AS satu akun — hanya pemilik.
+         *   {token, account:'AlzRiss', amount:11000, mode:'set'}  → jadi $AS 11.000
+         *   {token, account:'AlzRiss', amount:500, mode:'add'}    → +$AS 500 */
+        if (parts[0] === 'owner' && parts[1] === 'balance' && req.method === 'POST') {
             const body = await readBody(req)
+            const who = await verifyOwnerToken(body.token || url.searchParams.get('token') || '')
+            if (!who.ok) return sendJson(res, who.status, { error: who.error })
             const account = findTradingAccount(body.account || body.username || body.number || body.id)
             if (!account) return sendJson(res, 404, { error: 'Akun trading tidak ditemukan.' })
             const amount = Number(body.amount)
@@ -1806,7 +1841,7 @@ async function handleTradingAPI(req, res, url, parts) {
             account.history = Array.isArray(account.history) ? account.history : []
             account.history.push({
                 type: 'adjust', amount: round2(after - before), time: new Date().toISOString(),
-                symbol: '$AS', note: String(body.note || 'penyesuaian owner').slice(0, 80),
+                symbol: '$AS', note: String(body.note || `owner (${who.user.username || 'owner'})`).slice(0, 80),
             })
             saveTradingDB()
             const view = portfolioView(account)

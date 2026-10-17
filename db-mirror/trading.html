@@ -461,6 +461,44 @@
     </div>
     <footer>UMI TRADE · <a href="/">lobi game</a> · <a href="https://jadibot-alzriss.gwenna.my.id" target="_blank" rel="noopener">jadibot studio</a></footer>
   </section>
+
+  <section id="page-owner" class="hidden">
+    <h1>Owner · saldo $AS</h1>
+    <div class="notice warn">Halaman ini hanya muncul untuk akun pemilik. Setiap perubahan tercatat di riwayat akun trader.</div>
+
+    <div class="card">
+      <h2>Atur saldo</h2>
+      <label><span>Akun (nama / nomor WA / id)</span>
+        <input id="ownAccount" placeholder="AlzRiss" autocomplete="off">
+      </label>
+      <label><span>Jumlah $AS</span>
+        <input id="ownAmount" type="number" step="any" inputmode="decimal" placeholder="11000">
+      </label>
+      <div class="row" style="margin:-6px 0 12px">
+        <button class="btn btn-sm" data-own="100" type="button">+100</button>
+        <button class="btn btn-sm" data-own="1000" type="button">+1.000</button>
+        <button class="btn btn-sm" data-own="10000" type="button">+10.000</button>
+      </div>
+      <div class="row">
+        <button class="btn btn-buy grow" id="ownSet" type="button">SET SALDO</button>
+        <button class="btn btn-pri grow" id="ownAdd" type="button">TAMBAH</button>
+      </div>
+      <div class="tiny" id="ownHint" style="margin-top:10px">Pilih akun dari daftar di bawah untuk mengisi kolom.</div>
+    </div>
+
+    <div class="card">
+      <h2>Daftar akun</h2>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>AKUN</th><th class="r">SALDO</th><th class="r">TOTAL</th><th></th></tr></thead>
+          <tbody id="ownList"><tr><td colspan="4" class="tiny">Memuat…</td></tr></tbody>
+        </table>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn btn-sm" id="ownRefresh" type="button">MUAT ULANG</button>
+      </div>
+    </div>
+  </section>
 </main>
 
 <!-- ═══════════ NAV ═══════════ -->
@@ -472,6 +510,7 @@
     <button data-page="peringkat"><svg viewBox="0 0 24 24"><path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4v1a3 3 0 0 0 3 3M17 6h3v1a3 3 0 0 1-3 3"/></svg>Peringkat</button>
     <button data-page="saldo"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 14h2"/></svg>Saldo</button>
     <button data-page="profil"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.6"/><path d="M5 20c0-3.3 3.1-5.4 7-5.4s7 2.1 7 5.4"/></svg>Profil</button>
+    <button data-page="owner" id="navOwner" class="hidden"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.2-2.9 7.3-7 9-4.1-1.7-7-4.8-7-9V6z"/><path d="m9 12 2 2 4-4"/></svg>Owner</button>
   </div>
 </nav>
 
@@ -883,16 +922,54 @@
     $('topupPreview').textContent = '$AS ' + money((idr / 1000) * state.rate)
   }
 
+  /* ─────────── halaman OWNER ─────────── */
+  async function loadOwner() {
+    const tbody = $('ownList')
+    if (!tbody) return
+    const d = await api('/api/trading/owner/accounts?token=' + encodeURIComponent(TOKEN))
+    state.ownerAccounts = d.accounts || []
+    tbody.innerHTML = state.ownerAccounts.length ? state.ownerAccounts.map((a) => {
+      const who = a.username || a.number || a.id
+      const sub = a.number ? `wa ${a.number}` : (a.source === 'web' ? 'website' : a.id)
+      return `<tr>
+        <td><b>${esc(who)}</b><div class="tiny">${esc(sub)}</div></td>
+        <td class="r num">${money(a.balance)}</td>
+        <td class="r num">${money(a.netWorth)}</td>
+        <td class="r"><button class="btn btn-sm" data-pick="${esc(who)}" type="button">PILIH</button></td>
+      </tr>`
+    }).join('') : '<tr><td colspan="4" class="tiny">Belum ada akun.</td></tr>'
+  }
+
+  async function ownerAdjust(mode) {
+    const account = ($('ownAccount').value || '').trim()
+    const amount = Number($('ownAmount').value)
+    const hint = $('ownHint')
+    if (!account) { toast('Isi nama akun dulu.', 'error'); return }
+    if (!Number.isFinite(amount)) { toast('Jumlah $AS tidak valid.', 'error'); return }
+    hint.textContent = 'Memproses…'
+    try {
+      const d = await apiPost('/api/trading/owner/balance', { token: TOKEN, account, amount, mode })
+      hint.innerHTML = `✅ <b>${esc((d.account && d.account.username) || account)}</b> · $AS ${money(d.before)} → <b>$AS ${money(d.balance)}</b>`
+      toast('Saldo diperbarui: $AS ' + money(d.balance), 'ok')
+      loadOwner().catch(() => {})
+      if (state.account && d.account && state.account.id === d.account.id) loadAccount().catch(() => {})
+    } catch (error) {
+      hint.textContent = '❌ ' + error.message
+      toast(error.message, 'error')
+    }
+  }
+
   /* ─────────── router ─────────── */
   function go(page) {
     state.page = page
     document.querySelectorAll('#tabbar button').forEach((b) => b.classList.toggle('on', b.dataset.page === page))
-    ;['pasar', 'trading', 'traffic', 'peringkat', 'saldo', 'profil'].forEach((p) => $('page-' + p).classList.toggle('hidden', p !== page))
+    ;['pasar', 'trading', 'traffic', 'peringkat', 'saldo', 'profil', 'owner'].forEach((p) => $('page-' + p).classList.toggle('hidden', p !== page))
     if (page === 'pasar') { renderMarketStats(); renderMarketList() }
     if (page === 'trading') loadSymbolData(true)
     if (page === 'traffic' && !state.traffic.length) loadTraffic().catch(() => {})
     if (page === 'peringkat') loadLeaderboard().catch(() => {})
     if (page === 'profil') loadWallet()
+    if (page === 'owner') loadOwner().catch(() => {})
     window.scrollTo({ top: 0 })
   }
 
@@ -1017,6 +1094,7 @@
     renderTicker(state.symbols); renderSymbolPicker(); renderTradingHeader(); renderSession()
     await Promise.all([loadAccount(), loadCodes(), loadTraffic(), loadMarket()])
     $('loginView').classList.add('hidden'); $('tabbar').classList.remove('hidden')
+    if ($('navOwner')) $('navOwner').classList.toggle('hidden', !((d.user || {}).owner))
     go('pasar'); connectStream()
     if (d.dailyBonus) toast('Bonus harian +$AS ' + money(d.dailyBonus) + ' masuk!', 'ok')
   }
@@ -1115,6 +1193,21 @@
     $('showTokenBtn').textContent = i.type === 'text' ? 'SEMBUNYIKAN' : 'LIHAT'
   })
   $('tabbar').addEventListener('click', (e) => { const b = e.target.closest('button[data-page]'); if (b) go(b.dataset.page) })
+
+  if ($('ownSet')) $('ownSet').addEventListener('click', () => ownerAdjust('set'))
+  if ($('ownAdd')) $('ownAdd').addEventListener('click', () => ownerAdjust('add'))
+  if ($('ownRefresh')) $('ownRefresh').addEventListener('click', () => loadOwner().catch(() => {}))
+  if ($('page-owner')) {
+    $('page-owner').addEventListener('click', (e) => {
+      const pick = e.target.closest('[data-pick]')
+      if (pick) { $('ownAccount').value = pick.dataset.pick; $('ownAmount').focus(); return }
+      const q = e.target.closest('[data-own]')
+      if (q) {
+        const cur = Number($('ownAmount').value) || 0
+        $('ownAmount').value = String(cur + Number(q.dataset.own))
+      }
+    })
+  }
   $('profileBtn').addEventListener('click', () => go('profil'))
   $('marketFilters').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-filter]'); if (!b) return
@@ -1180,6 +1273,7 @@
     TOKEN = ''; try { localStorage.removeItem(TOKEN_KEY) } catch {}
     if (stream) { stream.close(); stream = null }
     state.user = null; $('tokenInput').value = ''
+    if ($('navOwner')) $('navOwner').classList.add('hidden')
     $('tabbar').classList.add('hidden'); $('loginView').classList.remove('hidden')
     setLive(false, 'keluar'); toast('Sudah keluar.')
   })

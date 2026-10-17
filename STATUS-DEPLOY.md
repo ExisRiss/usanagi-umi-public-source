@@ -544,7 +544,8 @@ repo memakai `https://apiii-xrina.my.id`. Itu sebab pesan `❌ Gagal membuat bra
   Saldo diubah, entri `adjust` ditambahkan ke riwayat akun, lalu `saveTradingDB()`.
   Menolak saldo negatif dan jumlah tidak valid.
 
-**Bot — plugin baru `bot/plugins/owner/usanagi-saldoas.js`** (owner only):
+**Bot — plugin `bot/plugins/owner/usanagi-saldoas.js`** (owner only) — ⚠️ **sudah DIHAPUS di Task 22**,
+sekarang saldo diatur dari halaman owner di website:
 - `.setas AlzRiss 11000` / `.setas AlzRiss 11.000` → saldo jadi $AS 11.000
 - `.addas AlzRiss 500` → tambah $AS 500
 - `.listas` → daftar semua akun trading + saldo
@@ -559,6 +560,54 @@ repo memakai `https://apiii-xrina.my.id`. Itu sebab pesan `❌ Gagal membuat bra
 - Uji plugin di server: `.listas` (5 akun) dan `.setas AlzRiss 11.000` berjalan.
 - Deploy: restart → `Successfully Loaded 2048 Plugins`, hash server ↔ repo SAMA.
   Backup game.js sebelumnya: `/backup/task21-game.js`.
+
+## Task 22 — Halaman owner saldo $AS di website, perintah bot dihapus (2026-10-17 15.40 WITA)
+
+**Permintaan owner:** "Hapus aja ganti tambahin endpoint owner di website game."
+
+**Yang dihapus:**
+- Plugin `bot/plugins/owner/usanagi-saldoas.js` (`.setas`, `.addas`, `.listas`) — dibuang dari repo
+  **dan** dari server. Folder `bot/plugins/owner/` sekarang hanya berisi plugin lain
+  (`usanagi-boost.js`, `usanagi-setprefix.js`, dll.).
+- Endpoint lama `/api/trading/admin/*` di `db-mirror/game.js` (hanya menerima token bot
+  `X-UMI-Game-Token`) — dihapus total. Kalau masih dipanggil, balasannya `404 Endpoint tidak ditemukan`.
+
+**Endpoint baru (dipakai halaman website, bukan bot):**
+- `GET /api/trading/owner/accounts?token=…` (atau header `X-UMI-Owner-Token`)
+  → `{ok, total, accounts:[{id, username, number, source, balance, equity, netWorth, positions}]}`
+  diurutkan dari total aset terbesar.
+- `POST /api/trading/owner/balance`
+  body `{token, account, amount, mode:'set'|'add', note}`
+  → `{ok, mode, before, balance, equity, netWorth, account}`.
+  `mode:'set'` = jadikan saldo segini, `mode:'add'` = tambah. Riwayat akun tetap dicatat
+  sebagai entri `adjust`. Menolak jumlah negatif / tidak valid (400).
+- `verifyOwnerToken()` — token dicek ke `VERIFY_URL` (verify-token platform), hasil di-cache
+  60 detik per token, dan **wajib** `user.owner === true` atau role `owner`.
+  Tanpa token → `401 Token diperlukan`; token salah → `401 Token tidak valid`;
+  token user biasa → `403 Halaman ini khusus owner`.
+- `findTradingAccount()` — cari akun dari id persis, nomor WA (≥8 digit), username persis,
+  lalu potongan username ≥3 huruf.
+
+**Halaman `db-mirror/trading.html` (`/trading`):**
+- Tab baru **Owner** (`#navOwner`) di tabbar — hanya muncul kalau sesi login `user.owner`.
+- Section `#page-owner`: input akun + jumlah, tombol **SET SALDO** / **TAMBAH**, tombol
+  **Muat ulang**, chip akun cepat, dan tabel semua akun (username, nomor, saldo, total aset).
+  Klik baris akun → langsung mengisi kolom akun.
+- Logout / sesi user biasa → tab Owner disembunyikan.
+
+**Hasil uji:**
+- `GET /api/trading/owner/accounts` tanpa token → **401**, token ngawur → **401**,
+  token user non-owner → **403** (harness `fetch` tiruan ke verify-token),
+  token owner → **200** `{ok:true,total:0,accounts:[]}` (DB lokal kosong; server punya 5 akun).
+- `POST /api/trading/owner/balance` tanpa token → **401**.
+- `GET /api/trading/admin/accounts` (endpoint bot lama) → **404**.
+- Halaman publik `https://game.gwenna.my.id/trading` → **200, 75.518 B**, memuat
+  `#page-owner`, `#navOwner`, `ownerAdjust` (9 kemunculan penanda owner).
+- Saldo AlzRiss **tetap $AS 11.000** — tidak ada operasi saldo di Task 22 selain uji baca.
+- Deploy: backup `/backup/task22-game.js` & `/backup/task22-trading.html` → upload →
+  restart → `Successfully Loaded 2047 Plugins`, `Bot utama: AKTIF`, `Bot siap digunakan!`.
+- sha256 server ↔ repo **SAMA** setelah verifikasi ulang: `game.js 4fe54429df78…`,
+  `trading.html 05973706b51f…` (versi halaman owner).
 
 ## Pending
 
