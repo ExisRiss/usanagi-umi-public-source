@@ -722,10 +722,18 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
                     
                     if (aiPlan.kind === 'command') {
                         m.text = aiDispatchText;
-                        m.mentionedJid = (m.mentionedJid || []).filter(jid => !aiPlan.botMentionIds.includes(String(jid).replace(/:\d+(?=@)/, '').split('@')[0]));
+                        // WebMessageInfo mendefinisikan `mentionedJid` sebagai getter
+                        // (hanya baca), sehingga assignment biasa melempar
+                        // "Cannot set property mentionedJid ... which has only a getter"
+                        // di ESM strict mode. Pasang sebagai properti milik objek.
+                        const aiMentions = (Array.isArray(m.mentionedJid) ? m.mentionedJid : [])
+                            .filter(jid => !aiPlan.botMentionIds.includes(String(jid).replace(/:\d+(?=@)/, '').split('@')[0]));
+                        try {
+                            Object.defineProperty(m, 'mentionedJid', { value: aiMentions, writable: true, configurable: true, enumerable: true });
+                        } catch { }
                         const targetCommand=plugin.importAliasMap?.[aiPlan.command]||aiPlan.command.replace(/^(?:umi|ourin|usanagi)-/,'');
                         if (/^(?:kick|add|promote|demote|warn|ban|unban|block|unblock|blacklist)$/i.test(targetCommand) && m.quoted && (m.quoted.fromMe || aiPlan.botMentionIds.includes(String(m.quoted.sender || '').replace(/:\d+(?=@)/, '').split('@')[0]))) {
-                            m.quoted=null;
+                            try { Object.defineProperty(m, 'quoted', { value: null, writable: true, configurable: true, enumerable: true }); } catch { }
                             if(isUsanagiPlugin)Object.defineProperty(pluginMessage,'quotedMessage',{value:null,writable:true,configurable:true});
                         }
                     }
