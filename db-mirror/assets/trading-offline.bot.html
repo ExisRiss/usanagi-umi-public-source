@@ -102,10 +102,26 @@
       </div>
       <canvas id="chart" style="margin-top:10px"></canvas>
       <div class="stats" style="margin-top:10px">
-        <div class="st"><span>VOLUME</span><b class="num" id="tVol">—</b></div>
+        <div class="st"><span>VOLUME MENIT</span><b class="num" id="tVol">—</b></div>
+        <div class="st"><span>VOLUME 5 MNT</span><b class="num" id="tVol5">—</b></div>
         <div class="st"><span>POSISI</span><b class="num" id="tPos">—</b></div>
         <div class="st"><span>RATA-RATA</span><b class="num" id="tAvg">—</b></div>
       </div>
+    </div>
+    <div class="card">
+      <h2>Info saham · <span id="tInfoSym">—</span></h2>
+      <div class="stats">
+        <div class="st"><span>HARGA</span><b class="num" id="tIPrice">—</b></div>
+        <div class="st"><span>PERUBAHAN 24J</span><b class="num" id="tIPct">—</b></div>
+        <div class="st"><span>TERTINGGI 24J</span><b class="num" id="tIHigh">—</b></div>
+        <div class="st"><span>TERENDAH 24J</span><b class="num" id="tILow">—</b></div>
+        <div class="st"><span>VOLUME 24J</span><b class="num" id="tIVol">—</b></div>
+        <div class="st"><span>KAPITALISASI</span><b class="num" id="tICap">—</b></div>
+        <div class="st"><span>PER (ESTIMASI)</span><b class="num" id="tIPer">—</b></div>
+        <div class="st"><span>SEKTOR</span><b class="num" id="tISektor">—</b></div>
+        <div class="st"><span>SENTIMEN</span><b class="num" id="tISent">—</b></div>
+      </div>
+      <div class="tiny" style="margin-top:8px">Angka dari mesin pasar 24 jam di HP kamu — bukan data bursa asli.</div>
     </div>
     <div class="card">
       <h2>Order</h2>
@@ -156,11 +172,16 @@
   /* ── mesin pasar offline: derau halus deterministik 24 jam (tanpa boost) ── */
   const TICK = 3000, TZ = 8 * 3600 * 1000
   const SAHAM = [
-    { sym: 'UMI', name: 'Usanagi Umi Corp', base: 1.24 }, { sym: 'JDB', name: 'Jadibot Studio', base: 2.05 },
-    { sym: 'WAG', name: 'WhatsApp Group Inc', base: 0.86 }, { sym: 'PNL', name: 'Panel Hosting', base: 1.62 },
-    { sym: 'GME', name: 'Umi Games', base: 0.54 }, { sym: 'DAN', name: 'DANA Finance', base: 3.10 },
-    { sym: 'SRV', name: 'Server VPS', base: 0.94 }, { sym: 'BOT', name: 'Bot AI', base: 1.78 },
-    { sym: 'TRD', name: 'Trader $AS', base: 0.42 }, { sym: 'HBG', name: 'Bandwidth Hosting', base: 1.10 },
+    { sym: 'UMI', name: 'Usanagi Umi Corp', base: 1.24, sektor: 'Teknologi', shares: 1.20, vol: 2400000, per: 18.4 },
+    { sym: 'JDB', name: 'Jadibot Studio', base: 2.05, sektor: 'Teknologi', shares: 0.86, vol: 1750000, per: 24.1 },
+    { sym: 'WAG', name: 'WhatsApp Group Inc', base: 0.86, sektor: 'Komunikasi', shares: 2.40, vol: 5100000, per: 14.7 },
+    { sym: 'PNL', name: 'Panel Hosting', base: 1.62, sektor: 'Infrastruktur', shares: 0.74, vol: 980000, per: 11.2 },
+    { sym: 'GME', name: 'Umi Games', base: 0.54, sektor: 'Hiburan', shares: 1.85, vol: 3600000, per: 9.8 },
+    { sym: 'DAN', name: 'DANA Finance', base: 3.10, sektor: 'Keuangan', shares: 0.42, vol: 760000, per: 21.6 },
+    { sym: 'SRV', name: 'Server VPS', base: 0.94, sektor: 'Infrastruktur', shares: 1.05, vol: 1240000, per: 13.3 },
+    { sym: 'BOT', name: 'Bot AI', base: 1.78, sektor: 'Teknologi', shares: 0.63, vol: 1450000, per: 29.8 },
+    { sym: 'TRD', name: 'Trader $AS', base: 0.42, sektor: 'Keuangan', shares: 3.10, vol: 6400000, per: 7.4 },
+    { sym: 'HBG', name: 'Bandwidth Hosting', base: 1.10, sektor: 'Komunikasi', shares: 0.95, vol: 880000, per: 12.9 },
   ]
   const BY = Object.fromEntries(SAHAM.map((s) => [s.sym, s]))
   const frac = (n) => { const v = Math.sin(n * 12.9898) * 43758.5453; return v - Math.floor(v) }
@@ -185,6 +206,29 @@
   }
   // Tanpa sesi/boost: harga murni mengikuti derau pasar 24 jam.
   const session = () => ({ active: false, boostPct: 0, label: 'Pasar normal', timezone: 'WITA (UTC+8)' })
+
+  /* ── info emiten: angka besar ringkas + sentimen ── */
+  const big = (n) => {
+    const a = Math.abs(n)
+    if (a >= 1e12) return `${(n / 1e12).toLocaleString('id-ID', { maximumFractionDigits: 2 })} T`
+    if (a >= 1e9) return `${(n / 1e9).toLocaleString('id-ID', { maximumFractionDigits: 2 })} M`
+    if (a >= 1e6) return `${(n / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 1 })} jt`
+    if (a >= 1e3) return `${(n / 1e3).toLocaleString('id-ID', { maximumFractionDigits: 1 })} rb`
+    return Math.round(n).toLocaleString('id-ID')
+  }
+  const sentimen = (pct) => pct >= 6 ? ['NAIK KUAT', 'up'] : pct >= 1.5 ? ['NAIK', 'up'] : pct <= -6 ? ['TURUN KUAT', 'down'] : pct <= -1.5 ? ['TURUN', 'down'] : ['SIDEWAYS', '']
+  const volMenit = (sym, tick) => BY[sym].vol / 1440 * (0.45 + noise(fnv(sym) + 307, tick / 1200) * 1.5)
+  const volWindow = (sym, tick, mins) => {
+    let v = 0
+    for (let i = 0; i < mins; i++) v += volMenit(sym, tick - i * 20)
+    return v
+  }
+  /* tertinggi/terendah 24 jam: sampel tiap 5 menit (288 titik) */
+  const dayRange = (sym, tick) => {
+    let hi = 0, lo = 1e9
+    for (let i = 288; i >= 0; i--) { const p = priceAt(sym, tick - i * 100); if (p > hi) hi = p; if (p < lo) lo = p }
+    return { high: r2(hi), low: r2(lo) }
+  }
 
   /* ── simpanan localStorage ── */
   const KEY = 'umi-trade-offline-v1'
@@ -298,9 +342,26 @@
     $('tChange').textContent = `${sgn(q.change)}${money(q.change)} (${sgn(q.pct)}${money(q.pct)}%)`
     $('tChange').className = 'num ' + cls(q.pct)
     $('tRange').textContent = `H ${money(q.high)} · L ${money(q.low)}`
-    $('tVol').textContent = money(q.volume, 0)
+    const tick = tickNow()
+    $('tVol').textContent = money(volMenit(q.sym, tick), 0)
+    $('tVol5').textContent = money(volWindow(q.sym, tick, 5), 0)
     $('tPos').textContent = pos ? `${money(pos.qty)} lot` : '—'
     $('tAvg').textContent = pos ? money(pos.avgPrice) : '—'
+    /* info saham */
+    const it = BY[q.sym], [sent, scl] = sentimen(q.pct)
+    $('tInfoSym').textContent = q.sym
+    $('tIPrice').textContent = `$AS ${money(q.price)}`
+    $('tIPct').textContent = `${sgn(q.pct)}${money(q.pct)}%`
+    $('tIPct').className = 'num ' + cls(q.pct)
+    const range = dayRange(q.sym, tick)
+    $('tIHigh').textContent = money(range.high)
+    $('tILow').textContent = money(range.low)
+    $('tIVol').textContent = `${big(it.vol * (0.75 + noise(fnv(q.sym) + 211, tick / 2880) * 0.5))} lot`
+    $('tICap').textContent = `$AS ${big(it.shares * 1e9 * q.price)}`
+    $('tIPer').textContent = `${money(it.per + noise(fnv(q.sym) + 19, tick / 600) * 2)}×`
+    $('tISektor').textContent = it.sektor
+    $('tISent').textContent = sent
+    $('tISent').className = 'num ' + scl
     $('submit').className = 'btn btn-block ' + (state.side === 'buy' ? 'btn-buy' : 'btn-sell')
     $('submit').textContent = state.side === 'buy' ? 'BELI SEKARANG' : 'JUAL SEKARANG'
     total()

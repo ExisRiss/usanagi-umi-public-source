@@ -462,6 +462,24 @@ repo memakai `https://apiii-xrina.my.id`. Itu sebab pesan `❌ Gagal membuat bra
   dokumen 34.857 byte. Uji DOM (jsdom): beli 3 lot → kas 995,95 & aset tetap 1.000,00; jual balik →
   kas 1.000,00; reset dua ketuk berfungsi; **0 galat JS**.
 
+**3b. Tambahan (revisi owner): grafik naik-turun + info saham.**
+- `bot/plugins/game/trading-wa-html.js` (WA, 22.720 char):
+  * **strip TRAFFIC** di atas: berapa emiten naik vs turun (bar hijau/merah) + total volume 5 menit.
+  * **grafik candlestick** 20 menit (1 batang = 1 menit) + **bar volume** di bawahnya, warna
+    hijau/merah sesuai arah, plus label harga tertinggi/terendah 20 menit.
+  * **panel INFO SAHAM** 10 baris: harga, perubahan 24j, tertinggi 24j, terendah 24j,
+    volume 24j, volume 5 menit, kapitalisasi, PER estimasi, sektor, sentimen
+    (NAIK KUAT/NAIK/SIDEWAYS/TURUN/TURUN KUAT).
+  * data emiten ditambah: `sektor`, `shares` (miliar lot), `vol` (lot/hari), `per`.
+  * `dayStats()` (288 sampel / 24 jam), `vol5min()`, `candles()`.
+  * uji jsdom: 20 candle + 20 bar volume, 10 baris info terisi, ganti emiten, beli/jual → 0 galat.
+- Versi berkas offline (`db-mirror/trading-offline.html` & `assets/trading-offline.bot.html`):
+  kartu **Info saham** (harga, perubahan 24j, H/L 24j asli via `dayRange()`, volume 24j, volume
+  per menit, volume 5 mnt, kapitalisasi, PER, sektor, sentimen) + volume menit/5 menit di kartu
+  trading. Keduanya diunggah ke `/game/…` dan situs sudah menyajikan versi baru
+  (`Info saham` terbaca dari `game.gwenna.my.id`).
+- Relay rich WA sekarang 31.896 char base64 (`.tradingoffline`).
+
 **4. Lain-lain**
 - `bot/lib/prefix-rewrite.js`: `rewriteOutgoingContent()` hanya menyentuh plain object —
   Buffer/stream dilewatkan apa adanya (pengaman saat `sendMessage(jid, buffer)`).
