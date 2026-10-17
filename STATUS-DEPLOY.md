@@ -879,6 +879,20 @@ Berkas baru, tanpa bundler (modul ES asli, tetap vanilla Node + HTML):
   `empire-ui.js 310391ea`, `empire.html 1e79ec90` — **semua sama**.
 - Commit **`5a2d894`** di-push ke `main` (setelah `373a5f1`).
 
+### D. Papan Ular Tangga v2 — warna & pion (2026-10-17 17.48 WITA)
+
+- Kotak 100 sekarang **berwarna** (8 warna pastel bergilir per baris), bingkai putih tipis di dalam
+  tiap kotak, nomor tebal `22px`, label `▲22` / `▼7` diberi garis putih (`paint-order:stroke`)
+  supaya terbaca di atas warna apa pun. Kotak 1 hijau muda, kotak 100 emas + trofi.
+- **Pion**: latar gelap pada `assets/pieces/pawn/pawn-1..12.png` dihapus dengan flood-fill
+  (backup di `/tmp/pawn-backup`), jadi pion tampil sebagai bidak transparan di atas kotak —
+  bukan kotak foto. Ukuran 46×92 (rasio asli 1:2) + bayangan elips + badge nomor.
+- Terverifikasi: `100 kotak · 8 ular · 7 tangga · 3 pion`, 0 error; live
+  `https://game.gwenna.my.id` room ular tangga menampilkan papan baru (screenshot
+  `/tmp/live-snakes2.png`, lokal `/tmp/snk-new.png`).
+- Deploy ulang + restart; `/health` **v2.1.1**, `/empire` 200, `/empire/ui.js` 200 65.614 B,
+  `/empire/engine.js` 200 43.540 B.
+
 
 ## Pending
 

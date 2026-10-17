@@ -1269,19 +1269,18 @@ if (isRoom) {
     for (let n = 1; n <= 100; n++) {
       const c = snkCell(n)
       const x = c.col * 100, y = (9 - c.row) * 100
-      const shade = (c.row + c.col) % 2 === 0 ? '#fffdf4' : '#f2ead4'
       const isLad = !!st.ladders[n], isSnk = !!st.snakes[n]
-      let fill = shade
-      if (isLad) fill = '#dff3df'
-      if (isSnk) fill = '#fbe2e2'
-      if (n === 100) fill = '#ffe9a8'
-      if (n === 1) fill = '#dff3ff'
+      const PAL = ['#ffe1e7', '#ffeccb', '#fff7c4', '#ddf6d2', '#d2efff', '#e7e0ff', '#ffe0f3', '#d4f6ef']
+      let fill = PAL[(c.row * 3 + c.col) % PAL.length]
+      if (n === 1) fill = '#c9f0d0'
+      if (n === 100) fill = '#ffe08a'
       svg += `<g class="snk-cell" data-n="${n}">
-        <rect x="${x + 1.5}" y="${y + 1.5}" width="97" height="97" rx="9" fill="${fill}" stroke="rgba(80,60,30,.22)" stroke-width="1.4"/>
-        <text x="${x + 12}" y="${y + 27}" font-size="21" font-weight="800" fill="${isLad ? '#1c7a44' : isSnk ? '#a52a3a' : '#8a7a55'}" opacity=".8">${n}</text>
+        <rect x="${x + 1.5}" y="${y + 1.5}" width="97" height="97" rx="7" fill="${fill}" stroke="rgba(60,45,20,.28)" stroke-width="1.6"/>
+        <rect x="${x + 4.5}" y="${y + 4.5}" width="91" height="91" rx="5" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.2"/>
+        <text x="${x + 11}" y="${y + 28}" font-size="22" font-weight="900" fill="#4a3c22" opacity=".78">${n}</text>
         ${n === 100 ? `<text x="${x + 50}" y="${y + 70}" font-size="40" text-anchor="middle">🏆</text>` : ''}
-        ${isLad ? `<text x="${x + 88}" y="${y + 90}" font-size="17" text-anchor="end" fill="#1c7a44" font-weight="800">▲${st.ladders[n]}</text>` : ''}
-        ${isSnk ? `<text x="${x + 88}" y="${y + 90}" font-size="17" text-anchor="end" fill="#a52a3a" font-weight="800">▼${st.snakes[n]}</text>` : ''}
+        ${isLad ? `<text x="${x + 89}" y="${y + 91}" font-size="18" text-anchor="end" fill="#1c7a44" font-weight="900" stroke="#fffdf4" stroke-width="3.2" paint-order="stroke">▲${st.ladders[n]}</text>` : ''}
+        ${isSnk ? `<text x="${x + 89}" y="${y + 91}" font-size="18" text-anchor="end" fill="#b3263a" font-weight="900" stroke="#fffdf4" stroke-width="3.2" paint-order="stroke">▼${st.snakes[n]}</text>` : ''}
       </g>`
     }
 
@@ -1305,9 +1304,10 @@ if (isRoom) {
       const isTurn = !over && st.turn === i
       svg += `<g class="snk-pawn${isTurn ? ' on' : ''}" data-pawn="${i}" style="transform:translate(${(c.x + o[0] - 23).toFixed(1)}px,${(c.y + o[1] - 31).toFixed(1)}px)">
         ${isTurn ? `<circle cx="23" cy="34" r="27" fill="${cols[i % cols.length]}" opacity=".28"/>` : ''}
-        <image href="/assets/pieces/pawn/pawn-${(i % 12) + 1}.png" width="56" height="75" x="-5" y="-6" preserveAspectRatio="xMidYMid meet"/>
-        <circle cx="23" cy="60" r="11" fill="${cols[i % cols.length]}" stroke="rgba(0,0,0,.45)" stroke-width="1.6"/>
-        <text x="23" y="64.5" font-size="12" font-weight="900" text-anchor="middle" fill="#12211a">${i + 1}</text>
+        <ellipse cx="23" cy="63" rx="15" ry="5" fill="rgba(20,30,25,.28)"/>
+        <image href="/assets/pieces/pawn/pawn-${(i % 12) + 1}.png" width="46" height="92" x="0" y="-30" preserveAspectRatio="xMidYMid meet" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))"/>
+        <circle cx="23" cy="66" r="10.5" fill="${cols[i % cols.length]}" stroke="rgba(255,255,255,.9)" stroke-width="1.8"/>
+        <text x="23" y="70" font-size="11.5" font-weight="900" text-anchor="middle" fill="#12211a">${i + 1}</text>
       </g>`
     })
     svg += '</svg>'
