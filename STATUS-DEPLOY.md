@@ -1155,6 +1155,8 @@ ga valid atau token gaada kasih tutorial nya login pake token."*
 - Token tersimpan yang sudah tidak berlaku → tautan dilepas otomatis + tutorial (bukan sekadar
   pesan error).
 - `.belisaham` / `.jualsaham` / `.redeem` dengan token tidak valid juga membalas tutorial.
+- `handler.register = false` untuk plugin trading: login token bisa langsung dipakai dari bot
+  utama maupun sesi jadibot tanpa wajib `.daftar` lebih dulu.
 
 ### 3. Server trading menolak token ngawur
 - Sebelumnya `GET /api/trading/me?token=<apa saja>` **membuat akun baru** dengan saldo $AS 110 —

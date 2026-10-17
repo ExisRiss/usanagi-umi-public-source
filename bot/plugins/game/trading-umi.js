@@ -482,7 +482,8 @@ async function tradeToken(number, m) {
 handler.help = COMMANDS.map((c) => `${c} ${['belisaham', 'belias', 'jualsaham', 'jualas'].includes(c) ? '<saham> <lot>' : c === 'trading' ? '[login <token>|off]' : c === 'redeem' ? '[kode]' : c === 'peringkat' ? 'kaya|miskin' : ''}`.trim())
 handler.tags = ['game', 'economy']
 handler.command = new RegExp(`^(${COMMANDS.join('|')})$`, 'i')
-handler.register = true
+// Tidak wajib daftar dulu: login token harus bisa langsung dari bot utama maupun jadibot.
+handler.register = false
 handler.limit = false
 
 export default handler
