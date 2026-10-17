@@ -2,7 +2,7 @@
 
 **Log lengkap:** [repo `STATUS-DEPLOY.md`](./usanagi-umi-public-source/STATUS-DEPLOY.md)
 
-Terakhir diperbarui: **2026-10-17 13.35 WITA**
+Terakhir diperbarui: **2026-10-17 17.10 WITA**
 
 ## Done
 
@@ -783,6 +783,66 @@ dan info lain. Buat juga agar setiap game punya animasi."
 - Deploy: backup `/backup/task26-*`, restart → `Successfully Loaded 2047 Plugins`,
   `[room-notify] aktif — cek notifikasi room game tiap 25 detik`.
 - Pratinjau: `/home/user/preview-umi-games-task26.html` (3,1 MB, screenshot live + papan contoh).
+
+## Task 27 — Property Empire 40 petak + papan Ular Tangga bergambar (2026-10-17 17.10 WITA)
+
+**Dua permintaan user:** (A) papan ular tangga lama jelek → wajib ada gambar ular & tangga,
+(B) monopoli diganti game papan properti lengkap 40 petak sesuai **PROMPT MASTER**.
+
+### A. Papan Ular Tangga baru (`db-mirror/game.html`)
+
+- `renderSnakes` ditulis ulang: papan **SVG 1000×1000** (bukan grid div + emoji).
+- 100 kotak bernomor zig-zag, kotak awal tangga hijau (`▲22`), kepala ular merah (`▼7`),
+  kotak 100 bertrofi.
+- **7 tangga** digambar dua rel + anak tangga bergradasi kayu (`3→22, 8→31, 20→38, 36→44, 51→67, 71→91, 80→100`).
+- **8 ular** digambar kurva bezier berbadan tebal: kepala + mata + lidah bercabang, motif sisik
+  (112 titik dihitung dari `getPointAtLength`), `17→7, 32→10, 48→26, 62→19, 79→42, 88→55, 97→66, 99→78`.
+- Pion asli `/assets/pieces/pawn/pawn-N.png` (56×75) + badge nomor, transisi `transform .32s`,
+  cincin berkedip di pion yang dapat giliran.
+- Legenda (7 tangga / 8 ular), chip pemain + posisi, tombol lempar dadu tetap.
+
+### B. Property Empire (`/empire`)
+
+Berkas baru, tanpa bundler (modul ES asli, tetap vanilla Node + HTML):
+
+| Berkas | Isi |
+|---|---|
+| `db-mirror/empire.js` (43,5 KB) | mesin murni: papan 40, grup warna, sewa, gadai, bangunan, lelang, trade, kartu, bot, simpan/muat |
+| `db-mirror/empire.html` (30,2 KB) | papan 11×11 + panel pemain/aksi/log + 10 modal |
+| `db-mirror/empire-ui.js` (65,5 KB) | render, animasi, alur giliran, bot loop, pan/zoom |
+| `db-mirror/empire.test.mjs` | 20 uji Node (`node --test`) |
+
+- **40 petak** nama Jakarta asli: MULAI, Tanah Abang…SCBD; 4 sudut, 4 stasiun, 2 utilitas,
+  2 pajak, 3 kesempatan, 3 dana komunitas (tiap dek 16 kartu berefek nyata).
+- Uang terpusat: `pay/receive/charge/payDebt/bankrupt`; transaksi gagal tidak mengubah saldo.
+- Bangun **merata** per kelompok, maks 4 rumah → hotel, batas bank (32 rumah/12 hotel),
+  jual bangunan setengah harga, gadai (tanpa sewa) & tebus 110%.
+- **Lelang** berjalan termasuk bot (`startAuction/auctionBid/auctionPass`), **tukar** dengan
+  validasi (tidak menciptakan uang, properti harus milik pengirim, bangunan harus dijual).
+- **Bot 4 gaya** (Pemula/Seimbang/Agresif/Ekonomis) — dadu baru diambil saat gilirannya,
+  tidak pernah mengintip; `botStep` menangani giliran, beli, lelang, utang, trade, bangun.
+- UI: papan kayu + tekstur, ikon SVG tiap jenis petak, band warna, rumah hijau/hotel merah,
+  gadai bergaris, dadu 3D beranimasi, kartu flip, confetti, WebAudio + tombol mute,
+  modal beli/lelang/kelola/tukar/kartu/utang/statistik/tutorial/setelan, pan & zoom.
+- Simpan otomatis `localStorage umi-empire-save-v1` + tombol lanjutkan/mulai ulang (konfirmasi);
+  tidak ada API key/token di halaman.
+- Route baru `GET /empire`, `/empire/engine.js`, `/empire/ui.js`; kartu sorotan di lobi `/`.
+
+**Hasil uji:**
+
+- `node --test db-mirror/empire.test.mjs` → **20/20 lulus** (papan 40, gaji, beli, lelang,
+  sewa properti/stasiun/utilitas, gadai, kartu, penjara, dadu kembar, rumah merata, hotel,
+  tukar, bangkrut, bot main sampai selesai, simpan/muat, saldo tak negatif).
+- Playwright lokal: satu permainan penuh sampai **game over** (608 aksi, 0 error konsol);
+  lelang bot + manusia (bot tawar 120 → panel lelang → manusia 264 → selesai, SCBD jadi milik bot);
+  kelola 4 rumah/petak → hotel → gadai (overlay garis) → tukar +Rp400 diterima (kas 2000→1600,
+  800→1200, kepemilikan pindah); simpan → reload → lanjutkan (saldo & giliran utuh).
+- Live `game.gwenna.my.id`: `/empire` 200, `/empire/ui.js` 200, `/empire/engine.js` 200,
+  `/health` **v2.1.0**; dadu [1,2] → pion ke petak 3 → modal “Beli Stasiun Gambir?”.
+- Live ular tangga: `svg 1 · ular 8 · tangga 7 · sisik 112`; main sampai selesai (bot menang,
+  posisi [44,58,100], status `finished`, 0 error).
+- sha256 server ↔ repo untuk `game.js, game.html, empire.js, empire-ui.js, empire.html`: **sama**.
+- Commit **`7511d84`** (7 berkas, +5798/−296) sudah di-push ke `main`.
 
 ## Pending
 
