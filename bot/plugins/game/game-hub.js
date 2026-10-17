@@ -14,6 +14,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const GAME_LIST = [
+  { key: 'empire', cmd: 'empire', title: '🎩 Property Empire', desc: 'Bangun kota, beli petak, jadi raja properti! (multiplayer)', emoji: '🎩' },
+  { key: 'uno', cmd: 'uno', title: '🃏 UNO Web', desc: 'Main UNO bareng teman lewat browser', emoji: '🃏' },
   { key: 'snake', cmd: 'ular', title: '🐍 Ular Rimba', desc: 'Classic snake game dengan kontrol D-pad', emoji: '🐍' },
   { key: 'tetris', cmd: 'tetris', title: '🧩 Tetris', desc: 'Block puzzle legend, geser & jatuhkan!', emoji: '🧩' },
   { key: 'chess', cmd: 'chess', title: '♟️ Catur', desc: 'Mini chess melawan AI', emoji: '♟️' },

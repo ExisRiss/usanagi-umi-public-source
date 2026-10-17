@@ -1095,6 +1095,9 @@ pembaruan."*
   harus `.daftar` lebih dulu.
 - `/lib/webgame.json` dibuat di server (bukan di repo — masuk `.gitignore`):
   `{"enabled":true,"baseUrl":"https://game.gwenna.my.id","token":"<48 karakter>"}`.
+- `game-hub.js`: kartu **🎩 Property Empire** dan **🃏 UNO Web** ditambahkan di urutan depan
+  carousel `.gamehub` / `.games`, supaya game baru kelihatan tanpa harus tahu nama perintahnya.
+  `.playgame empire` juga mengenali nama itu dan menyarankan `.empire`.
 
 ### 3. Kenapa jadibot otomatis ikut
 `lib/jadibot.js` membangun setiap sesi dengan `await import('../handler.js')` — handler yang
@@ -1118,8 +1121,8 @@ folder plugin terpisah per sesi dan tidak perlu deploy ulang per nomor.
   - `.empire tjFARaStGE` → kursi #2 terverifikasi + kode `435046`;
   - `.webgame room tjFARaStGE` → "Status: menunggu pemain · Pemain: 2" dengan dua kursi ✅.
 - Halaman web `https://game.gwenna.my.id/empire/<id>` → **HTTP 200, 116.862 B** (v2.2.0).
-- Berkas di server = repo: sha256 `81757833c0069622…` (8.673 B), `/lib/webgame.json` 113 B
-  dengan token 48 karakter.
+- Berkas di server = repo: `game-webmultiplayer.js` sha256 `81757833c0069622…` (8.673 B),
+  `game-hub.js` sha256 `8153678c778a42d7…` (6.344 B), `/lib/webgame.json` bertoken 48 karakter.
 - Restart panel `HTTP 204`; `/api/health` bot v1.4.0 hidup; konsol 28 detik tanpa error plugin.
 - 20 berkas Task 29 dicek ulang: **20/20 sha256 SAMA** — tidak ada regresi.
 
