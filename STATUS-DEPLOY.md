@@ -1699,3 +1699,30 @@ Diterapkan untuk saham/pasar/harga, portofolio/trading, peringkat trader, bukti 
   - `/plugins/game/ular-tangga-wa-html.js` 152.093 B `3da315e5017ae390`
 - Restart panel API 204; `Successfully Loaded 2052 Plugins`; 0 baris error pada log startup yang diperiksa.
 - Sesi, backup, key/token, autoread dan website produksi tidak diubah. Pesan game/kartu lama tidak diperbarui otomatis; kirim perintah ulang untuk menerima versi terbaru.
+
+## Task 45 — Similarity hanya fallback setelah command/Auto-AI (2026-10-18)
+
+### Laporan dan akar masalah
+User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan tambahan `Mungkin maksud kamu /portofolio` 90%. Hook `before` similarity berjalan sebelum command, membaca teks asli `Portofolio` tetapi memakai kecocokan prefix dari dispatch hasil AI `/portofolio`. Pemotongan satu karakter menghasilkan `ortofolio`, lalu saran dikirim sebelum jawaban rich.
+
+### Perbaikan
+- Memindahkan similarity dari `before` ke callback `unknownCommand`, dipanggil dispatcher paling akhir setelah hooks, command dan balasan AI. Bukan sekadar menghapus teks saran.
+- Jika AI sudah menangani pesan, command telah dikenali (termasuk ditolak izin/gagal), atau bot sudah/pending membalas, fallback tidak berjalan.
+- Modul baru `lib/command-response.js` melacak sendMessage, relayMessage (termasuk rich HTML), conn.reply dan m.reply menggunakan AsyncLocalStorage. Flag terpisah per permintaan/socket/chat; aman untuk pesan bersamaan dan bot utama/Jadibot. Reaksi, edit, delete, metadata serta pesan ke chat/socket lain tidak dihitung sebagai jawaban. Send gagal tidak ditandai terkirim.
+- Saran tetap tersedia untuk typo pada command dengan prefix aktif yang benar-benar tidak dikenal dan belum dijawab. Mengurai hanya token command, mendukung prefix multi-karakter, argumen, huruf besar, regex alias serta plugin disabled/custom scope.
+- Helper serializer lama `lib/message-response.js` tetap identik dengan HEAD/live: nama tracker dipisahkan setelah review menemukan benturan nama. Tidak mengubah parser tombol/list/native flow.
+
+### Pengujian
+- **112/112 tes lulus**: Auto-AI, intent routing, native dispatcher, rich info, serta suite baru similarity/response tracking. Tes mereproduksi bare `Portofolio` melalui Auto-AI, mengirim lewat sender rich asli lalu mendekode payload HTML: tepat satu pesan pada bot utama dan Jadibot.
+- Menguji command valid dengan argumen/case, typo genuine, obrolan tanpa prefix, jawaban AI, penolakan permission, command tanpa output, balasan before/all hook, relay rich, reaksi, gagal kirim, pending send, concurrency satu chat/socket dan beberapa socket.
+- Transport, model dan database dalam tes dimock; tidak mengirim tes ke WhatsApp user atau mengeksekusi perdagangan.
+- Syntax check runtime dan git diff --check lulus. Test loader ditambah stub scheduler sibling access helper agar tidak memuat SQLite native yang tidak diperlukan.
+
+### Deploy
+- Membandingkan ulang handler dan similarity live dengan backup sebelum upload: identik. Helper baru dipastikan tidak ada melalui directory listing (endpoint contents panel mengembalikan 500 untuk file absen).
+- Tiga file runtime diupload, helper lebih dulu, seluruh byte diverifikasi dari download ulang:
+  - `/lib/command-response.js` 3.157 B `583614c1bf0971064`
+  - `/handler.js` 52.629 B `92f199750fac4a036`
+  - `/plugins/_system/_didyoumen.js` 2.756 B `1192d57ea46376cc`
+- Restart melalui panel API: 204. Console sesudah restart: `Successfully Loaded 2052 Plugins`, tidak ditemukan error import/syntax/load plugin pada pemeriksaan startup.
+- Key/token, sessions dan backup, autoread, website, aset trading/game tidak diubah. Verifikasi pesan WhatsApp nyata pascadeploy masih perlu retry user; hasil tes bukan klaim sudah diuji dari HP user.

@@ -9,6 +9,7 @@ const snippets = {
  './core/awang-prefix.js': `export const getActivePrefix=async()=>'/';`,
  './lib/bot-config.js': `export const prefixStorageKey=(conn,chat)=>conn.user.id+chat;export const isPluginDisabled=()=>false;`,
  './lib/awang-aksesgrub.js': `export const isGroupAdmin=async()=>false;export const isBotAdmin=async()=>false;`,
+ './awang-aksesgrub.js': `export const isGroupAdmin=async()=>false;export const isBotAdmin=async()=>false;`,
  './lib/awang-tombol.js': `export const sendInteractive=()=>{};`,
  './lib/jadibot-group-welcome.js': `export const getSessionWelcomeTemplate=()=>'';export const getSessionGoodbyeTemplate=()=>'';`,
  './config/settings.js': `export default {};`,

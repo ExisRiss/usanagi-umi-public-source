@@ -1,3 +1,4 @@
+import { withMessageResponses, bindResponseMessage, maySuggestCommand } from './lib/command-response.js';
 import { planAutoAI, shouldAutoAITrigger } from './lib/auto-ai.js';
 import { schedulePluginCommand } from './lib/auto-ai-scheduler.js';
 import { runWithBotConnection } from './lib/bot-connection-context.js';
@@ -163,7 +164,7 @@ function renderGroupEventTemplate(template, {
  * @param {import('baileys').BaileysEventMap<unknown>['messages.upsert']} groupsUpdate
  */
 export async function handler(chatUpdate) {
-    return runWithBotConnection(this, () => handleMessage.call(this, chatUpdate));
+    return runWithBotConnection(this, () => withMessageResponses(this, () => handleMessage.call(this, chatUpdate)));
 }
 
 async function handleMessage(chatUpdate) {
@@ -177,6 +178,7 @@ async function handleMessage(chatUpdate) {
 	m = smsg(this, m) || m;
     if (m?.__autoAIHandled) return;
 if (!m) return;
+bindResponseMessage(m);
 const botConfig = this.botConfig || {
     type: 'main', scope: 'main', defaultPrefix: global.mainBot?.defaultPrefix || '/', defaultLimit: 50,
     public: true, disabledPlugins: []
@@ -497,6 +499,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 			};
 		};
 
+		const unknownHandlers = [];
 		for (let name in global.plugins) {
     if (global.opts?.gconly && !isGroup) continue
     if (global.opts?.pconly && isGroup) continue
@@ -523,6 +526,8 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 			const __filename = pluginPath.filename;
 			const __dirname = pluginPath.dirname;
 			const pluginBasename = pluginPath.basename;
+            // Suggestions are a final fallback, never a before-hook racing a reply.
+            if (typeof plugin.unknownCommand === 'function') unknownHandlers.push(plugin);
 
 			if (typeof plugin.all === 'function') {
 				try {
@@ -611,6 +616,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 								: false;
 
 				if (!isAccept) continue;
+                m.__commandRecognized = true; // Also suppress suggestions on denied/failed commands.
 				if (isPluginDisabled(botConfig, name, command)) continue;
 
                 // Registrasi bersifat wajib secara global. Hanya command daftar
@@ -905,6 +911,17 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 			}
 		}
         if (m.__autoAIAnswer) await sendAutoAIReply(this, m, m.__autoAIAnswer);
+        if (maySuggestCommand(m)) {
+            for (const plugin of unknownHandlers) {
+                if (!maySuggestCommand(m)) break;
+                try {
+                    await plugin.unknownCommand.call(this, m, {
+                        usedPrefix: activePrefix, botConfig,
+                        isCommandDisabled: (name, command) => isPluginDisabled(botConfig, name, command),
+                    });
+                } catch (error) { console.error('[command-suggestion]', error?.message || error); }
+            }
+        }
 	} catch (e) {
 		console.error(e);
 	} finally {
