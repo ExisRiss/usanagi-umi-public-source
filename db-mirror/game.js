@@ -1008,13 +1008,13 @@ const frac = (n) => { const v = Math.sin(n * 12.9898) * 43758.5453; return v - M
 const noise = (seed, x) => { const i = Math.floor(x), f = x - i, a = frac(i * 1.7 + seed), b = frac((i + 1) * 1.7 + seed), u = f * f * (3 - 2 * f); return a + (b - a) * u }
 
 /** Harga mentah satu saham pada tick tertentu (deterministik). */
-/* ── SESI NAIK ────────────────────────────────────────────────────────────
- * Setiap hari 00.00–02.00 WITA pasar naik terus (+0,20% per menit), lalu
- * diturunkan perlahan sampai 06.00 supaya tidak ada jurang harga. Bisa juga
- * dinyalakan di luar jadwal lewat tradingDB.market.pump {start,end,rate,cap}.
- * Semua faktor hanya fungsi dari tick + konfigurasi, jadi setiap klien
- * menghitung harga yang sama. */
+/* ── SESI NAIK (dimatikan) ────────────────────────────────────────────────
+ * Dulu: setiap 00.00–02.00 WITA pasar naik +0,20% per menit lalu meluruh
+ * sampai 06.00. Owner minta boost itu dihapus, jadi PUMP_ENABLED = false:
+ * pumpFactor() selalu 1 dan sessionInfo() selalu "Pasar normal 24 jam".
+ * Kode lama dibiarkan supaya mudah dinyalakan lagi kalau suatu saat perlu. */
 function pumpFactor(tick) {
+    if (!PUMP_ENABLED) return 1
     const ms = tick * TICK_MS
     let pct = 0
     const win = (tradingDB && tradingDB.market && tradingDB.market.pump) || null
@@ -1034,6 +1034,7 @@ function pumpFactor(tick) {
 
 /** Info sesi untuk klien/bot: aktif atau tidak, sampai kapan, naik berapa persen. */
 function sessionInfo(tick = nowTick()) {
+    if (!PUMP_ENABLED) return { active: false, boostPct: 0, until: null, timezone: 'WITA (UTC+8)', label: 'Pasar normal 24 jam', next: null }
     const ms = tick * TICK_MS
     const localMin = ((ms + PUMP_TZ_OFFSET) % 86400000) / 60000
     const win = (tradingDB && tradingDB.market && tradingDB.market.pump) || null
@@ -1188,6 +1189,7 @@ const REDEEM_CODES = {
     'WELCOME': { amount: 15, maxUses: 200, used: 0 },
     'BONUS': { amount: 10, maxUses: 500, used: 0 },
 }
+const PUMP_ENABLED = false                       // sesi boost 02.00 dimatikan (permintaan owner)
 const PUMP_TZ_OFFSET = 8 * 3600 * 1000           // WITA (Asia/Makassar)
 const PUMP_SESSION_START_MIN = 0                 // sesi harian: 00.00
 const PUMP_SESSION_END_MIN = 120                 // sampai 02.00 WITA

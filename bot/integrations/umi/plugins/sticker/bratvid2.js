@@ -55,15 +55,24 @@ async function handler(m, { sock }) {
     m.react('🕕')
     
     try {
-        const url = `https://api-faa.my.id/faa/bratvid?text=${encodeURIComponent(text)}`
-        await sock.sendVideoAsSticker(m.chat, url, m, {
+        // API lama (api-faa) sudah tidak dipakai — pakai apiii-xrina yang sama
+        // dengan plugin utama bratvid2 milik bot.
+        const url = `https://apiii-xrina.my.id/maker/bratvid2?text=${encodeURIComponent(text)}`
+        const video = await axios.get(url, {
+            responseType: 'arraybuffer',
+            timeout: 60000,
+            headers: { 'User-Agent': 'Mozilla/5.0 (Usanagi-Umi)' }
+        }).then((res) => Buffer.from(res.data))
+        if (!video || video.length < 5000) throw new Error('video kosong dari API bratvid2')
+        await sock.sendVideoAsSticker(m.chat, video, m, {
             packname: config.sticker.packname,
             author: config.sticker.author
         })
         m.react('✅')
     } catch (error) {
+        console.error('[BRATVID2-UMI]', error && error.message ? error.message : error)
         m.react('☢')
-        m.reply(te(m.prefix, m.command, m.pushName))
+        m.reply(`❌ Gagal membuat stiker bratvid2.\n\nAlasan: ${(error && error.message) || 'kesalahan tidak diketahui'}\n\n${te(m.prefix, m.command, m.pushName)}`)
     }
 }
 

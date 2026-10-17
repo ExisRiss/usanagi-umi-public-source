@@ -16,13 +16,50 @@ const FALLBACK_URL = String(CFG.bratvid2FallbackUrl || '')
 const TIMEOUT = Number(CFG.timeoutMs) || 180000
 const MAX_BYTES = Number(CFG.maxResponseBytes) || 100 * 1024 * 1024
 
+function describeError(error) {
+  if (error === null || error === undefined) return 'kesalahan tidak diketahui'
+  if (typeof error === 'string') return error
+  if (typeof error?.message === 'string' && error.message.trim()) return error.message.trim()
+  if (typeof error?.error === 'string' && error.error.trim()) return error.error.trim()
+  try {
+    const seen = new WeakSet()
+    const text = JSON.stringify(error, (key, value) => {
+      if (typeof value === 'object' && value !== null) {
+        if (seen.has(value)) return '[circular]'
+        seen.add(value)
+      }
+      return value
+    })
+    if (text && text !== '{}') return text.slice(0, 300)
+  } catch {}
+  return String(error) === '[object Object]' ? 'kesalahan tidak diketahui' : String(error)
+}
+
+/* Ambil pesan dari respons JSON apa pun bentuknya (string/objek/array). */
+function pickMessage(value, depth = 0) {
+  if (depth > 2 || value === null || value === undefined) return ''
+  if (typeof value === 'string') return value.trim()
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) {
+    for (const item of value) { const found = pickMessage(item, depth + 1); if (found) return found }
+    return ''
+  }
+  if (typeof value === 'object') {
+    for (const key of ['message', 'msg', 'error', 'reason', 'detail', 'description', 'detail_error']) {
+      if (key in value) { const found = pickMessage(value[key], depth + 1); if (found) return found }
+    }
+  }
+  return ''
+}
+
 function apiError(data, status) {
   const raw = Buffer.from(data || '').toString('utf8').trim()
   if (!raw) return `API bratvid2 gagal (HTTP ${status}).`
 
   try {
     const parsed = JSON.parse(raw)
-    return String(parsed?.message || parsed?.error || parsed?.reason || `API bratvid2 gagal (HTTP ${status}).`)
+    const message = pickMessage(parsed)
+    return message ? `API bratvid2: ${message.slice(0, 300)}` : `API bratvid2 gagal (HTTP ${status}).`
   } catch {
     return raw.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 300)
       || `API bratvid2 gagal (HTTP ${status}).`
@@ -103,18 +140,23 @@ async function gifToMp4(gif) {
 
 async function createBratMedia(input) {
   let primaryError = null
-  try {
-    const primary = await fetchBinary(`${BASE}${PRIMARY_PATH.startsWith('/') ? '' : '/'}${PRIMARY_PATH}`, input, 'video')
-    const kind = primary.type.includes('image/') ? 'image' : 'video'
-    return {
-      data: primary.data,
-      kind,
-      mimetype: primary.type.split(';')[0] || (kind === 'image' ? 'image/jpeg' : 'video/mp4'),
-      provider: 'utama',
+  const primaryUrl = `${BASE}${PRIMARY_PATH.startsWith('/') ? '' : '/'}${PRIMARY_PATH}`
+  // Dua percobaan: API ini kadang menjawab JSON sementara (rate limit/5xx).
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      const primary = await fetchBinary(primaryUrl, input, 'video')
+      const kind = primary.type.includes('image/') ? 'image' : 'video'
+      return {
+        data: primary.data,
+        kind,
+        mimetype: primary.type.split(';')[0] || (kind === 'image' ? 'image/jpeg' : 'video/mp4'),
+        provider: 'utama',
+      }
+    } catch (error) {
+      primaryError = error
+      console.warn(`[BRATVID2] Provider utama gagal (percobaan ${attempt}/2): ${describeError(error)}`)
+      if (attempt === 1) await new Promise(resolve => setTimeout(resolve, 1500))
     }
-  } catch (error) {
-    primaryError = error
-    console.warn(`[BRATVID2] Provider utama gagal: ${error?.message || error}`)
   }
 
   if (!FALLBACK_URL) throw primaryError
@@ -128,7 +170,7 @@ async function createBratMedia(input) {
       provider: 'fallback',
     }
   } catch (fallbackError) {
-    throw new Error(`Provider utama: ${primaryError?.message || primaryError}; fallback: ${fallbackError?.message || fallbackError}`)
+    throw new Error(`Provider utama: ${describeError(primaryError)}; fallback: ${describeError(fallbackError)}`)
   }
 }
 
@@ -165,9 +207,14 @@ const handler = async (m, { conn, text, usedPrefix, command }) => {
     await m.react('✅').catch(() => {})
     return { success: true }
   } catch (error) {
-    console.error('[BRATVID2]', error?.message || error)
+    const reason = describeError(error)
+    console.error('[BRATVID2]', reason)
     await m.react('❌').catch(() => {})
-    await m.reply(`❌ Gagal membuat bratvid2.\n\n${error?.message || error}\n\n${BRAND}`)
+    await m.reply(
+      `❌ Gagal membuat bratvid2.\n\n` +
+      `Alasan: ${reason}\n\n` +
+      `Coba lagi beberapa saat (API pembuat video kadang sibuk), atau pakai ${prefix}bratvid untuk gambar statis.\n\n${BRAND}`
+    )
     return { success: false }
   }
 }

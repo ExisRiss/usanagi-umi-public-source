@@ -415,6 +415,59 @@ sebelum deploy: `./backup/pre-task18.tar.gz` (497 KB). Log: `Successfully Loaded
 **Cara pakai untuk owner.** `.setprefix global !` → semua chat memakai `!menu`; `.setprefix global .`
 untuk kembali. Pengguna bisa mengganti prefix chatnya sendiri (chat pribadi) atau admin grup.
 
+## Task 19 — Fix bratvid2, hapus boost trading 02.00, trading main di WhatsApp (2026-10-17 13.55 WITA)
+
+**1. `bratvid2` — akar masalah ketemu: domain API di server masih versi lama.**
+`/bratvid2` ditangani `bot/plugins/maker/brat2.js` (regex `^(bratvid2|brat2)$`). Berkas di server
+memakai `https://apiii-xrina.vercel.app` yang sudah **mati** (404 `DEPLOYMENT_NOT_FOUND`), sedangkan
+repo memakai `https://apiii-xrina.my.id`. Itu sebab pesan `❌ Gagal membuat bratvid2. [object Object]`
+(pesan galatnya sendiri tidak informatif karena error non-`Error` di-string mentah).
+
+- `bot/plugins/maker/brat2.js`:
+  * `describeError()` baru — tidak pernah lagi menghasilkan `[object Object]` (tangani string,
+    `Error`, objek JSON, circular).
+  * `apiError()` + `pickMessage()` — ambil pesan dari bentuk JSON apa pun (string/objek/array).
+  * `fetchBinary` ke provider utama **dicoba 2x** (jeda 1,5 s) karena API kadang sibuk.
+  * Pesan gagal sekarang menyebut alasan + saran `${prefix}bratvid`.
+  * `BASE` = `https://apiii-xrina.my.id`, `PRIMARY_PATH` = `/maker/bratvid2`.
+- `bot/integrations/umi/plugins/sticker/bratvid2.js` (wrapper `bratv2`/`umi-bratvid2`) dipindah dari
+  `api-faa.my.id/faa/bratvid` ke `apiii-xrina.my.id/maker/bratvid2`, unduh via axios → buffer
+  (bukan URL) supaya `sendVideoAsSticker` tidak timeout.
+- Uji di server: `brat2` → `{"success":true}`, video **98.295 byte `video/mp4`**; integrasi umi →
+  stiker **113.547 byte**.
+
+**2. Trading offline: boost/sesi 02.00 dihapus.**
+- `db-mirror/trading-offline.html` & `db-mirror/assets/trading-offline.bot.html`: fungsi `pump()`
+  dihapus, harga murni `base * (1 + trend + swing + micro)`, `session()` selalu
+  `{active:false, boostPct:0, label:'Pasar normal'}`, kartu "SESI" → "PASAR · NORMAL 24 JAM",
+  banner & komentar dibersihkan.
+- Mesin pasar online `db-mirror/game.js`: `PUMP_ENABLED = false` → `pumpFactor()` selalu 1 dan
+  `sessionInfo()` selalu "Pasar normal 24 jam" (kode lama disimpan, mudah dinyalakan lagi).
+  `db-mirror/trading.html`: banner sesi diganti "Pasar normal 24 jam — tanpa sesi boost 02.00".
+  `/health` game kini `"session":"Pasar normal 24 jam"`.
+
+**3. Trading bisa dimainkan langsung di WhatsApp (rich HTML).**
+- `bot/plugins/game/trading-wa-html.js` — game HTML **mandiri** (tanpa aset/internet, 10 emiten,
+  tick 3 detik, beli/jual, portofolio, avg & P/L, reset, localStorage `umi-wa-trade-v1`).
+- `bot/lib/awang-rich-forward.js` — `kirimForwardSigned()` dipisah dari `game-sonic.js` supaya bisa
+  dipakai bersama (payload `GenAIUnifiedResponse` + `richResponseMessage` + SIG/CERT1/CERT2).
+- `bot/plugins/game/trading-wa.js` — perintah `tradingwa`, `tradewa`, `mainas`, `sahamwa`.
+- `bot/plugins/game/trading-umi.js`:
+  * `.tradingoffline` **sekarang membuka game di chat** (rich HTML, jalur sama dengan `game-sonic`).
+  * `.tradingoffline file` tetap mengirim berkas `UMI-TRADE-OFFLINE.html`.
+  * Kartu akun & daftar pasar tidak lagi menampilkan "boost sesi", teks caption bebas boost.
+- Uji di server: `.tradingoffline` → `relayMessage` payload 19.004 char; `.tradingoffline file` →
+  dokumen 34.857 byte.
+
+**4. Lain-lain**
+- `bot/lib/prefix-rewrite.js`: `rewriteOutgoingContent()` hanya menyentuh plain object —
+  Buffer/stream dilewatkan apa adanya (pengaman saat `sendMessage(jid, buffer)`).
+- Backup berkas server sebelum ditimpa: `/backup/task19-*.js`, `/backup/task19-*.html`.
+- Skrip uji sementara (`test-task19.mjs`, `test-toff.mjs`, `test-umi-brat.mjs`, `/probe-brat.mjs`)
+  dihapus dari root server.
+- Log pasca-deploy: `Successfully Loaded 2046 Plugins`, `⚙️ Bot utama: AKTIF`,
+  `Bot siap digunakan!`, jadibot 4 sesi `berhasil terhubung`, `/api/health` 200, game `/health` 200.
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
@@ -423,7 +476,10 @@ untuk kembali. Pengguna bisa mengganti prefix chatnya sendiri (chat pribadi) ata
 - **Perlu 1x klik nyata dari akun owner**: tombol Auto Read & Bot Utama di halaman Bot Utama
 - Uji end-to-end WhatsApp: kirim `.daftar` dan `@verify` → akun trading otomatis muncul di
   papan peringkat (harness lokal sudah lolos, belum dari WA asli)
-- Harness plugin `bot/plugins/game/trading-umi.js` (unit/integration test) belum ditulis
+- ~~Harness plugin `bot/plugins/game/trading-umi.js`~~ **selesai Task 19**: `.tradingoffline` (rich HTML)
+  dan `.tradingoffline file` diuji langsung di server
+- Trading versi WhatsApp masih memakai saldo localStorage terpisah dari akun web (sengaja, biar
+  jalan tanpa internet) — kalau mau disatukan, perlu endpoint game yang bisa dipanggil rich HTML
 - Plugin lama `bot/plugins/game/trading1.js` (37.464 B) masih menunggu keputusan: hapus atau
   pindahkan ke arsip supaya tidak dobel dengan `trading-umi.js`
 - ~~Jadibot `6282343823200` reconnect loop~~ **selesai**: sesi + backup dihapus otomatis (Task 17)

@@ -13,7 +13,8 @@
  *   .jualsaham <saham> <lot> jual saham   (contoh: .jualsaham UMI 5)
  *   .redeem <kode>           tukar kode saldo $AS
  *   .tradinglogin            kode masuk 6 digit + tautan web trading
- *   .tradingoffline          kirim game trading offline (HTML mandiri, localStorage)
+ *   .tradingoffline          buka game trading di WhatsApp (rich HTML, main langsung)
+ *   .tradingoffline file     kirim versi berkas HTML untuk dibuka di browser
  *
  * Akun trading otomatis dibuatkan untuk setiap nomor WhatsApp (username = nomor WA).
  * Token game dibaca dari lib/webgame.json atau env UMI_GAME_TOKEN / GAME_TOKEN.
@@ -39,6 +40,19 @@ const OFFLINE_CANDIDATES = [
 ].filter(Boolean)
 
 const TIMEOUT_MS = 20000
+
+/* Rich HTML game trading (jalur sama dengan game-sonic). */
+let richGame = { html: null, kirim: null }
+async function richSender() {
+  if (!richGame.kirim) {
+    const [{ kirimForwardSigned }, mod] = await Promise.all([
+      import('../../lib/awang-rich-forward.js'),
+      import('./trading-wa-html.js'),
+    ])
+    richGame = { kirim: kirimForwardSigned, html: mod.TRADING_WA_HTML }
+  }
+  return richGame
+}
 const COMMANDS = [
   // status akun / login token
   'trading', 'saham', 'trader', 'portofolio', 'astrade', 'umitrade',
@@ -161,9 +175,8 @@ function accountCard(summary, session, extra) {
   }
   if (session) {
     rows.push('├─ Pasar')
-    rows.push(`│ ${session.active ? '🚀' : '🌙'} ${session.label || 'Pasar normal'}`)
-    if (session.boostPct) rows.push(`│ Boost sesi : +${money(session.boostPct)}%`)
-    if (session.until) rows.push(`│ Sampai     : ${new Date(session.until).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })} ${session.timezone || ''}`)
+    rows.push('│ 🌙 Pasar normal 24 jam (tanpa sesi boost)')
+    if (session.timezone) rows.push(`│ Zona       : ${session.timezone}`)
   }
   if (extra) rows.push(`├─ ${extra}`)
   rows.push('╰────────────────')
@@ -190,7 +203,7 @@ function marketCard(market) {
     const pct = numOr(q.changePct, numOr(q.pct, 0))
     return `${up ? '🟢' : '🔴'} *${q.symbol}* $AS ${money(q.price)}  ${up ? '+' : ''}${money(pct)}%`
   }).join('\n')
-  return `📊 *PASAR $AS* · ${ses.active ? '🚀 SESI NAIK' : '🌙 pasar normal'}\n${ses.boostPct ? `boost sesi +${money(ses.boostPct)}%` : ''}\n━━━━━━━━━━━━━━━\n${rows}\n━━━━━━━━━━━━━━━\nBeli: .belisaham KODE LOT · Jual: .jualsaham KODE LOT`
+  return `📊 *PASAR $AS* · 🌙 pasar normal 24 jam\n${ses.timezone ? `zona ${ses.timezone} · tanpa sesi boost` : 'tanpa sesi boost'}\n━━━━━━━━━━━━━━━\n${rows}\n━━━━━━━━━━━━━━━\nBeli: .belisaham KODE LOT · Jual: .jualsaham KODE LOT`
 }
 
 /* ── game offline (HTML mandiri) ── */
@@ -224,8 +237,21 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
   const arg0 = (args[0] || '').toLowerCase()
   if (!config.enabled) return m.reply('⏸️ Fitur trading sedang dimatikan oleh owner.')
 
-  /* ── game offline ── */
+  /* ── game offline: main langsung di WhatsApp (rich HTML) ── */
   if (cmd === 'tradingoffline' || cmd === 'toffline' || cmd === 'toff') {
+    const modeBerkas = /^(file|html|unduh|download)$/i.test(String(arg0 || '').trim())
+
+    if (!modeBerkas) {
+      try {
+        const rich = await richSender()
+        await rich.kirim(conn, m.chat, rich.html, '📈 UMI TRADE · MAIN DI WHATSAPP')
+        return
+      } catch (error) {
+        console.error('[TRADING-WA]', error && error.message ? error.message : error)
+        await m.reply('⚠️ Mode main langsung gagal dibuka, aku kirim versi berkasnya saja ya.')
+      }
+    }
+
     const buffer = await offlineHtml(config)
     if (!buffer) return m.reply('❌ Berkas game offline tidak ditemukan di server. Coba lagi nanti.')
     await conn.sendMessage(m.chat, {
@@ -238,11 +264,11 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
         'Game trading versi file — 100% jalan tanpa internet:',
         '• Harga dihitung sendiri di HP (tick 3 detik, 10 emiten)',
         '• Saldo & portofolio disimpan di localStorage HP kamu',
-        '• Sesi naik 00.00–02.00 WITA tetap berlaku',
+        '• Pasar bergerak 24 jam, tanpa sesi boost 02.00',
         '• Bonus harian $AS 10 + kode redeem UMI2024/TRADING/WELCOME/BONUS',
         '',
         'Cara buka: simpan berkas → buka dengan Chrome (menu ⋮ → Buka dengan) → main.',
-        'Versi online: ketik .tradinglogin untuk tautan akun asli kamu.',
+        `Mau main langsung di chat? ketik ${usedPrefix}tradingoffline (tanpa kata "file").`,
       ].join('\n'),
     }, { quoted: m })
     return

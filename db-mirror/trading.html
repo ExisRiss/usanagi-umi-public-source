@@ -729,21 +729,14 @@
     </div>`).join('')
   }
 
-  /* ─────────── banner sesi pasar (SESI NAIK s/d 02.00 WITA) ─────────── */
+  /* ─────────── banner pasar (tanpa sesi boost 02.00) ─────────── */
   function renderSession() {
     const info = state.session
     const box = $('sessionBanner')
     if (!box) return
     if (!info) { box.classList.add('hidden'); return }
-    const until = info.until ? new Date(info.until).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Makassar' }) : ''
-    if (info.active && info.boostPct > 0) {
-      box.className = 'notice ok'
-      box.innerHTML = `🚀 <b>${esc(info.label)}</b> — pasar sedang naik terus (boost +${money(info.boostPct)}%${until ? ` · sampai ${until}` : ''}). Waktu zona: ${esc(info.timezone || 'WITA')}.`
-    } else {
-      box.className = 'notice'
-      const next = info.next ? new Date(info.next).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Makassar' }) + ' WITA' : '—'
-      box.innerHTML = `Sesi naik berikutnya: <b>${next}</b> (setiap 00.00–02.00 WITA). Boost sekarang +${money(info.boostPct)}%.`
-    }
+    box.className = 'notice'
+    box.innerHTML = `🌙 <b>Pasar normal 24 jam</b> — tanpa sesi boost 02.00. Harga bergerak dari aktivitas pasar saja. Zona waktu: ${esc(info.timezone || 'WITA')}.`
   }
 
   /* ─────────── halaman PERINGKAT ─────────── */

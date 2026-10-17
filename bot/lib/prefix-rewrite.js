@@ -91,8 +91,15 @@ export function rewriteCommandHints(text, prefix) {
 }
 
 /** Ubah isi pesan (text/caption) yang akan dikirim. */
+function isPlainObject(value) {
+  if (!value || typeof value !== 'object') return false
+  const proto = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
 export function rewriteOutgoingContent(content, prefix) {
-  if (!content || typeof content !== 'object') return content
+  // Buffer/stream/typed array dioper apa adanya (mis. sendMessage(jid, buffer)).
+  if (!isPlainObject(content)) return content
   let changed = false
   const next = { ...content }
   for (const field of ['text', 'caption']) {

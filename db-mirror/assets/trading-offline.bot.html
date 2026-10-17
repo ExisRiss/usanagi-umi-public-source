@@ -82,7 +82,7 @@
 <main class="wrap">
   <section id="p-pasar">
     <h1>Pasar $AS</h1>
-    <div class="notice" id="welcome">Selamat datang di <b>UMI TRADE OFFLINE</b>. Harga digerakkan sendiri di HP kamu (tick 3 detik), saldo & portofolio disimpan di <b>localStorage</b>. Sesi naik 00.00–02.00 WITA tetap jalan walau tanpa internet.</div>
+    <div class="notice" id="welcome">Selamat datang di <b>UMI TRADE OFFLINE</b>. Harga digerakkan sendiri di HP kamu (tick 3 detik), saldo & portofolio disimpan di <b>localStorage</b>. Pasar bergerak 24 jam tanpa sesi boost — tetap jalan walau tanpa internet.</div>
     <div class="stats" id="statsMarket"></div>
     <div class="card" id="list"></div>
     <footer>
@@ -153,7 +153,7 @@
 <script>
 (() => {
   'use strict'
-  /* ── mesin pasar offline: derau halus deterministik + sesi naik 00.00–02.00 WITA ── */
+  /* ── mesin pasar offline: derau halus deterministik 24 jam (tanpa boost) ── */
   const TICK = 3000, TZ = 8 * 3600 * 1000
   const SAHAM = [
     { sym: 'UMI', name: 'Usanagi Umi Corp', base: 1.24 }, { sym: 'JDB', name: 'Jadibot Studio', base: 2.05 },
@@ -168,19 +168,13 @@
   const fnv = (t) => { let h = 2166136261; for (let i = 0; i < t.length; i++) { h ^= t.charCodeAt(i); h = Math.imul(h, 16777619) } return (h >>> 0) % 100000 }
   const r2 = (n) => Math.round(n * 100) / 100
   const tickNow = () => Math.floor(Date.now() / TICK)
-  function pump(tick) {
-    const localMin = ((tick * TICK + TZ) % 86400000) / 60000
-    if (localMin < 120) return 1 + localMin * 0.002
-    if (localMin < 480) return 1 + Math.max(0, 0.24 * (1 - (localMin - 120) / 360))
-    return 1
-  }
   function priceAt(sym, tick) {
     const it = BY[sym]; if (!it) return 1
     const s = fnv(sym)
     const trend = (noise(s, tick / 4800) - 0.5) * 0.30
     const swing = (noise(s + 13, tick / 240) - 0.5) * 0.13
     const micro = (noise(s + 41, tick / 8) - 0.5) * 0.015
-    return Math.max(0.05, it.base * (1 + trend + swing + micro) * pump(tick))
+    return Math.max(0.05, it.base * (1 + trend + swing + micro))
   }
   const quote = (sym, tick = tickNow()) => {
     const price = priceAt(sym, tick), prev = priceAt(sym, tick - 28800)
@@ -189,11 +183,8 @@
     const change = price - prev
     return { sym, name: BY[sym].name, price: r2(price), prev: r2(prev), change: r2(change), pct: r2((change / prev) * 100), high: r2(hi), low: r2(lo), spark, volume: 400 + Math.floor(noise(fnv(sym), tick / 30) * 9000) }
   }
-  const session = () => {
-    const tick = tickNow(), localMin = ((tick * TICK + TZ) % 86400000) / 60000
-    const active = localMin < 120
-    return { active, boostPct: r2((pump(tick) - 1) * 100), label: active ? 'SESI NAIK · sampai 02.00 WITA' : 'Pasar normal', timezone: 'WITA (UTC+8)' }
-  }
+  // Tanpa sesi/boost: harga murni mengikuti derau pasar 24 jam.
+  const session = () => ({ active: false, boostPct: 0, label: 'Pasar normal', timezone: 'WITA (UTC+8)' })
 
   /* ── simpanan localStorage ── */
   const KEY = 'umi-trade-offline-v1'
@@ -239,13 +230,13 @@
     const top = [...qs].sort((a, b) => b.pct - a.pct)[0], bot = [...qs].sort((a, b) => a.pct - b.pct)[0]
     const ses = session()
     $('statsMarket').innerHTML = [
-      ['<img class="ic" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGcgZmlsbD0iI2ZmY2M1NyIgc3Ryb2tlPSIjN2E1MjA1IiBzdHJva2Utd2lkdGg9IjIuNiIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTE4IDhoMjh2MTRhMTQgMTQgMCAwIDEtMjggMHoiLz48cGF0aCBkPSJNMTggMTJIOWE5IDkgMCAwIDAgOSAxMnoiLz48cGF0aCBkPSJNNDYgMTJoOWE5IDkgMCAwIDEtOSAxMnoiLz48cGF0aCBkPSJNMjggMzZoOHY4aC04eiIvPjxwYXRoIGQ9Ik0xOCA1MmgyOGE0IDQgMCAwIDEtNCA2SDIyYTQgNCAwIDAgMS00LTZ6Ii8+PHBhdGggZD0iTTIwIDQ0aDI0djhIMjB6IiBmaWxsPSIjZTBhOTJjIi8+PC9nPjwvc3ZnPg==" alt="">SESI', ses.active ? `NAIK +${money(ses.boostPct)}%` : 'NORMAL', ses.active ? 'up' : ''],
+      ['<img class="ic" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PGcgZmlsbD0iI2ZmY2M1NyIgc3Ryb2tlPSIjN2E1MjA1IiBzdHJva2Utd2lkdGg9IjIuNiIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTE4IDhoMjh2MTRhMTQgMTQgMCAwIDEtMjggMHoiLz48cGF0aCBkPSJNMTggMTJIOWE5IDkgMCAwIDAgOSAxMnoiLz48cGF0aCBkPSJNNDYgMTJoOWE5IDkgMCAwIDEtOSAxMnoiLz48cGF0aCBkPSJNMjggMzZoOHY4aC04eiIvPjxwYXRoIGQ9Ik0xOCA1MmgyOGE0IDQgMCAwIDEtNCA2SDIyYTQgNCAwIDAgMS00LTZ6Ii8+PHBhdGggZD0iTTIwIDQ0aDI0djhIMjB6IiBmaWxsPSIjZTBhOTJjIi8+PC9nPjwvc3ZnPg==" alt="">PASAR', 'NORMAL 24 JAM', ''],
       ['SAHAM NAIK', `${up}/${qs.length}`, ''],
       ['TOP GAINER', `${top.sym} ${sgn(top.pct)}${money(top.pct)}%`, 'up'],
       ['TOP LOSER', `${bot.sym} ${money(bot.pct)}%`, 'down'],
     ].map(([k, v, c]) => `<div class="st"><span>${k}</span><b class="num ${c}">${v}</b></div>`).join('')
     $('welcome').className = ses.active ? 'notice ok' : 'notice'
-    $('welcome').innerHTML = `<b>${esc(ses.label)}</b> · boost +${money(ses.boostPct)}% · zona ${ses.timezone}. Harga dihitung di HP kamu, data tersimpan di <b>localStorage</b> — tidak butuh internet.`
+    $('welcome').innerHTML = `<b>${esc(ses.label)}</b> · tanpa sesi boost, harga bergerak 24 jam · zona ${ses.timezone}. Harga dihitung di HP kamu, data tersimpan di <b>localStorage</b> — tidak butuh internet.`
   }
   function sparkSvg(vals, up) {
     const min = Math.min(...vals), max = Math.max(...vals), span = (max - min) || 1
