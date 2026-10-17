@@ -1,6 +1,6 @@
 # Eclipse Realms — implementation & deployment report
 
-**Task 46 · 18 Oktober 2026**  
+**Task 46 · 18 Oktober 2026**
 **Status: playable vertical slice implemented and tested locally; production deployment blocked by panel HTTP 500. Not a completed MMORPG / not production-ready.**
 
 ## 1. What is actually implemented
