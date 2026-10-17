@@ -101,7 +101,11 @@ async function createRoom(m, conn, cmd, cfg) {
   const data = await api(cfg, '/api/rooms', {
     method: 'POST',
     asBot: true,
-    body: { game: game.id, name: cleanName(m), number },
+    body: {
+      game: game.id, name: cleanName(m), number,
+      /* alamat asal room: dipakai bot untuk kirim notifikasi (grup = tag, privat = DM) */
+      origin: { chat: m.chat, sender: m.sender, isGroup: !!m.isGroup, number },
+    },
   })
   await conn.reply(m.chat, `${game.emoji} *Meja ${game.label} siap!*
 

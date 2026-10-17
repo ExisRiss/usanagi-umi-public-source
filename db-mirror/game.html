@@ -285,10 +285,93 @@
   .rolecard b{display:block;padding:7px 9px;font-size:12.5px;text-align:center;background:linear-gradient(180deg,rgba(255,209,102,.16),rgba(0,0,0,.35))}
   .rolemini{display:inline-flex;align-items:center;gap:6px;margin:3px 8px 3px 0}
   .rolemini img{width:30px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--line-2)}
-  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
-  .tile{padding:10px;border-radius:12px;background:var(--surface-2);border:1px solid var(--line);font-size:11.5px;min-height:76px;line-height:1.45}
-  .tile.here{border-color:var(--gold);box-shadow:0 0 0 2px rgba(255,209,102,.20)}
-  .tile b{font-size:12.5px}
+  /* ---------- papan monopoli (mirip papan asli) ---------- */
+  .monoboard{
+    display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,1fr);aspect-ratio:1;
+    width:100%;max-width:560px;margin:14px auto;padding:6px;gap:3px;border-radius:14px;
+    background:url(/assets/pieces/kayu-gelap.jpg) center/cover;box-shadow:0 18px 40px rgba(0,0,0,.5), inset 0 0 0 2px rgba(255,255,255,.08);
+  }
+  .mo-tile{
+    position:relative;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;
+    background:#f7f2e3 url(/assets/pieces/tekstur-papan.jpg) center/cover;border:1px solid #2a2440;border-radius:3px;
+    padding:3px 3px 2px;text-align:center;line-height:1.1;color:#20182e;min-width:0;min-height:0;
+    font-size:clamp(6px,1.25vw,9.5px);transition:box-shadow .25s,transform .25s;
+  }
+  .mo-tile .band{position:absolute;inset:0 0 auto;height:16%;background:var(--tc,#8b8b8b);border-bottom:1px solid rgba(0,0,0,.35)}
+  .mo-tile .nm{margin-top:18%;font-weight:800;font-size:clamp(6px,1.2vw,9px);letter-spacing:-.01em;word-break:break-word}
+  .mo-tile .pr{font-weight:700;font-size:clamp(5.5px,1.05vw,8px);color:#4a3f63}
+  .mo-tile img{width:auto;height:100%;max-height:100%;max-width:62%;margin:0 auto;object-fit:contain;filter:drop-shadow(0 1px 1px rgba(0,0,0,.35))}
+  .mo-tile .ico{display:flex;align-items:center;justify-content:center;flex:1;min-height:0;overflow:hidden;padding:1px 0}
+  .mo-tile .pawns{display:flex;flex-wrap:wrap;gap:1px;justify-content:center;align-items:flex-end;min-height:10px}
+  .mo-tile .pawns img{width:11px;height:15px;margin:0;filter:drop-shadow(0 1px 2px rgba(0,0,0,.6))}
+  .mo-tile.here{box-shadow:inset 0 0 0 2px #ffd166, 0 0 12px rgba(255,209,102,.55)}
+  .mo-tile.corner{background:#f0ead8 url(/assets/pieces/tekstur-papan.jpg) center/cover}
+  .mo-tile.corner .nm{margin-top:0;font-size:clamp(6.5px,1.3vw,10px);font-weight:900;letter-spacing:-.02em;text-transform:uppercase}
+  .mo-tile.corner .ico img{max-width:78%}
+  .mo-tile.owner::after{
+    content:"";position:absolute;inset:0;border:2px solid var(--own,#7ee787);border-radius:3px;pointer-events:none;opacity:.9;
+  }
+  .mo-center{
+    grid-area:2 / 2 / 5 / 5;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:6px;background:linear-gradient(135deg,#f7f2e3,#e8dfc8);border:1px solid #2a2440;color:#20182e;text-align:center;padding:10px;
+  }
+  .mo-center .lg{font-size:clamp(16px,3.4vw,30px);font-weight:900;letter-spacing:-.03em;transform:rotate(-8deg)}
+  .mo-center .sm{font-size:clamp(7px,1.4vw,11px);font-weight:700;color:#6a5d86;letter-spacing:.12em}
+  .mo-center .cards{display:flex;gap:8px;margin-top:2px}
+  .mo-center .cards img{width:clamp(18px,4vw,34px);object-fit:contain;filter:drop-shadow(0 2px 3px rgba(0,0,0,.3))}
+  .mo-legend{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:6px}
+  .mo-legend span{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--muted)}
+  .mo-legend img{width:14px;height:14px;object-fit:contain}
+
+  /* ---------- dadu 3D (CSS) ---------- */
+  .dice{
+    display:inline-grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:2px;
+    width:44px;height:44px;padding:5px;border-radius:10px;background:linear-gradient(150deg,#fff,#e8e4f3 60%,#cfc9e2);
+    box-shadow:0 6px 14px rgba(0,0,0,.45), inset 0 -2px 4px rgba(0,0,0,.18), inset 0 2px 2px #fff;
+    vertical-align:middle;margin-right:8px;
+  }
+  .dice i{width:100%;height:100%;border-radius:50%;background:transparent;display:block}
+  .dice i.on{background:radial-gradient(circle at 35% 30%,#4a4a58,#12121a)}
+  .dice.rolling{animation:diceRoll .7s ease-in-out}
+  @keyframes diceRoll{
+    0%{transform:rotate(0) scale(1)}
+    25%{transform:rotate(140deg) scale(1.12)}
+    50%{transform:rotate(260deg) scale(.94)}
+    75%{transform:rotate(330deg) scale(1.06)}
+    100%{transform:rotate(360deg) scale(1)}
+  }
+
+  /* ---------- animasi umum ---------- */
+  @keyframes popIn{0%{transform:scale(.4) rotate(-8deg);opacity:0}70%{transform:scale(1.08) rotate(2deg);opacity:1}100%{transform:scale(1) rotate(0)}}
+  @keyframes hop{0%,100%{transform:translateY(0)}35%{transform:translateY(-9px) scale(1.08)}65%{transform:translateY(-3px)}}
+  @keyframes slideIn{0%{transform:scale(.5);opacity:.1}100%{transform:scale(1);opacity:1}}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+  @keyframes glowPulse{0%,100%{box-shadow:0 0 0 0 rgba(255,209,102,0)}50%{box-shadow:0 0 0 5px rgba(255,209,102,.35)}}
+  @keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+  @keyframes wolfFlash{0%{opacity:0}25%{opacity:.75}100%{opacity:0}}
+  .anim-pop{animation:popIn .38s cubic-bezier(.2,1.4,.5,1) both}
+  .anim-hop{animation:hop .55s ease-in-out both}
+  .anim-slide{animation:slideIn .3s ease-out both}
+  .anim-shake{animation:shake .4s ease-in-out}
+  .anim-glow{animation:glowPulse 1.6s ease-in-out infinite}
+  .anim-fade{animation:fadeUp .35s ease-out both}
+  .gcard{animation:fadeUp .45s ease-out both}
+  .gcard:nth-child(2){animation-delay:.05s}.gcard:nth-child(3){animation-delay:.1s}
+  .gcard:nth-child(4){animation-delay:.15s}.gcard:nth-child(5){animation-delay:.2s}.gcard:nth-child(6){animation-delay:.25s}
+
+  /* kilau malam/hari werewolf */
+  .phase-flash{position:fixed;inset:0;pointer-events:none;z-index:60;animation:wolfFlash 1.4s ease-out both}
+  .phase-flash.night{background:radial-gradient(circle at 50% 30%,rgba(60,80,180,.35),rgba(0,0,0,.92))}
+  .phase-flash.day{background:radial-gradient(circle at 50% 30%,rgba(255,225,140,.55),rgba(255,180,60,.25))}
+
+  /* konfeti kemenangan */
+  .confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:70}
+  .confetti i{position:absolute;top:-12px;width:8px;height:14px;border-radius:2px;animation:confFall linear forwards}
+  @keyframes confFall{to{transform:translateY(105vh) rotate(720deg);opacity:.9}}
+
+  /* tombol suara */
+  .sfx-btn{display:inline-flex;align-items:center;gap:6px}
+  .sfx-btn.off{opacity:.55}
   .tile i{color:var(--muted)}
 
   /* ---------- toast ---------- */
@@ -329,6 +412,7 @@
   <div class="top-right">
     <span class="pill hidden" id="connPill"><span class="dot"></span><span id="connText">menyambung…</span></span>
     <a class="btn btn-sm btn-lime" href="/trading" title="Pasar saham $AS">📈 $AS TRADE</a>
+    <button class="btn btn-sm btn-ghost sfx-btn" id="sfxBtn" type="button" title="Suara game" aria-pressed="true">🔊</button>
     <a class="btn btn-sm btn-ghost" href="https://jadibot-alzriss.gwenna.my.id" target="_blank" rel="noopener">Jadibot Studio ↗</a>
   </div>
 </div></header>
@@ -476,6 +560,133 @@ const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</
 const COLOR_NAME = { red:'Merah', yellow:'Kuning', green:'Hijau', blue:'Biru', purple:'Ungu', pink:'Pink', orange:'Oranye', teal:'Toska', wild:'Wild' }
 const PIONS = Array.from({ length: 12 }, (_, i) => '<img class="pwn" src="/assets/pieces/pawn/pawn-' + (i + 1) + '.png" alt="pion ' + (i + 1) + '">')
   const PIONS_BIG = Array.from({ length: 12 }, (_, i) => '<img class="pwn lg" src="/assets/pieces/pawn/pawn-' + (i + 1) + '.png" alt="pion ' + (i + 1) + '">')
+
+  /* ============================================================
+   * SUARA GAME (WebAudio, tanpa berkas eksternal)
+   * ============================================================ */
+  const SFX = {
+    on: localStorage.getItem('umi-sfx') !== '0',
+    ctx: null,
+    ac() {
+      if (!this.ctx) {
+        const C = window.AudioContext || window.webkitAudioContext
+        if (!C) return null
+        this.ctx = new C()
+      }
+      if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {})
+      return this.ctx
+    },
+    tone(o) {
+      if (!this.on) return
+      const c = this.ac(); if (!c) return
+      const t0 = c.currentTime + (o.at || 0)
+      const osc = c.createOscillator(), g = c.createGain()
+      osc.type = o.type || 'sine'
+      osc.frequency.setValueAtTime(o.freq || 440, t0)
+      if (o.to) osc.frequency.exponentialRampToValueAtTime(Math.max(30, o.to), t0 + (o.dur || .15))
+      g.gain.setValueAtTime(0.0001, t0)
+      g.gain.exponentialRampToValueAtTime(o.gain || .06, t0 + .012)
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + (o.dur || .15))
+      osc.connect(g).connect(c.destination)
+      osc.start(t0); osc.stop(t0 + (o.dur || .15) + .03)
+    },
+    noise(dur = .25, gain = .05, at = 0) {
+      if (!this.on) return
+      const c = this.ac(); if (!c) return
+      const n = Math.floor(c.sampleRate * dur)
+      const buf = c.createBuffer(1, n, c.sampleRate)
+      const d = buf.getChannelData(0)
+      for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2.2)
+      const src = c.createBufferSource(); src.buffer = buf
+      const g = c.createGain(); g.gain.value = gain
+      const f = c.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 900
+      src.connect(f).connect(g).connect(c.destination)
+      src.start(c.currentTime + at)
+    },
+    click() { this.tone({ freq: 520, to: 380, dur: .07, type: 'triangle', gain: .05 }) },
+    move() { this.tone({ freq: 340, to: 220, dur: .1, type: 'sine', gain: .05 }) },
+    card() {
+      this.noise(.16, .05)
+      this.tone({ freq: 680, to: 900, dur: .09, type: 'triangle', gain: .04, at: .03 })
+    },
+    dice() {
+      for (let i = 0; i < 6; i++) this.noise(.05, .055, i * .07)
+      this.tone({ freq: 180, to: 120, dur: .18, type: 'square', gain: .035, at: .42 })
+    },
+    hop() { this.tone({ freq: 300, to: 620, dur: .13, type: 'sine', gain: .05 }) },
+    capture() {
+      this.tone({ freq: 420, to: 120, dur: .22, type: 'sawtooth', gain: .05 })
+      this.noise(.14, .035)
+    },
+    win() {
+      [523, 659, 784, 1046].forEach((f, i) => this.tone({ freq: f, dur: .2, type: 'triangle', gain: .06, at: i * .11 }))
+    },
+    howl() {
+      if (!this.on) return
+      const c = this.ac(); if (!c) return
+      const t0 = c.currentTime
+      const osc = c.createOscillator(), lfo = c.createOscillator(), lg = c.createGain(), g = c.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(320, t0)
+      osc.frequency.exponentialRampToValueAtTime(760, t0 + .5)
+      osc.frequency.exponentialRampToValueAtTime(420, t0 + 1.4)
+      lfo.frequency.value = 5.5; lg.gain.value = 18
+      lfo.connect(lg).connect(osc.frequency)
+      g.gain.setValueAtTime(.0001, t0)
+      g.gain.exponentialRampToValueAtTime(.05, t0 + .18)
+      g.gain.exponentialRampToValueAtTime(.0001, t0 + 1.5)
+      osc.connect(g).connect(c.destination)
+      osc.start(t0); lfo.start(t0); osc.stop(t0 + 1.55); lfo.stop(t0 + 1.55)
+    },
+    bell() { this.tone({ freq: 880, dur: .5, type: 'sine', gain: .05 }); this.tone({ freq: 1320, dur: .5, type: 'sine', gain: .025, at: .02 }) },
+  }
+  const sfxBtn = $('sfxBtn')
+  function paintSfx() {
+    if (!sfxBtn) return
+    sfxBtn.textContent = SFX.on ? '🔊' : '🔇'
+    sfxBtn.classList.toggle('off', !SFX.on)
+    sfxBtn.setAttribute('aria-pressed', SFX.on ? 'true' : 'false')
+  }
+  if (sfxBtn) {
+    paintSfx()
+    sfxBtn.onclick = () => { SFX.on = !SFX.on; localStorage.setItem('umi-sfx', SFX.on ? '1' : '0'); paintSfx(); if (SFX.on) SFX.click() }
+  }
+
+  /* Penanda perubahan state → animasi & suara hanya diputar sekali */
+  const animMemo = new Map()
+  const changed = (key, value) => {
+    const prev = animMemo.get(key)
+    animMemo.set(key, value)
+    return prev !== undefined && prev !== value
+  }
+  function confetti() {
+    const box = document.createElement('div')
+    box.className = 'confetti'
+    const colors = ['#ffd166', '#7ee787', '#7fd3f7', '#f78fb3', '#c9f97a', '#ffa94d']
+    for (let i = 0; i < 60; i++) {
+      const p = document.createElement('i')
+      p.style.left = Math.random() * 100 + '%'
+      p.style.background = colors[i % colors.length]
+      p.style.animationDuration = (1.4 + Math.random() * 1.6) + 's'
+      p.style.animationDelay = (Math.random() * .5) + 's'
+      p.style.transform = 'rotate(' + Math.random() * 360 + 'deg)'
+      box.appendChild(p)
+    }
+    document.body.appendChild(box)
+    setTimeout(() => box.remove(), 3400)
+  }
+  function phaseFlash(kind) {
+    const el = document.createElement('div')
+    el.className = 'phase-flash ' + kind
+    document.body.appendChild(el)
+    setTimeout(() => el.remove(), 1600)
+  }
+  function celebrate(s) {
+    const done = s.status === 'finished' || (s.state && s.state.winner !== null && s.state.winner !== undefined)
+    if (!done) return false
+    if (changed('win:' + s.roomId + ':' + s.game, true)) { confetti(); SFX.win() }
+    return true
+  }
 
 function toast(msg, kind) {
   const box = $('toasts')
@@ -834,12 +1045,15 @@ if (isRoom) {
     const sideKey = st.side === 'dark' ? 1 : 0
     const top = st.top
     const topC = top ? (sideKey ? top.d : top.l) : null
+    const topKey = topC ? topC[0] + ':' + topC[1] : ''
+    const topChanged = changed('uno-top:' + s.roomId, topKey)
+    if (topChanged) SFX.card()
     let html = '<h2>' + GAME_INFO[s.game].emoji + ' ' + esc(GAME_INFO[s.game].label)
       + (s.game === 'unoflip' ? ' — sisi ' + (st.side === 'dark' ? '🌙 gelap' : '☀️ terang') : '') + '</h2>'
     if (over) html += '<div class="notice good">🏆 <b>' + esc(s.seats[st.winner] ? s.seats[st.winner].name : 'Pemain') + '</b> menang — kartunya habis!</div>'
     else html += '<p class="sub">Giliran <b>' + esc(s.seats[st.turn] ? s.seats[st.turn].name : '—') + '</b> · warna aktif <b>' + (COLOR_NAME[st.color] || st.color || '—') + '</b> · sisa deck ' + st.deckCount + '</p>'
     html += '<div class="topcard-wrap"><div><div class="tiny" style="margin-bottom:4px">Kartu atas</div>'
-      + (top ? '<span class="unocard topcard c-' + topC[0] + '" title="' + esc(UNO_FULL[topC[1]] || topC[1]) + '"><b class="lab' + ((UNO_SHORT[topC[1]] || topC[1]).length > 2 ? ' sm' : '') + '">' + esc(UNO_SHORT[topC[1]] || topC[1]) + '</b><small>' + (COLOR_NAME[topC[0]] || '') + '</small></span>' : '<span class="tiny">—</span>')
+      + (top ? '<span class="unocard topcard' + (topChanged ? ' anim-pop' : '') + ' c-' + topC[0] + '" title="' + esc(UNO_FULL[topC[1]] || topC[1]) + '"><b class="lab' + ((UNO_SHORT[topC[1]] || topC[1]).length > 2 ? ' sm' : '') + '">' + esc(UNO_SHORT[topC[1]] || topC[1]) + '</b><small>' + (COLOR_NAME[topC[0]] || '') + '</small></span>' : '<span class="tiny">—</span>')
       + '</div></div>'
     if (s.viewer >= 0) {
       html += '<h3>Kartumu (' + st.hand.length + ')</h3>'
@@ -867,8 +1081,9 @@ if (isRoom) {
       A.querySelectorAll('[data-color]').forEach(x => x.classList.toggle('on', x === b))
       const n = $('selName'); if (n) n.textContent = COLOR_NAME[selColor]
     })
-    A.querySelectorAll('[data-card]').forEach(b => b.onclick = () => { if (myTurn) act({ type:'play', card:Number(b.dataset.card), color:selColor }) })
-    const d = $('drawBtn'); if (d) d.onclick = () => act({ type:'draw' })
+    A.querySelectorAll('[data-card]').forEach(b => b.onclick = () => { if (myTurn) { SFX.card(); act({ type:'play', card:Number(b.dataset.card), color:selColor }) } else SFX.click() })
+    const d = $('drawBtn'); if (d) d.onclick = () => { SFX.card(); act({ type:'draw' }) }
+    celebrate(s)
   }
 
   const CH = { k:'king', q:'queen', r:'rook', b:'bishop', n:'knight', p:'pawn' }  // berkas bidak PNG di /assets/pieces/chess
@@ -880,6 +1095,9 @@ if (isRoom) {
     if (!myTurn) chessSel = -1
     const hints = {}
     if (chessSel >= 0 && st.legal) st.legal.filter(m => m.from === chessSel).forEach(m => { hints[m.to] = true })
+    const moveKey = st.lastMove ? st.lastMove.join('-') : ''
+    const moved = changed('chess-move:' + s.roomId, moveKey)
+    if (moved && moveKey) { SFX.move(); setTimeout(() => SFX.click(), 90) }
     let html = '<h2>♟️ Catur</h2>'
     if (st.winner === 'draw') html += '<div class="notice">🤝 Seri (stalemate).</div>'
     else if (over) html += '<div class="notice good">🏆 <b>' + esc(s.seats[st.winner] ? s.seats[st.winner].name : 'Pemain') + '</b> menang skakmat!</div>'
@@ -891,18 +1109,19 @@ if (isRoom) {
       const p = st.board[i]
       const last = st.lastMove && (st.lastMove[0] === i || st.lastMove[1] === i)
       html += '<div class="sq ' + ((x + y) % 2 ? 'dk' : 'lt') + (chessSel === i ? ' sel' : '') + (hints[i] ? ' hint' : '') + (last ? ' last' : '') + '" data-sq="' + i + '">'
-        + (p ? '<span class="' + (p.c === 'w' ? 'pw' : 'pb') + '"><img class="pc" src="/assets/pieces/chess/' + p.t + '-' + p.c + '.png" alt="' + (p.c === 'w' ? 'putih ' : 'hitam ') + CH[p.t] + '" draggable="false"></span>' : '') + '</div>'
+        + (p ? '<span class="' + (p.c === 'w' ? 'pw' : 'pb') + '"><img class="pc' + (moved && st.lastMove && st.lastMove[1] === i ? ' anim-slide' : '') + '" src="/assets/pieces/chess/' + p.t + '-' + p.c + '.png" alt="' + (p.c === 'w' ? 'putih ' : 'hitam ') + CH[p.t] + '" draggable="false"></span>' : '') + '</div>'
     }
     html += '</div>'
     html += '<h3>Riwayat langkah</h3><div class="log" style="max-height:130px">'
       + (st.history.length ? st.history.map(t => '<div>' + esc(t) + '</div>').join('') : '<div class="tiny">Belum ada langkah.</div>') + '</div>'
     A.innerHTML = html
+    celebrate(s)
     A.querySelectorAll('[data-sq]').forEach(el => el.onclick = () => {
       if (!myTurn) return toast('Bukan giliranmu.', 'bad')
       const sq = Number(el.dataset.sq)
       const p = st.board[sq]
-      if (chessSel >= 0 && hints[sq]) { act({ type:'move', from:chessSel, to:sq }); chessSel = -1; return }
-      if (p && p.c === myColor) { chessSel = sq; render() }
+      if (chessSel >= 0 && hints[sq]) { SFX.move(); act({ type:'move', from:chessSel, to:sq }); chessSel = -1; return }
+      if (p && p.c === myColor) { SFX.click(); chessSel = sq; render() }
       else if (p) toast('Itu bidak lawan.', 'bad')
     })
   }
@@ -913,7 +1132,10 @@ if (isRoom) {
     const myTurn = !over && st.turn === s.viewer
     let html = '<h2>🐍 Ular Tangga</h2>'
     if (over) html += '<div class="notice good">🏆 <b>' + esc(s.seats[st.winner] ? s.seats[st.winner].name : 'Pemain') + '</b> mencapai kotak 100!</div>'
-    else html += '<p class="sub">Giliran <b>' + esc(s.seats[st.turn] ? s.seats[st.turn].name : '—') + '</b>' + (st.dice ? ' · dadu terakhir 🎲 ' + st.dice : '') + '</p>'
+    else html += '<div class="row" style="align-items:center;gap:8px;margin:2px 0 4px">'
+      + (st.dice ? diceHTML(st.dice, changed('snk-dice:' + s.roomId, st.dice)) : '')
+      + '<span class="sub" style="margin:0">Giliran <b>' + esc(s.seats[st.turn] ? s.seats[st.turn].name : '—') + '</b></span></div>'
+    if (st.dice && changed('snk-sound:' + s.roomId, st.dice)) SFX.dice()
     html += '<div class="snakeboard">'
     for (let cell = 100; cell >= 1; cell--) {
       const pawns = st.pos.map((p, i) => p === cell ? i : -1).filter(i => i >= 0)
@@ -922,42 +1144,102 @@ if (isRoom) {
       html += '<div class="cell ' + cls + '"><span>' + cell + ' ' + icon + '</span><span class="pawn">' + pawns.map(i => PIONS[i] || '⚪').join('') + '</span></div>'
     }
     html += '</div><p class="tiny">' + s.seats.map((seat, i) => PIONS_BIG[i] + ' ' + esc(seat.name) + ' = ' + st.pos[i]).join(' · ') + '</p>'
-    if (myTurn) html += '<button class="btn btn-pri" id="rollBtn" type="button"><img class="dice-ic" src="/assets/pieces/dice/dice-5.png" alt="">Lempar dadu</button>'
+    if (myTurn) html += '<button class="btn btn-pri anim-glow" id="rollBtn" type="button"><img class="dice-ic" src="/assets/pieces/dice/dice-5.png" alt="">Lempar dadu</button>'
     A.innerHTML = html
-    const r = $('rollBtn'); if (r) r.onclick = () => act({ type:'roll' })
+    /* animasi pion yang berpindah */
+    const posKey = st.pos.join(',')
+    if (changed('snk-pos:' + s.roomId, posKey)) {
+      A.querySelectorAll('.pawn img').forEach(img => img.classList.add('anim-hop'))
+      setTimeout(() => SFX.hop(), 120)
+    }
+    const r = $('rollBtn'); if (r) r.onclick = () => { SFX.dice(); act({ type:'roll' }) }
+    celebrate(s)
   }
 
-  /* Ikon petak monopoli (rumah = properti, kereta = start, ?=kesempatan, lampu = pajak) */
+  /* ============================================================
+   * MONOPOLI — papan mirip asli (petak berkeliling + ikon gambar)
+   * ============================================================ */
   const TILE_ICON = { prop:'/assets/pieces/ikon/rumah.png', go:'/assets/pieces/ikon/kereta.png',
-    chance:'/assets/pieces/ikon/kesempatan.png', tax:'/assets/pieces/ikon/listrik.png' }
+    chance:'/assets/pieces/ikon/kesempatan.png', tax:'/assets/pieces/ikon/pajak.png',
+    jail:'/assets/pieces/ikon/penjara.png', park:'/assets/pieces/ikon/parkir.png',
+    gotojail:'/assets/pieces/ikon/penjara.png' }
+  /* urutan petak: mulai kanan-bawah, mengelilingi papan seperti monopoli asli */
+  const MONO_GRID = [
+    [5,5],[5,4],[5,3],[5,2],[5,1],
+    [4,1],[3,1],[2,1],[1,1],
+    [1,2],[1,3],[1,4],[1,5],
+    [2,5],[3,5],[4,5],
+  ]
+  const MONO_BAND = {
+    1:'#8b5a2b', 3:'#7fd3f7', 5:'#d94ea6', 7:'#f28c28', 9:'#d7263d',
+    11:'#f5c518', 12:'#2e9e63', 14:'#2f5bd8', 15:'#1b2f8a',
+  }
+  const PLAYER_COLOR = ['#7ee787', '#7fd3f7', '#ffd166', '#f78fb3', '#c792ea', '#ffa94d',
+    '#63e6be', '#ff8787', '#a5b4fc', '#f9e79f', '#9ae6b4', '#f5b7b1']
+  function diceHTML(value, rolling) {
+    const pips = { 1:[4], 2:[0,8], 3:[0,4,8], 4:[0,2,6,8], 5:[0,2,4,6,8], 6:[0,2,3,5,6,8] }[value] || []
+    let cells = ''
+    for (let i = 0; i < 9; i++) cells += '<i class="' + (pips.indexOf(i) >= 0 ? 'on' : '') + '"></i>'
+    return '<span class="dice' + (rolling ? ' rolling' : '') + '" role="img" aria-label="dadu ' + (value || '?') + '">' + cells + '</span>'
+  }
+  let lastMonoPos = []
   function renderMonopoly(A, s) {
     const st = s.state
     const over = st.winner !== null && st.winner !== undefined
     const buying = st.pendingBuy === s.viewer
     const myTurn = !over && (buying || st.turn === s.viewer)
+    const diceChanged = changed('mono-dice:' + s.roomId, st.dice)
+    if (diceChanged && st.dice) { SFX.dice(); setTimeout(() => SFX.hop(), 620) }
     let html = '<h2>🏠 Monopoli <span class="tiny" style="font-weight:500">(versi ringkas)</span></h2>'
     if (over) html += '<div class="notice good">🏆 <b>' + esc(s.seats[st.winner] ? s.seats[st.winner].name : 'Pemain') + '</b> jadi juragan terakhir!</div>'
-    else html += '<p class="sub">Giliran <b>' + esc(s.seats[st.turn] ? s.seats[st.turn].name : '—') + '</b>'
-      + (s.viewer >= 0 ? ' · uangmu <b>Rp' + st.cash[s.viewer] + '</b>' : '') + (st.dice ? ' · 🎲 ' + st.dice : '') + '</p>'
-    html += '<div class="tiles">' + st.tiles.map((tile, i) => {
+    else html += '<div class="row" style="align-items:center;gap:8px;margin:2px 0 4px">'
+      + (st.dice ? diceHTML(st.dice, diceChanged) : '')
+      + '<span class="sub" style="margin:0">Giliran <b>' + esc(s.seats[st.turn] ? s.seats[st.turn].name : '—') + '</b>'
+      + (s.viewer >= 0 ? ' · uangmu <b>Rp' + st.cash[s.viewer] + '</b>' : '') + '</span></div>'
+
+    html += '<div class="monoboard">'
+    st.tiles.forEach((tile, i) => {
+      const [r, c] = MONO_GRID[i] || [1, 1]
       const here = st.pos.map((p, pi) => p === i && st.solvent[pi] ? pi : -1).filter(x => x >= 0)
       const owner = st.owners[i]
-      const tic = TILE_ICON[tile.type]
-      return '<div class="tile' + (here.length ? ' here' : '') + '"><b>' + (tic ? '<img class="tic" src="' + tic + '" alt="">' : '') + (i + 1) + '. ' + esc(tile.name) + '</b><br>'
-        + (tile.type === 'prop'
-          ? 'Rp' + tile.price + ' · sewa Rp' + tile.rent + (owner >= 0 ? '<br>👤 ' + esc(s.seats[owner] ? s.seats[owner].name : '') : '<br><i>belum ada pemilik</i>')
-          : tile.type)
-        + (here.length ? '<br>' + here.map(pi => PIONS_BIG[pi]).join(' ') : '') + '</div>'
-    }).join('') + '</div>'
+      const corner = i % 4 === 0
+      const band = MONO_BAND[i]
+      const icon = TILE_ICON[tile.type]
+      html += '<div class="mo-tile' + (corner ? ' corner' : '') + (here.length ? ' here' : '') + (owner >= 0 ? ' owner' : '')
+        + '" style="grid-area:' + r + '/' + c + ';--tc:' + (band || '#8b8b8b') + ';--own:' + (PLAYER_COLOR[owner] || '#7ee787') + '">'
+        + (band ? '<span class="band"></span>' : '')
+        + '<div class="nm">' + esc(tile.name) + '</div>'
+        + '<div class="ico">' + (icon ? '<img src="' + icon + '" alt="">' : '') + '</div>'
+        + '<div class="pr">' + (tile.type === 'prop' ? 'Rp' + tile.price : '') + '</div>'
+        + '<div class="pawns">' + here.map(pi => PIONS[pi].replace('<img class="pwn"', '<img data-pi="' + pi + '" class="pwn"')).join('') + '</div>'
+        + '</div>'
+    })
+    html += '<div class="mo-center"><div class="sm">UMI GAMES</div><div class="lg">MONOPOLI</div>'
+      + '<div class="cards"><img src="/assets/pieces/ikon/rumah.png" alt=""><img src="/assets/pieces/ikon/kereta.png" alt=""><img src="/assets/pieces/ikon/kesempatan.png" alt=""></div>'
+      + '<div class="sm">16 PETAK · 2–4 PEMAIN</div></div></div>'
+
+    if (s.viewer >= 0) {
+      html += '<div class="mo-legend">' + s.seats.map((seat, i) => (i === s.viewer || st.cash[i] === undefined ? '' :
+        '<span>' + PIONS[i] + esc(seat.name) + ' · Rp' + st.cash[i] + '</span>')).join('') + '</div>'
+    }
     if (buying) {
       const tile = st.tiles[st.pos[s.viewer]]
-      html += '<div class="notice warn">Kamu mendarat di <b>' + esc(tile.name) + '</b> (Rp' + tile.price + '). Beli?</div>'
+      html += '<div class="notice warn anim-fade">Kamu mendarat di <b>' + esc(tile.name) + '</b> (Rp' + tile.price + '). Beli?</div>'
         + '<div class="row" style="margin-top:12px"><button class="btn btn-lime" id="buyBtn" type="button">🏠 Beli</button><button class="btn" id="passBtn" type="button">Lewati</button></div>'
     } else if (myTurn) html += '<button class="btn btn-pri" id="rollBtn" type="button"><img class="dice-ic" src="/assets/pieces/dice/dice-5.png" alt="">Lempar dadu</button>'
     A.innerHTML = html
-    const r = $('rollBtn'); if (r) r.onclick = () => act({ type:'roll' })
-    const b = $('buyBtn'); if (b) b.onclick = () => act({ type:'buy' })
-    const p = $('passBtn'); if (p) p.onclick = () => act({ type:'pass' })
+
+    /* animasi pion hanya untuk yang benar-benar pindah */
+    A.querySelectorAll('.pawns img[data-pi]').forEach(img => {
+      const pi = Number(img.dataset.pi)
+      if (lastMonoPos[pi] !== undefined && lastMonoPos[pi] !== st.pos[pi]) img.classList.add('anim-hop')
+    })
+    lastMonoPos = st.pos.slice()
+    const r = $('rollBtn'); if (r) r.onclick = () => { SFX.dice(); act({ type:'roll' }) }
+    const b = $('buyBtn'); if (b) b.onclick = () => { SFX.card(); act({ type:'buy' }) }
+    const p = $('passBtn'); if (p) p.onclick = () => { SFX.click(); act({ type:'pass' }) }
+    A.querySelectorAll('.mo-tile').forEach(t => t.addEventListener('animationend', () => t.classList.remove('anim-hop')))
+    celebrate(s)
   }
 
   const ROLE_ID = { werewolf:'🐺 Werewolf', seer:'🔮 Peramal', doctor:'💉 Dokter', villager:'🧑‍🌾 Warga' }
@@ -969,6 +1251,11 @@ if (isRoom) {
   }
   function renderWerewolf(A, s) {
     const st = s.state
+    const phaseKey = st.day + ':' + st.phase
+    if (changed('ww-phase:' + s.roomId, phaseKey)) {
+      if (st.phase === 'night') { phaseFlash('night'); SFX.howl() }
+      else { phaseFlash('day'); SFX.bell() }
+    }
     let html = '<h2>🐺 Werewolf — hari ' + st.day + ' · ' + (st.phase === 'night' ? '🌙 malam' : '☀️ siang') + '</h2>'
     if (st.winner) html += '<div class="notice good">🏆 ' + (st.winner === 'werewolf' ? 'WEREWOLF menang!' : 'WARGA menang!') + '</div>'
     if (st.myRole) html += '<div class="notice">Peran rahasiamu' + (s.viewer >= 0 && st.alive[s.viewer] ? '' : ' — kamu sudah mati, hanya bisa menonton &amp; chat.') + '</div>' + roleCard(st.myRole)
@@ -991,7 +1278,8 @@ if (isRoom) {
     if (st.roles) html += '<h3>Peran semua pemain</h3><div class="tiny">' + s.seats.map((seat, i) =>
       '<span class="rolemini"><img src="' + ROLE_IMG[st.roles[i]] + '" alt="">' + esc(seat.name) + ' = ' + ROLE_ID[st.roles[i]] + '</span>').join('') + '</div>'
     A.innerHTML = html
-    A.querySelectorAll('[data-target]').forEach(b => b.onclick = () => act({ type: st.phase === 'night' ? 'night' : 'vote', target:Number(b.dataset.target) }))
+    A.querySelectorAll('[data-target]').forEach(b => b.onclick = () => { SFX.click(); act({ type: st.phase === 'night' ? 'night' : 'vote', target:Number(b.dataset.target) }) })
+    celebrate(s)
   }
 
   connect()

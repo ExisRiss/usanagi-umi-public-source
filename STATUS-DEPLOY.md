@@ -731,6 +731,59 @@ sebagai banner.
 - Backup sebelum deploy: `/backup/task25-game.js` (108.638 B), `/backup/task25-game.html` (57.692 B).
 - Pratinjau offline: `/home/user/preview-umi-assets.game.html` (2,06 MB, gambar base64).
 
+## Task 26 — Papan monopoli bergambar, audio + animasi, notifikasi room ke WhatsApp (2026-10-17 19.25 WITA)
+
+**Permintaan owner:** "Buat lagi assets nya dan tambahin audio serta buat papan monopoli nya mirip asli pake
+gambar. Dan buat juga agar ketika room ga di pake selama 10 menit bot ngirim notifikasi ke user yang buat
+room di WA kalo di group tag orang nya kalo di private kirim aja pesan nya. Notif room, notif room di tutup,
+dan info lain. Buat juga agar setiap game punya animasi."
+
+### 1. Aset baru
+- `assets/pieces/ikon/penjara.png`, `parkir.png`, `pajak.png` (render 3D) — melengkapi ikon petak.
+- `assets/pieces/tekstur-papan.jpg` — tekstur kertas krem papan monopoli.
+
+### 2. Papan monopoli mirip asli
+- `MONO_TILES` disusun ulang: 16 petak mengelilingi papan, **sudut di posisi asli**
+  (0 MULAI kanan-bawah, 4 PENJARA kiri-bawah, 8 PARKIR BEBAS kiri-atas, 12 MASUK PENJARA kanan-atas).
+- CSS `.monoboard` baru: grid 5×5, latar kayu gelap, tiap `.mo-tile` pakai tekstur kertas,
+  **pita warna** khas monopoli, ikon 3D, harga, dan pion pemain yang melompat saat jalan.
+- Tengah papan: panel "UMI GAMES · MONOPOLI" miring + 3 ikon.
+- Legenda pemain di bawah papan + garis tepi warna pemilik petak.
+
+### 3. Audio (WebAudio, tanpa berkas)
+- Objek `SFX` di `game.html`: `click, move, card, dice, hop, capture, win, howl, bell, noise, tone`.
+- Tombol 🔊/🔇 di header, status disimpan di `localStorage` (`umi-sfx`).
+- Bunyi dipasang di semua game: kartu UNO, langkah catur, dadu ular tangga & monopoli, howl Werewolf, menang.
+
+### 4. Animasi
+- CSS: `popIn, hop, slideIn, shake, glowPulse, fadeUp, diceRoll, confFall, wolfFlash`.
+- Dadu 3D CSS (`.dice`) berputar saat dilempar; pion melompat; kartu UNO pop; bidak catur meluncur.
+- Werewolf: layar menggelap saat malam, kilau terang saat siang.
+- Menang: hujan konfeti + nada kemenangan.
+
+### 5. Notifikasi room ke WhatsApp
+- `game.js`: tiap room menyimpan `origin {chat, sender, isGroup, number}` dari plugin bot.
+- Antrean `notifyQueue` + `GET /api/notify/pending` (Bearer token game, tanpa token 401):
+  - `join` — ada pemain baru duduk.
+  - `idle` — room nganggur **10 menit** (default), teks menyebut sisa waktu 10 menit.
+  - `closed` — room ditutup otomatis pada menit ke-20 (bisa diatur `UMI_IDLE_WARN_MS`, `UMI_IDLE_CLOSE_MS`).
+- `bot/lib/game-room-notifier.js` — panen tiap **25 detik** lewat `global.conn`:
+  - **Grup** → kirim ke grup dengan awalan `@nomor` + `mentions` (benar-benar nge-tag pembuat room).
+  - **Privat/web** → DM ke nomor pembuat room.
+- `bot/main.js`: `startGameRoomNotifier()` dipanggil saat boot.
+- `bot/plugins/game/game-webmultiplayer.js`: ikut mengirim `origin` saat membuat room dari WhatsApp.
+
+### Uji
+- Lokal: idle terpicu, lalu `closed` terkirim, dan notifier memanggil `conn.sendMessage` ke grup dengan
+  `mentions: ['628111…@s.whatsapp.net']`.
+- Server: `GET /api/notify/pending` → **401** tanpa token, **200** dengan token; notifikasi `join` terkirim.
+- Playwright ke situs live: monopoli 16 petak (semua ikon termuat), dadu 3D, Werewolf flash malam,
+  UNO 8 kartu, tanpa error konsol; `AudioContext` membuat 16 node saat dadu dilempar (bunyi nyata),
+  tombol 🔊 ↔ 🔇 tersimpan di localStorage.
+- Deploy: backup `/backup/task26-*`, restart → `Successfully Loaded 2047 Plugins`,
+  `[room-notify] aktif — cek notifikasi room game tiap 25 detik`.
+- Pratinjau: `/home/user/preview-umi-games-task26.html` (3,1 MB, screenshot live + papan contoh).
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix

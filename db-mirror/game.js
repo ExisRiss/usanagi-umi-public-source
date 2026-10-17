@@ -112,11 +112,75 @@ const cleanNumber = (v) => String(v || '').replace(/\D/g, '').slice(0, 16)
 function makeSeat(name, number, kind, status) {
     return { name: cleanName(name), number: cleanNumber(number), kind, status, token: newToken(), entryCode: newCode() }
 }
-function createRoom(game, creatorSeat, openJoin, verifyNumber) {
+/* ============================================================
+ * NOTIFIKASI WHATSAPP (dipanen bot lewat /api/notify/pending)
+ * ============================================================ */
+const notifyQueue = []
+let notifySeq = 0
+function pushNotify(room, kind, text, extra) {
+    const origin = room.origin || {}
+    const to = origin.chat || origin.sender || (origin.number ? origin.number + '@s.whatsapp.net' : '')
+    if (!to) return null
+    const item = Object.assign({
+        id: ++notifySeq, kind, roomId: room.id, game: room.game, gameLabel: (GAMES[room.game] || {}).label || room.game,
+        text, chat: origin.chat || '', sender: origin.sender || '', isGroup: !!origin.isGroup,
+        number: origin.number || '', to, at: Date.now(),
+    }, extra || {})
+    notifyQueue.push(item)
+    if (notifyQueue.length > 200) notifyQueue.splice(0, notifyQueue.length - 200)
+    return item
+}
+function roomLink(room) { return `/${room.game}/${room.id}` }
+/* Kabari pembuat room kalau ada pemain baru duduk (sekali per kursi) */
+function notifyJoin(room, seat) {
+    if (!seat || seat.kind !== 'human') return
+    const creator = room.seats[0]
+    if (creator && creator.number && creator.number === seat.number) return
+    const key = seat.token || seat.number || seat.name
+    if (room.notifiedJoin[key]) return
+    room.notifiedJoin[key] = true
+    pushNotify(room, 'join', `🎮 *UMI Games*\n\n🪑 ${seat.name || 'Pemain'} baru saja duduk di room ${(GAMES[room.game] || {}).label || room.game} (${room.id}). Buka ${roomLink(room)} untuk main.`)
+}
+/* Bisa dipercepat lewat env untuk pengujian (default: 10 & 20 menit). */
+const IDLE_WARN_MS = Math.max(1000, Number(process.env.UMI_IDLE_WARN_MS) || 10 * 60 * 1000)
+const IDLE_CLOSE_MS = Math.max(IDLE_WARN_MS + 1000, Number(process.env.UMI_IDLE_CLOSE_MS) || 20 * 60 * 1000)
+const IDLE_TICK_MS = Math.max(1000, Number(process.env.UMI_IDLE_TICK_MS) || 30 * 1000)
+function startRoomIdleWatcher() {
+    const timer = setInterval(() => {
+        const now = Date.now()
+        for (const [id, room] of rooms) {
+            const idle = now - room.lastActivity
+            const watching = room.clients.size > 0
+            if (!watching && idle >= IDLE_WARN_MS && !room.notifiedIdle) {
+                room.notifiedIdle = true
+                pushNotify(room, 'idle', `🎮 *UMI Games*\n\n⏰ Room ${(GAMES[room.game] || {}).label || room.game} (${id}) sudah ${Math.round(IDLE_WARN_MS / 60000)} menit tanpa aktivitas. Kalau tidak dipakai, room akan ditutup otomatis dalam ${Math.max(1, Math.round((IDLE_CLOSE_MS - IDLE_WARN_MS) / 60000))} menit lagi. Buka lagi: ${roomLink(room)}`)
+            }
+            if (!watching && idle >= IDLE_CLOSE_MS && !room.notifiedClosed) {
+                room.notifiedClosed = true
+                pushNotify(room, 'closed', `🎮 *UMI Games*\n\n🔒 Room ${(GAMES[room.game] || {}).label || room.game} (${id}) ditutup otomatis karena tidak dipakai. Buat room baru kapan saja lewat bot atau ${'https://game.gwenna.my.id'}`)
+                rooms.delete(id)
+            }
+        }
+    }, IDLE_TICK_MS)
+    if (timer.unref) timer.unref()
+    return timer
+}
+function originLine(room) {
+    return room.origin && room.origin.isGroup ? `@${(room.origin.sender || '').split('@')[0]}` : ''
+}
+
+function createRoom(game, creatorSeat, openJoin, verifyNumber, origin) {
+    const cleanOrigin = origin && (origin.chat || origin.sender || origin.number) ? {
+        chat: String(origin.chat || '').slice(0, 120),
+        sender: String(origin.sender || '').slice(0, 120),
+        isGroup: !!origin.isGroup,
+        number: cleanNumber(origin.number || (creatorSeat && creatorSeat.number) || ''),
+    } : (creatorSeat && creatorSeat.number ? { chat: '', sender: '', isGroup: false, number: creatorSeat.number } : null)
     const room = {
         id: newId(), game, status: 'lobby', createdAt: Date.now(), lastActivity: Date.now(),
         seats: creatorSeat ? [creatorSeat] : [], state: null, log: [], chat: [], clients: new Set(), aiTimer: null, wwTimer: null,
         openJoin: !!openJoin, verifyNumber: cleanNumber(verifyNumber) || '',
+        origin: cleanOrigin, notifiedIdle: false, notifiedClosed: false, notifiedJoin: {},
     }
     room.log.push(`${GAMES[game].emoji} Room ${GAMES[game].label} dibuat. Bagikan tautan ini ke temanmu!`)
     if (room.openJoin) room.log.push('🔓 Mode masuk bebas aktif — pemain boleh duduk tanpa verifikasi WhatsApp.')
@@ -412,15 +476,26 @@ function snakesAction(room, idx, act) {
 }
 
 /* ============================== MONOPOLI (ringkas) ============================== */
+/* Urutan 16 petak mengikuti papan monopoli asli: 4 petak sudut di posisi 0, 4, 8, 12
+ * (MULAI kanan-bawah, PENJARA kiri-bawah, PARKIR BEBAS kiri-atas, MASUK PENJARA kanan-atas),
+ * sisanya properti & kesempatan di sepanjang sisi. */
 const MONO_TILES = [
-    { name: 'MULAI', type: 'go' }, { name: 'Monas', type: 'prop', price: 60, rent: 6 },
-    { name: 'Kesempatan', type: 'chance' }, { name: 'Ancol', type: 'prop', price: 60, rent: 6 },
-    { name: 'Pajak', type: 'tax', amount: 100 }, { name: 'TMII', type: 'prop', price: 100, rent: 10 },
-    { name: 'Penjara (lewat)', type: 'jail' }, { name: 'Ragunan', type: 'prop', price: 120, rent: 12 },
-    { name: 'Kesempatan', type: 'chance' }, { name: 'Kota Tua', type: 'prop', price: 140, rent: 14 },
-    { name: 'Parkir Bebas', type: 'park' }, { name: 'Dufan', type: 'prop', price: 160, rent: 16 },
-    { name: 'Senayan', type: 'prop', price: 180, rent: 18 }, { name: 'Masuk Penjara', type: 'gotojail' },
-    { name: 'Menteng', type: 'prop', price: 200, rent: 20 }, { name: 'SCBD', type: 'prop', price: 220, rent: 22 },
+    { name: 'MULAI', type: 'go' },
+    { name: 'Monas', type: 'prop', price: 60, rent: 6 },
+    { name: 'Kesempatan', type: 'chance' },
+    { name: 'Ancol', type: 'prop', price: 60, rent: 6 },
+    { name: 'Penjara', type: 'jail' },
+    { name: 'TMII', type: 'prop', price: 100, rent: 10 },
+    { name: 'Ragunan', type: 'prop', price: 120, rent: 12 },
+    { name: 'Kesempatan', type: 'chance' },
+    { name: 'Parkir Bebas', type: 'park' },
+    { name: 'Kota Tua', type: 'prop', price: 140, rent: 14 },
+    { name: 'Dufan', type: 'prop', price: 160, rent: 16 },
+    { name: 'Senayan', type: 'prop', price: 180, rent: 18 },
+    { name: 'Masuk Penjara', type: 'gotojail' },
+    { name: 'Menteng', type: 'prop', price: 200, rent: 20 },
+    { name: 'SCBD', type: 'prop', price: 220, rent: 22 },
+    { name: 'Pajak', type: 'tax', amount: 100 },
 ]
 function monopolyStart(room) {
     room.state = {
@@ -870,6 +945,13 @@ export async function gameHandler(req, res) {
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(html), 'Cache-Control': 'no-cache' })
                 return res.end(html)
             }
+            /* Bot memanen notifikasi room di sini (wajib token game) */
+            if (req.method === 'GET' && parts[0] === 'api' && parts[1] === 'notify' && parts[2] === 'pending') {
+                if (!botAuthorized(req)) return sendJson(res, 401, { error: 'unauthorized' })
+                const items = notifyQueue.splice(0, 20)
+                return sendJson(res, 200, { ok: true, count: items.length, items })
+            }
+
             if (parts[0] !== 'api' || parts[1] !== 'rooms') return sendJson(res, 404, { error: 'not found' })
 
             if (req.method === 'POST' && parts.length === 2) {
@@ -883,7 +965,7 @@ export async function gameHandler(req, res) {
                 const verifyNumber = cleanNumber(body.verifyNumber) || ''
                 const seat = makeSeat(body.name, body.number, 'human', (fromBot || openJoin) ? 'verified' : 'pending')
                 if (!fromBot && !seat.number && !openJoin) return sendJson(res, 400, { error: 'Nomor WhatsApp wajib diisi untuk verifikasi.' })
-                const room = createRoom(game, seat, openJoin, verifyNumber)
+                const room = createRoom(game, seat, openJoin, verifyNumber, body.origin)
                 broadcast(room)
                 return sendJson(res, 200, { ok: true, roomId: room.id, game, url: `/${game}/${room.id}`, token: seat.token, entryCode: seat.entryCode, verified: fromBot || openJoin, openJoin, verifyNumber: room.verifyNumber })
             }
@@ -905,6 +987,7 @@ export async function gameHandler(req, res) {
                     room.seats.push(seat)
                     say(room, `✅ ${seat.name} terverifikasi via WhatsApp dan duduk di meja.`)
                 }
+                notifyJoin(room, seat)
                 broadcast(room)
                 return sendJson(res, 200, { ok: true, roomId: room.id, game: room.game, seat: room.seats.indexOf(seat), entryCode: seat.entryCode, status: room.status })
             }
@@ -925,6 +1008,7 @@ export async function gameHandler(req, res) {
                     if (body.name) seat.name = cleanName(body.name)
                     say(room, `✅ ${seat.name} duduk di meja (mode masuk bebas).`)
                 }
+                if (seat.status === 'verified') notifyJoin(room, seat)
                 broadcast(room)
                 return sendJson(res, 200, { ok: true, token: seat.token, status: seat.status, seat: room.seats.indexOf(seat) })
             }
@@ -1920,6 +2004,7 @@ export function startGameCleanup() {
         const cutoff = Date.now() - 6 * 3600 * 1000
         for (const [id, room] of rooms) if (room.lastActivity < cutoff && room.status !== 'playing') rooms.delete(id)
     }, 600000)
+    startRoomIdleWatcher()
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
