@@ -104,13 +104,16 @@ async function createRoom(m, conn, cmd, cfg) {
     asBot: true,
     body: { game: game.id, name: cleanName(m), number },
   })
+  const codeLine = data.entryCode
+    ? `\n🔑 Kode masuk kamu: *${data.entryCode}*`
+    : ''
   await conn.reply(m.chat, `${game.emoji} *Meja ${game.label} siap!*
 
 🆔 Room: \`${data.roomId}\`
-🔗 ${roomUrl(cfg, game.id, data.roomId)}
+🔗 ${roomUrl(cfg, game.id, data.roomId)}${codeLine}
 
-Kamu sudah duduk sebagai host (terverifikasi).
-Teman tinggal buka tautan itu, lalu kirim:
+Buka tautan di atas, isi kode itu → kamu langsung duduk sebagai host.
+Teman tinggal buka tautan yang sama, lalu kirim:
 \`${cmd} join ${data.roomId}\` ke bot ini, dan verifikasi dengan \`${cmd} ${data.roomId}\`.`, m)
 }
 
@@ -200,7 +203,8 @@ const handler = async (m, { conn, usedPrefix, args, command }) => {
 handler.help = ['webgame', ...COMMANDS]
 handler.tags = ['game']
 handler.command = new RegExp(`^(${['webgame', ...COMMANDS].join('|')})$`, 'i')
-handler.register = true
+// Tidak wajib daftar: bot utama maupun sesi jadibot harus bisa langsung buka meja.
+handler.register = false
 handler.limit = false
 
 export default handler

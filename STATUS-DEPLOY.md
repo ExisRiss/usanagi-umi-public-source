@@ -1072,6 +1072,57 @@ kosong, perintah lain akan gagal dengan `TypeError … reading 'deline'` yang sa
   `.setintro`, `.intro`, `.setwelcome`, `.bank`, `.sell` semuanya membalas normal; halaman
   Feedback **tidak menerima laporan otomatis baru** setelah restart.
 
+## Task 30 — Property Empire masuk bot utama & semua sesi jadibot (2026-10-17 19.08 WITA)
+
+Permintaan: *"Fitur empire belum ada di bot, apply ke bot utama dan bot jadibot untuk semua
+pembaruan."*
+
+### 1. Kenapa `.empire` tidak ada
+- Berkas di server `/plugins/game/game-webmultiplayer.js` masih versi lama **8.364 B** —
+  daftar `GAMES`-nya hanya enam meja (UNO, UNO Flip, Catur, Ular Tangga, Monopoli, Werewolf).
+  `empire` tidak terdaftar, jadi `.empire` tidak cocok dengan regex command dan plugin
+  mengembalikan `undefined` tanpa balasan sama sekali.
+- `/lib/webgame.json` juga **belum ada** (hanya `webgame.example.json`), sehingga pembuatan
+  room lewat bot tidak punya token dan akan gagal dengan "Token game belum diatur".
+
+### 2. Yang diperbaiki
+- `game-webmultiplayer.js` versi **8.673 B** diunggah ke `/plugins/game/`: `GAMES` kini berisi
+  **tujuh meja** termasuk `empire: { id: 'empire', label: 'Property Empire', emoji: '🎩' }`.
+- Balasan pembuatan room sekarang menyertakan **kode masuk** host
+  (`🔑 Kode masuk kamu: 6 digit`) — sebelumnya host dapat tautan tapi tidak tahu kode untuk
+  masuk ke room di browser.
+- `handler.register = false`: bot utama dan sesi jadibot bisa langsung membuka meja tanpa
+  harus `.daftar` lebih dulu.
+- `/lib/webgame.json` dibuat di server (bukan di repo — masuk `.gitignore`):
+  `{"enabled":true,"baseUrl":"https://game.gwenna.my.id","token":"<48 karakter>"}`.
+
+### 3. Kenapa jadibot otomatis ikut
+`lib/jadibot.js` membangun setiap sesi dengan `await import('../handler.js')` — handler yang
+sama dengan bot utama. Handler memuat plugin dari `./plugins` relatif ke `handler.js`, dan
+`lib/webgame.json` dibaca dari path absolut plugin (`../../lib/webgame.json`). Jadi satu
+berkas plugin + satu berkas token melayani **bot utama dan semua sesi jadibot**; tidak ada
+folder plugin terpisah per sesi dan tidak perlu deploy ulang per nomor.
+
+### 4. Alur main yang sekarang berlaku (7 meja)
+1. `.empire` → bot membuat meja + tautan + kode masuk host.
+2. Teman buka tautan yang sama, lalu kirim `.empire join <id>`.
+3. Teman kirim `.empire <id>` → bot membalas kode masuk masing-masing kursi.
+4. `.webgame room <id>` → intip status/kursi. Nama perintah lain: `.uno`, `.unoflip`,
+   `.caturweb`, `.utweb`, `.monopoli`, `.wwweb`.
+
+### 5. Verifikasi
+- Uji handler langsung dengan token produksi:
+  - `.empire` → meja `tjFARaStGE` + kode `233993`;
+  - `/empire` (prefix miring) → meja `NfrPs8UJbX`;
+  - `.empire join tjFARaStGE` → kursi pending pemain kedua;
+  - `.empire tjFARaStGE` → kursi #2 terverifikasi + kode `435046`;
+  - `.webgame room tjFARaStGE` → "Status: menunggu pemain · Pemain: 2" dengan dua kursi ✅.
+- Halaman web `https://game.gwenna.my.id/empire/<id>` → **HTTP 200, 116.862 B** (v2.2.0).
+- Berkas di server = repo: sha256 `81757833c0069622…` (8.673 B), `/lib/webgame.json` 113 B
+  dengan token 48 karakter.
+- Restart panel `HTTP 204`; `/api/health` bot v1.4.0 hidup; konsol 28 detik tanpa error plugin.
+- 20 berkas Task 29 dicek ulang: **20/20 sha256 SAMA** — tidak ada regresi.
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
