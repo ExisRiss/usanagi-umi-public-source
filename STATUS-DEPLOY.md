@@ -1600,3 +1600,31 @@ Laporan: disuruh bikin room malah bilang room tidak ditemukan; disuruh jalanin c
 - Ketiga file diunduh kembali: byte identik. Restart panel API 204.
 
 - Log setelah restart: `Successfully Loaded 2052 Plugins`; 0 baris error pada log startup yang diperiksa. Konfirmasi tampilan menu di WhatsApp masih menunggu uji user.
+
+## Task 42 — Bratvid2 wajib menghasilkan stiker, bukan video (2026-10-18)
+
+### Laporan / akar masalah
+User meminta hasil bratvid2 berupa stiker. Perbaikan adapter impor sebelumnya sudah menyediakan sendVideoAsSticker, tetapi alias utama `bratvid2`/`brat2` ditangani `plugins/maker/brat2.js` yang masih mengirim payload `{video, gifPlayback, caption}` (atau `{image}`), bukan `{sticker}`.
+
+### Perubahan
+- Ubah satu file runtime: `plugins/maker/brat2.js`.
+- Hasil API dideteksi format binernya lewat file-type, dikonversi dengan writeExif dari lib/exif.js menjadi WebP dan diberi metadata pack/author.
+- MP4 maupun GIF dikonversi ke stiker animasi. Respons gambar menjadi stiker gambar. Jalur fallback tetap menghasilkan stiker, tidak mengirim video/foto.
+- Validasi RIFF/WEBP sebelum kirim; isAnimated mengikuti flag VP8X hasil konversi. Payload hanya `{sticker}` plus isAnimated jika animasi, tetap quote pesan user.
+- Konversi gagal → laporkan gagal membuat stiker, bukan mengganti output ke video.
+- Deskripsi command diperjelas sebagai stiker animasi. API utama tetap `https://apiii-xrina.my.id/maker/bratvid2?text=...`; tidak ada key/session/branding yang dirotasi atau dihapus.
+
+### Verifikasi
+- Re-sync repo ke HEAD a53c34b. Sebelum edit, unduh brat2.js dan exif.js live dan bandingkan dengan HEAD: sama. Snapshot tracked lama disimpan di deploy-check/task42/snapshot-tracked.patch.
+- Dependency produksi file-type, fluent-ffmpeg, node-webpmux, axios, fs-extra sudah tersedia.
+- Jalankan handler aktual dengan API bratvid2 asli untuk teks "ayam", transport sendMessage ditangkap (tidak mengirim pesan ke pengguna): hasil `{success:true}`; satu payload `{sticker,isAnimated:true}`; WebP 76.440 byte; parser node-webpmux membaca ukuran 320×320, **42 frame**, animasi dan EXIF valid. Tidak ada field video/image/document.
+- 9 tes khusus konversi/transport: MP4, octet-stream, PNG, GIF, fallback GIF→MP4→WebP, output konversi invalid, ffmpeg gagal, input kosong/prefix aktif, dan transport gagal. Semua memakai konversi ffmpeg asli, HTTP dan WA dimock.
+- Gabungan regresi AI/menu/stiker: **56/56 lulus**. Hasil disimpan di deploy-check/task42/tests.tap.
+- Pengiriman dan tampilan stiker di aplikasi WhatsApp user belum dikonfirmasi; uji real API dan format payload bukan klaim end-to-end ke HP.
+
+### Deploy
+- Cek ulang live belum berubah sebelum upload.
+- Upload `/plugins/maker/brat2.js` HTTP 204, **8.997 byte**, SHA-256 awal `ded832e36402d33d`.
+- Unduh ulang: byte identik dengan lokal. Restart via panel API: HTTP 204.
+
+- Sesudah restart: `Successfully Loaded 2052 Plugins`; 0 baris error pada log startup yang diperiksa. API panel masih menandai state `starting` ketika dicek, tetapi proses bot sudah memuat plugin.

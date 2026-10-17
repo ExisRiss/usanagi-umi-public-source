@@ -7,6 +7,8 @@ import path from 'node:path'
 import crypto from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { getFfmpegBinPath } from '../../lib/awang-ytdlp.js'
+import { fileTypeFromBuffer } from 'file-type'
+import { writeExif } from '../../lib/exif.js'
 
 const BRAND = global.brandCredit || 'By AlzRiss - Usanagi Umi AI'
 const CFG = global.rinAPI || {}
@@ -186,24 +188,26 @@ const handler = async (m, { conn, text, usedPrefix, command }) => {
   try {
     await m.react('⏳').catch(() => {})
     const result = await createBratMedia(input)
-    const caption = `Bratvid2: ${input}\n\n${BRAND}`
-    const payload = result.kind === 'image'
-      ? {
-          image: result.data,
-          mimetype: result.mimetype,
-          caption,
-        }
-      : {
-          video: result.data,
-          mimetype: result.mimetype,
-          fileName: `bratvid2-${Date.now()}.mp4`,
-          gifPlayback: true,
-          caption,
-        }
+    // API mengembalikan video, tetapi keluaran command ini WAJIB stiker.
+    // Jangan kirim MP4/GIF/image langsung, termasuk ketika memakai fallback.
+    const detected = await fileTypeFromBuffer(result.data)
+    const mime = detected?.mime || result.mimetype
+    if (!/^(?:video|image)\//.test(mime)) throw new Error('API bratvid2 tidak mengembalikan media yang valid.')
+    const sticker = await writeExif({
+      data: result.data,
+      mimetype: mime === 'image/gif' ? 'video/gif' : mime,
+      ext: detected?.ext || (result.kind === 'video' ? 'mp4' : 'png'),
+    }, {
+      packName: String(global.packname || 'Umi Usanagi'),
+      packPublish: String(global.author || BRAND),
+    })
+    if (!Buffer.isBuffer(sticker) || sticker.toString('ascii', 0, 4) !== 'RIFF' || sticker.toString('ascii', 8, 12) !== 'WEBP') {
+      throw new Error('Konversi stiker bratvid2 gagal; hasilnya bukan WebP.')
+    }
+    const isAnimated = sticker.toString('ascii', 12, 16) === 'VP8X' && Boolean(sticker[20] & 0x02)
+    await conn.sendMessage(m.chat, { sticker, ...(isAnimated ? { isAnimated: true } : {}) }, { quoted: m.raw || m })
 
-    await conn.sendMessage(m.chat, payload, { quoted: m.raw || m })
-
-    if (result.provider === 'fallback') console.log('[BRATVID2] Video berhasil dikirim melalui fallback GIF → MP4.')
+    if (result.provider === 'fallback') console.log('[BRATVID2] Stiker berhasil dikirim melalui fallback.')
     await m.react('✅').catch(() => {})
     return { success: true }
   } catch (error) {
@@ -211,7 +215,7 @@ const handler = async (m, { conn, text, usedPrefix, command }) => {
     console.error('[BRATVID2]', reason)
     await m.react('❌').catch(() => {})
     await m.reply(
-      `❌ Gagal membuat bratvid2.\n\n` +
+      `❌ Gagal membuat stiker bratvid2.\n\n` +
       `Alasan: ${reason}\n\n` +
       `Coba lagi beberapa saat (API pembuat video kadang sibuk), atau pakai ${prefix}bratvid untuk gambar statis.\n\n${BRAND}`
     )
@@ -223,6 +227,6 @@ handler.help = ['bratvid2 <teks>', 'brat2 <teks>']
 handler.tags = ['maker']
 handler.command = /^(bratvid2|brat2)$/i
 handler.limit = true
-handler.description = 'Membuat video Brat dengan fallback otomatis ketika API utama bermasalah'
+handler.description = 'Membuat stiker animasi Brat v2 dari teks (hasil WebP, bukan pesan video)'
 
 export default handler
