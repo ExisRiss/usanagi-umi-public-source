@@ -1297,7 +1297,9 @@ if (isRoom) {
     st.pos.forEach((p, i) => { (groups[p] = groups[p] || []).push(i) })
     const offs = [[-20, -24], [20, -24], [-20, 20], [20, 20], [0, -38], [0, 30]]
     st.pos.forEach((p, i) => {
-      if (!p) return
+      const seat = s.seats[i]
+      const joined = seat && (seat.kind === 'ai' || seat.status === 'verified')
+      if (!p && !joined) return
       const c = snkCell(p)
       const o = offs[(groups[p] || []).indexOf(i)] || [0, 0]
       const isTurn = !over && st.turn === i
