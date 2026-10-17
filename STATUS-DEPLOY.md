@@ -954,8 +954,10 @@ sistem room `game.js` yang sama dengan UNO/Catur/Ular Tangga/Werewolf.
   beranda memuat "Property Empire".
   Uji dua peramban di domain produksi (room `empire/<id>`): 2 kursi manusia, mulai 4 pemain,
   40 petak, 4 pion, 2 dadu, beli properti, giliran B, chat masuk, 0 error.
-- sha256 server = repo **5/5 SAMA**: game.js 122.851 B, game.html 116.712 B,
+- sha256 server = repo **5/5 SAMA**: game.js 122.851 B, game.html 116.862 B,
   empire.js 43.540 B, empire-ui.js 65.614 B, empire.html 31.046 B.
+- Poles akhir: titik pemenggalan untuk nama panjang (Tanjung/Senayan/Kwitang/Cawang),
+  dan di HP header room Empire tidak lagi `sticky` supaya tidak menutupi baris petak atas.
 - Plugin bot terunggah dan diverifikasi langsung dari panel: `game-webmultiplayer.js` 8.357 B
   memuat `empire: { id: 'empire'`. Container di-restart setelah unggahan.
 

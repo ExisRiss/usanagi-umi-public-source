@@ -535,6 +535,8 @@
     .em-log{max-height:150px}
   }
   @media (max-width:560px){
+    /* header tidak menutupi papan saat digulir di room Empire */
+    body.empire-room header.top{position:static}
     /* papan melebar sampai tepi kartu supaya petak semaksimal mungkin */
     .emp-scroll{margin:0 -40px;padding:0 5px 2px}
     .emp-board{padding:4px;gap:1px;border-radius:10px;--bw:3px}
@@ -1571,7 +1573,7 @@ if (isRoom) {
   }
   const empRp = (v) => 'Rp' + Math.round(Number(v) || 0).toLocaleString('id-ID')
   /* Titik pemenggalan untuk nama panjang di papan sempit (soft hyphen). */
-  const EMP_HYPH = { Kesempatan: 5, Komunitas: 4, Manggarai: 6, Penghasilan: 5, Kemayoran: 4, Kuningan: 6, Setiabudi: 5, Pancoran: 3, Menteng: 3, Stasiun: 3, Penjara: 3, Tanjung: 4 }
+  const EMP_HYPH = { Kesempatan: 5, Komunitas: 4, Manggarai: 6, Penghasilan: 5, Kemayoran: 4, Kuningan: 6, Setiabudi: 5, Pancoran: 3, Menteng: 3, Stasiun: 3, Penjara: 3, Tanjung: 3, Senayan: 3, Kwitang: 3, Cawang: 3 }
   function empName(name) {
     return esc(name).split(' ').map(w => {
       const at = EMP_HYPH[w]
