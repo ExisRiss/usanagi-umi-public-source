@@ -844,6 +844,42 @@ Berkas baru, tanpa bundler (modul ES asli, tetap vanilla Node + HTML):
 - sha256 server ↔ repo untuk `game.js, game.html, empire.js, empire-ui.js, empire.html`: **sama**.
 - Commit **`7511d84`** (7 berkas, +5798/−296) sudah di-push ke `main`.
 
+### C. Penyempurnaan sesudah laporan pertama (v2.1.1, 2026-10-17 17.35 WITA)
+
+- **Pion Ular Tangga di kotak START** sekarang tampil (sebelumnya `if (!p) return` menyembunyikan
+  pion yang masih di posisi 0) — commit `373a5f1`.
+- **Label petak Empire** dirapikan: `overflow-wrap:normal` (tak lagi pecah kata), kolom kiri/kanan
+  font `×.86`, ikon petak biasa dibatasi **15 px** (dulu `flex:1` mendorong teks keluar),
+  ikon sudut **22 px**, label KESEMPATAN/DANA KOMUNITAS `×.8`, PAJAK `×.88`.
+- **Pion lebih kecil** 3,5% → **2,9%** papan supaya tidak menutupi nama petak.
+- **Header HP**: brand ringkas (`<560px` hanya logo), chip giliran & tombol 30–34 px,
+  `.board.compact` → font 6,1 px, ikon 10 px, harga disembunyikan; `@media` dipindah ke luar
+  blok 760 px (sempat tidak berlaku karena bersarang).
+- **Statistik game over**: baris “Bangunan berdiri” kini `X rumah · Y hotel` (dulu hanya hotel).
+- Hook uji `window.__empire` ditambah `set state` dan `afterAction()` (tanpa data sensitif).
+
+**Hasil uji v2.1.1:**
+
+- `node --test db-mirror/empire.test.mjs` → **20/20**; `node --check` 3 berkas JS bersih.
+- Playwright lokal (2 pemain, cepat): permainan **selesai** di giliran ke-24 → modal
+  “Permainan Selesai · Bot Umi menang · kekayaan Rp2.002 vs Rp1.693 · 17 petak terjual”, 0 error.
+- Lelang paksa petak 1: “Beli Tanah Abang?” → **Lewati / Lelang** → panel **🔨 Lelang**,
+  bot tawar 18 → manusia 43 → bot 53 (semua tercatat di log).
+- Kelola aset: 3 petak satu kelompok → tombol **+ Rumah** aktif; 5 klik → rumah **2/2/1**
+  (merata), kas 2000 → 1750; tombol berubah **+ Hotel** saat 4 rumah.
+- Tukar: 4 properti bisa diberikan, 1 diminta; Kirim Tawaran → modal “Menunggu jawaban” →
+  bot menjawab, modal tertutup, 0 error.
+- Kartu: `afterAction()` → modal flip “Kamu mengambil kartu ❓ KESEMPATAN” dengan efek nyata.
+- Simpan otomatis ada; reload → tombol **Lanjutkan** memulihkan kas & giliran.
+- HP 390×844: papan **350 px** utuh (tanpa scroll horizontal), modal kelola 358×225–660 px
+  di dalam viewport, header tidak meluber.
+- Live **v2.1.1**: `/empire` 200 (40 tile, 2 pion), `/empire/ui.js` 200 65.614 B,
+  `/empire/engine.js` 200 43.540 B, `/` 200 91.135 B; room ular tangga live → SVG 1 · ular 8 · tangga 7.
+- sha256 server ↔ repo: `game.js 7fbbd873`, `game.html 27b07eaf`, `empire.js f51a3e47`,
+  `empire-ui.js 310391ea`, `empire.html 1e79ec90` — **semua sama**.
+- Commit **`5a2d894`** di-push ke `main` (setelah `373a5f1`).
+
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
