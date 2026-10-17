@@ -1184,6 +1184,27 @@ ga valid atau token gaada kasih tutorial nya login pake token."*
   (sesi WhatsApp-nya sudah logout), bukan masalah plugin. Begitu tersambung, `.empire` dan
   perintah lain langsung tersedia karena memakai runtime & plugin yang sama.
 
+## Task 32 — Groq API key untuk Auto AI (2026-10-17 19.55 WITA)
+
+Permintaan: memasang API key Groq agar Auto AI bisa menjawab chat.
+
+- Key **tidak** ditulis di repo. Disimpan di server `/.env.groq` (mode `600`) lewat
+  `POST /api/owner-agent/settings` (`provider: groq`, `model: openai/gpt-oss-120b`), dan
+  salinannya di `/home/user/.secrets/groq.env` (chmod 600). Yang tercatat di sini hanya
+  prefiksnya: `gsk_2nea…`.
+- Isi berkas: `GROQ_API_KEY=<56 karakter>`, `GROQ_MODEL=openai/gpt-oss-120b`,
+  `UMI_AUTO_AI_ENABLED=true`.
+- `lib/groq-client.js` membaca berkas itu (cache 15 detik) → tidak perlu restart; satu proses
+  melayani bot utama dan semua sesi jadibot.
+- Verifikasi:
+  - key diuji langsung ke `api.groq.com/openai/v1/chat/completions` → **HTTP 200**, model
+    `openai/gpt-oss-120b`;
+  - `GET /api/owner-agent/status` → `configured:true`, `updatedAt` terisi;
+  - `POST /api/owner-agent/chat` → balasan nyata dari Groq ("Saya dapat memantau kesehatan
+    bot…"), artinya runtime benar-benar memakai key baru.
+- Auto AI (`lib/auto-ai.js`) aktif saat bot di-mention atau pesannya di-reply, dan tetap
+  menghormati sakelar `UMI_AUTO_AI_ENABLED` serta setelan per-bot.
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
