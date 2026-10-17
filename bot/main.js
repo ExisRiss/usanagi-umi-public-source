@@ -21,6 +21,7 @@ import { syncMainPrefix } from './core/awang-prefix.js';
 import { getExplicitlyEnabledWelcomeGroups } from './core/awang-welcome.js';
 import { startJadibotPlatformApi } from './lib/jadibot-platform-api.js';
 import { installAutoBackup, updateAutoBackupConnection } from './lib/auto-backup.js';
+import { normalizePluginText, storedDefaultPrefix } from './core/awang-prefix-text.js';
 import { startJadibotSessionCleaner } from './lib/jadibot-session-cleaner.js';
 import { startVercelBackupScheduler } from './lib/vercel-backup-scheduler.js';
 import { readMainBotState, writeMainBotState, normalizeMainBotNumber } from './lib/main-bot-config.js';
@@ -84,6 +85,13 @@ global.anticall = true;
     console.log('Error loading config:', e.message);
 }
 installBotConfigAccessors();
+// Prefix default pilihan owner (disimpan di data/prefix-settings.json) menang
+// atas nilai bawaan config.js, supaya setelan tidak hilang saat restart.
+const savedPrefix = storedDefaultPrefix();
+if (savedPrefix) {
+    if (!global.mainBot) global.mainBot = {};
+    global.mainBot.defaultPrefix = savedPrefix;
+}
 if (syncMainPrefix(global.mainBot?.defaultPrefix, global.mainBot?.prefixRevision)) {
     console.log(`Prefix bot utama disinkronkan ke: ${global.mainBot.defaultPrefix}`);
 }
@@ -802,7 +810,7 @@ async function filesInit() {
                 }
 
                 const module = await import(`${pathToFileURL(file).href}?load=${Date.now()}`);
-                global.plugins[key] = module.default || module;
+                global.plugins[key] = normalizePluginText(module.default || module);
             } catch (e) {
                 console.error(`Failed to load plugin ${key}: ${e.message}`);
                 delete global.plugins[key];

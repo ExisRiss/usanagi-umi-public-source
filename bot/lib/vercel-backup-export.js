@@ -65,7 +65,7 @@ async function collectBotSource() {
       continue
     }
     if (!entry.isDirectory() || !allowedDirectories.has(entry.name)) continue
-    await collectTree(absolute, entry.name, files, item => item.type === 'directory' || sourceFile(item.name) || /^integrations\/(?:rimuru|ourin)\/config\.js$/.test(item.relative))
+    await collectTree(absolute, entry.name, files, item => item.type === 'directory' || sourceFile(item.name) || /^integrations\/(?:umi|ourin)\/config\.js$/.test(item.relative))
   }
   return files.sort((a, b) => a.relative.localeCompare(b.relative))
 }

@@ -2,7 +2,7 @@
 
 **Log lengkap:** [repo `STATUS-DEPLOY.md`](./usanagi-umi-public-source/STATUS-DEPLOY.md)
 
-Terakhir diperbarui: **2026-10-17 12.45 WITA**
+Terakhir diperbarui: **2026-10-17 13.35 WITA**
 
 ## Done
 
@@ -358,6 +358,62 @@ state hanya berisi 2 sesi online. Nomor-nomor itu perlu pairing ulang kalau masi
 `MAIN_BOT_PAIRING_NUMBER=<nomor>` — diisi lewat halaman Bot Utama (bukan dari sisi kami), jadi
 dibiarkan apa adanya. Tiga sesi lain (`…2084`, `…8221`, `…5317`) masih offline dan akan ikut
 dibersihkan pada sapuan 15 menit berikutnya kalau tidak kunjung tersambung.
+
+## Task 18 — Hapus nama "rimuru" & prefix mengikuti setelan owner/user (2026-10-17 13.35 WITA)
+
+**Permintaan.** (1) "Kenapa masih ada fitur awalan rimuru? Ganti jadi umi. Aku mau semua fitur di
+apply." (2) "Bot ketika nampilin menu atau ada pesan command ganti dengan {prefix} jangan pakai
+default `.' aku mau kau ganti jadi settingan owner atau user. Di bot jadibot juga apply."
+
+### A. Rename rimuru → umi
+- `bot/plugins/pelengkap/rimuru/` → **`bot/plugins/pelengkap/umi/`** (1.088 berkas wrapper,
+  `rimuru-*.js` → `umi-*.js`).
+- `bot/integrations/rimuru/` → **`bot/integrations/umi/`** (1.188 berkas sumber).
+- Semua alias/`help`/`importSource`/`importAliasMap` di wrapper: `rimuru-xyz` → `umi-xyz`,
+  `importSource: "umi"`, `runImportedFeature("umi", …)`. Nama khusus ikut dirapikan:
+  `rimuru-ai` → `umi-ai`, `rimurubanana(2)` → `banana(2)`, `rimuru-large` → `umi-large`.
+- `bot/integrations/umi/config.js`: `createVendorConfig('umi')`.
+- `bot/handler.js`: prefiks namespace untuk AI-plan `(?:umi|ourin|usanagi)-`.
+- `bot/lib/vercel-backup-export.js`: regex ikut `integrations/(?:umi|ourin)/config.js`.
+- **Bukti:** 1.088/1.088 wrapper berhasil di-resolve ke berkas integrasi yang ada (0 path hilang),
+  `node --check` semua valid, dan bot memuat **2.044 plugin** (sama seperti sebelumnya).
+  Contoh hasil: `handler.help = ["umi-religi-zikir <pagi/petang/sholat>"]`, komando
+  `umi-zikir`, `umi-ai`, `banana2`, dst.
+- Kredit penulis asli tetap dihormati: tautan/atribusi di `CREDITS.md` dan teks sumber integrasi
+  tidak diubah — hanya nama fitur/alias yang diganti.
+
+### B. Prefix {prefix} mengikuti setelan
+- Modul baru **`bot/core/awang-prefix-text.js`**: `normalizeCommandText()` mengubah contoh
+  `.zikir pagi` → `{prefix}zikir pagi`, `renderCommandText()` mengganti `{prefix}` dengan prefix
+  aktif, plus `storedDefaultPrefix()`/`saveDefaultPrefix()` untuk setelan owner
+  (`data/prefix-settings.json`, mode 600).
+- **`bot/lib/prefix-rewrite.js`** (baru) menambal pesan keluar di lapisan pengiriman:
+  setiap teks/keterangan yang keluar dicek dan **hanya token yang benar-benar nama perintah
+  terdaftar** yang diganti prefix-nya. Angka desimal (`0.5`), domain (`example.com`), dan versi
+  (`v1.4.0`) tidak ikut berubah (ada unit test).
+- `bot/lib/simple.js`: `sendMessage` memanggil `rewriteOutgoingContent()` dengan prefix aktif chat
+  → berlaku untuk **bot utama dan semua jadibot** (jadibot punya namespace `jadibot:<nomor>:`).
+- `bot/main.js`: prefix default tersimpan diterapkan sebelum koneksi dibuat, dan semua plugin
+  dinormalkan (`normalizePluginText`) saat dimuat.
+- `bot/core/awang-status.js` + `bot/plugins/info/main-menu.js`: menu membuang placeholder lalu
+  menempel prefix aktif → tidak pernah muncul `{prefix}menu` atau `..menu`.
+- `bot/plugins/owner/usanagi-setprefix.js` ditulis ulang:
+  * `setprefix` → lihat prefix aktif
+  * `setprefix <p>` → prefix chat ini (owner / admin grup / chat pribadi)
+  * `setprefix default` → kembali ke default
+  * `setprefix global <p>` → **[owner]** default semua chat (bot utama: `data/prefix-settings.json`;
+    jadibot: config sesi jadibot itu sendiri) + `syncMainPrefix` ke SQLite + reset cache.
+- Default bot utama sebelumnya masih `/` dari `config.js` padahal semua contoh memakai `.` →
+  sekarang default tersimpan **`.`** (`data/prefix-settings.json`), dan owner bisa menggantinya
+  kapan saja lewat `setprefix global <p>` tanpa edit file/restart.
+
+**Deploy.** Paket `task18.tar.gz` (3,3 MB, 2.377 entri) diunggah + diekstrak lewat panel, folder
+lama `plugins/pelengkap/rimuru` & `integrations/rimuru` dihapus, restart 204. Backup berkas inti
+sebelum deploy: `./backup/pre-task18.tar.gz` (497 KB). Log: `Successfully Loaded 2044 Plugins`,
+`⚙️ Bot utama: AKTIF`, `/api/health` 200 v1.4.0.
+
+**Cara pakai untuk owner.** `.setprefix global !` → semua chat memakai `!menu`; `.setprefix global .`
+untuk kembali. Pengguna bisa mengganti prefix chatnya sendiri (chat pribadi) atau admin grup.
 
 ## Pending
 

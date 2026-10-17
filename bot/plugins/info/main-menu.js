@@ -1067,7 +1067,10 @@ async function sendDetail(
 
         for (const item of menus) {
             for (const cmd of item.help) {
-                text += `     ♡ ${item.prefix ? '' : usedPrefix}${cmd}${getBadge(item)}\n`
+                // help bisa berisi placeholder {prefix}; ganti dengan prefix aktif chat.
+                const bareCommand = String(cmd).split('{prefix}').join('').replace(/^[./#!$&+~^-]/, '')
+                const shifted = item.prefix ? (String(cmd).split('{prefix}').join(usedPrefix)) : `${usedPrefix}${bareCommand}`
+                text += `     ♡ ${shifted}${getBadge(item)}\n`
             }
         }
     }

@@ -723,7 +723,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
                     if (aiPlan.kind === 'command') {
                         m.text = aiDispatchText;
                         m.mentionedJid = (m.mentionedJid || []).filter(jid => !aiPlan.botMentionIds.includes(String(jid).replace(/:\d+(?=@)/, '').split('@')[0]));
-                        const targetCommand=plugin.importAliasMap?.[aiPlan.command]||aiPlan.command.replace(/^(?:rimuru|ourin|usanagi)-/,'');
+                        const targetCommand=plugin.importAliasMap?.[aiPlan.command]||aiPlan.command.replace(/^(?:umi|ourin|usanagi)-/,'');
                         if (/^(?:kick|add|promote|demote|warn|ban|unban|block|unblock|blacklist)$/i.test(targetCommand) && m.quoted && (m.quoted.fromMe || aiPlan.botMentionIds.includes(String(m.quoted.sender || '').replace(/:\d+(?=@)/, '').split('@')[0]))) {
                             m.quoted=null;
                             if(isUsanagiPlugin)Object.defineProperty(pluginMessage,'quotedMessage',{value:null,writable:true,configurable:true});

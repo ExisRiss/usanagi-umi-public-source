@@ -116,7 +116,9 @@ export function getCommandSymbols(plugin, context = {}) {
 }
 
 export function formatCommandWithStatus(command, plugin, prefix = '') {
-  const cleanCommand = String(command || '').trim()
+  // Placeholder {prefix} dilepas karena prefix aktif ditempel di bawah —
+  // supaya tidak pernah muncul "{prefix}menu" atau "..menu".
+  const cleanCommand = String(command || '').trim().split('{prefix}').join('').replace(/^[./#!$&+~^-]/, '')
   const symbols = getCommandSymbols(plugin, { command: cleanCommand.toLowerCase() })
   return `${prefix}${cleanCommand}${symbols.length ? ` ${symbols.join(' ')}` : ''}`
 }

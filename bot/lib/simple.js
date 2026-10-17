@@ -29,6 +29,8 @@ import MakeWASocket, {
 	extractMessageContent,
 } from '@rexxhayanasi/elaina-baileys';
 
+import { rewriteOutgoingContent, prefixForChat } from './prefix-rewrite.js';
+
 export function makeWASocket(connectionOptions, options = {}) {
 	/**
 	 * @type {import('@rexxhayanasi/elaina-baileys').WASocket}
@@ -47,9 +49,12 @@ export function makeWASocket(connectionOptions, options = {}) {
 				const skipTranslate = options?.__noTranslate === true;
 				const cleanOptions = { ...options };
 				delete cleanOptions.__noTranslate;
-				const translatedContent = skipTranslate
+				const translatedRaw = skipTranslate
 					? content
 					: await translateOutgoing(jid, content);
+				// Samakan prefix pada teks perintah yang keluar (mengikuti setelan
+				// owner/user untuk chat ini; jadibot punya namespace sendiri).
+				const translatedContent = rewriteOutgoingContent(translatedRaw, await prefixForChat(jid));
 				const text = translatedContent?.text || translatedContent?.caption || '';
 
 				return OrigMsg(
