@@ -1,5 +1,9 @@
 import axios from 'axios'
 
+/* Sama seperti maker-cewekbrat: global.APIs tidak diisi oleh config bot,
+ * jadi sediakan basis API yang pasti ada. */
+const DELINE = String(global.APIs?.deline || global.APIs?.delineWeb || 'https://api.deline.web.id').replace(/\/+$/, '')
+
 let handler = async (m, { conn, text, usedPrefix, command }) => {
     if (!text) {
         return m.reply(`Contoh penggunaan:
@@ -19,16 +23,18 @@ ${usedPrefix + command} name|username|comment|verified`)
     verified = (verified || 'false').trim().toLowerCase()
 
     const avatar = await conn.profilePictureUrl(m.sender, 'image')
-        .catch(() => `${global.APIs.deline}/Eu3BVf3K4x.jpg`)
+        .catch(() => `${DELINE}/Eu3BVf3K4x.jpg`)
 
-    const url = `${global.APIs.deline}/maker/faketweet?name=${encodeURIComponent(name.trim())}&username=${encodeURIComponent(username.trim())}&comment=${encodeURIComponent(comment.trim())}&avatar=${encodeURIComponent(avatar)}&verified=${verified}`
+    const url = `${DELINE}/maker/faketweet?name=${encodeURIComponent(name.trim())}&username=${encodeURIComponent(username.trim())}&comment=${encodeURIComponent(comment.trim())}&avatar=${encodeURIComponent(avatar)}&verified=${verified}`
 
     try {
-        const { data } = await axios.get(url, { responseType: 'arraybuffer' })
-        await conn.sendFile(m.chat, data, 'faketweet.jpg', '', m)
+        const { data, headers } = await axios.get(url, { responseType: 'arraybuffer', timeout: 45000, validateStatus: () => true })
+        const type = String(headers?.['content-type'] || '')
+        if (!type.startsWith('image/')) throw new Error('Layanan mengembalikan data yang bukan gambar.')
+        await conn.sendFile(m.chat, Buffer.from(data), 'faketweet.jpg', '', m)
     } catch (e) {
-        console.error(e)
-        m.reply('Gagal membuat fake tweet.')
+        console.error('[faketweet]', e?.message || e)
+        await m.reply(`Gagal membuat fake tweet: ${String(e?.message || 'layanan sedang sibuk').slice(0, 120)}.`)
     }
 }
 

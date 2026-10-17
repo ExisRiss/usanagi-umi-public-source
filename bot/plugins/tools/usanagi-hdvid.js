@@ -19,9 +19,14 @@ const handler = async (m, { rawConn, usedPrefix }) => {
     if (input.length > 50 * 1024 * 1024) throw new Error('Ukuran video melebihi batas 50 MB')
 
     await m.reply('🕕 Meningkatkan video ke resolusi 2×...')
+    /* Versi lama memakai `-c:a copy`. Kalau audio sumber berformat yang tidak
+     * cocok dengan MP4 (mis. Opus dari WebM), FFmpeg berhenti dengan pesan
+     * "cpb: bitrate max/min/avg: 0/0/0 ... vbv_delay: N/A" (laporan Feedback
+     * 16 Okt 2026). Audio sekarang di-encode ke AAC, dan dimensi dibuat genap
+     * supaya scale 2× tidak gagal pada video berukuran ganjil. */
     const output = await transcodeBuffer(input, isDocumentVideo ? 'mp4' : 'mp4', 'mp4', {
-      videoFilters: ['scale=iw*2:ih*2:flags=lanczos', 'unsharp=5:5:1.0:5:5:0.0'],
-      outputOptions: ['-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-c:a', 'copy', '-movflags', 'faststart'],
+      videoFilters: ['scale=trunc(iw*2/2)*2:trunc(ih*2/2)*2:flags=lanczos', 'unsharp=5:5:1.0:5:5:0.0'],
+      outputOptions: ['-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart'],
       timeoutMs: 300000,
     })
 
@@ -35,7 +40,10 @@ const handler = async (m, { rawConn, usedPrefix }) => {
     return { status: true }
   } catch (error) {
     await react(rawConn, m, '❌')
-    throw new Error(`HDVid gagal: ${error?.message || 'proses tidak tersedia'}`)
+    const detail = String(error?.message || 'proses tidak tersedia').slice(0, 160)
+    console.error('[hdvid]', detail)
+    await m.reply(`❌ HDVid gagal: ${detail}\n\nCoba video lain, atau perkecil dulu videonya.`)
+    return { status: false }
   }
 }
 

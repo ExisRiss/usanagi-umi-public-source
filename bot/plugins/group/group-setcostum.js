@@ -4,7 +4,7 @@ import {
 } from '../../lib/jadibot-group-welcome.js'
 
 let handler = async (m, { conn, usedPrefix, command, text }) => {
-	if (!text) throw `Teksnya mana?\n\nContoh:\n${usedPrefix + command} Hi @user\n\nVariabel template:\n@user = Member masuk/keluar\n@subject = Nama group\n@info = Informasi group\n@bot = Informasi bot\n@member = Jumlah member group\n@deks = Deskripsi group\n@desc = Alias @deks`;
+	if (!text) return m.reply(`Teksnya mana?\n\nContoh:\n${usedPrefix + command} Hi @user\n\nVariabel template:\n@user = Member masuk/keluar\n@subject = Nama group\n@info = Informasi group\n@bot = Informasi bot\n@member = Jumlah member group\n@deks = Deskripsi group\n@desc = Alias @deks`);
 	let chat = global.db.data.chats[m.chat];
 	const isJadibot = conn?.botConfig?.type === 'jadibot'
 

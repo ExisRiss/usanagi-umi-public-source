@@ -13,7 +13,7 @@ let handler = async (m, { args, usedPrefix, command }) => {
 		(lang = args[0] ? args[0] : "id"), (text = args.slice(1).join(" "));
 	} else if (m.quoted && m.quoted.text) {
 		(lang = args[0] ? args[0] : "id"), (text = m.quoted.text);
-	} else throw `Ex: ${usedPrefix + command} id hello i am robot`;
+	} else return m.reply(`Ex: ${usedPrefix + command} id hello i am robot`);
 	try {
 		const prompt = text.trim();
 		let res = await translate(prompt, lang);

@@ -93,7 +93,7 @@ let handler = async (m, { conn, text, participants }) => {
     ''
 
   if (!teks) {
-    throw 'Masukin teksnya atau reply pesan yang mau di-hidetag!'
+    return m.reply('Masukin teksnya atau reply pesan yang mau di-hidetag!')
   }
 
   await sendHidetag(conn, m, teks, mentions)
@@ -127,7 +127,7 @@ handler.before = async function (m, { conn, participants }) {
     ''
 
   if (!teks) {
-    throw 'Masukin teks setelah @all / @semua atau reply pesan!'
+    return m.reply('Masukin teks setelah @all / @semua atau reply pesan!')
   }
 
   let mentions = await getMentions(conn, participants)

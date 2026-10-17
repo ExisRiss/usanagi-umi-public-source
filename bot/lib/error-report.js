@@ -86,6 +86,33 @@ function redact(value) {
   )
 }
 
+/**
+ * Apakah error ini sebenarnya pesan untuk pengguna, bukan kerusakan plugin?
+ *
+ * Banyak plugin lama memakai `throw 'Teksnya mana?'` sebagai cara menampilkan
+ * petunjuk. Dulu semua throw itu ikut dilaporkan sebagai error plugin sehingga
+ * halaman Feedback penuh laporan palsu (mis. "Reply Pesan", "Format: .smeme ...",
+ * "Ex: .t id hello"). Sekarang pesan seperti itu tidak dikirim ke website.
+ */
+export function isUserFacingError(error) {
+  if (typeof error === 'string') return true
+  if (!error || typeof error !== 'object') return false
+  if (error.userFacing === true) return true
+  const message = String(error.message || '').trim()
+  if (!message) return false
+  if (!error.stack) return true
+  if (message.length > 220) return false
+  return /^(?:Format|Contoh|Contoh penggunaan|Ex:|Gunakan|Balas|Reply|Teksnya|Masukin|Intro|Item\b|Quoted|Pilih|Ketik|Kirim|Balas media)/i.test(message)
+}
+
+/** Gangguan koneksi sesaat: dicatat di log, tapi bukan bug plugin. */
+export function isTransientError(error) {
+  const name = String(error?.name || '')
+  const message = String(error?.message || error || '')
+  if (name === 'AbortError') return true
+  return /(?:Connection Closed|Connection Failure|connection lost|Timed Out|ECONNRESET|ECONNREFUSED|socket hang up|EAI_AGAIN)/i.test(message)
+}
+
 /** Tanda tangan untuk menggabungkan error yang sama. */
 function signatureOf(plugin, command, error) {
   const message = redact(error?.message || error || '').slice(0, 160)
@@ -144,6 +171,11 @@ function prune() {
 export async function reportPluginError(input = {}) {
   try {
     const { error, plugin = '', command = '', prefix = '.', args = [], sender = '', chat = '', scope = '', isGroup = false } = input
+
+    // Petunjuk pemakaian bukan bug: jangan penuhi halaman Feedback.
+    if (isUserFacingError(error)) return { reported: false, reason: 'pesan untuk pengguna' }
+    // Putus koneksi sesaat juga bukan bug plugin.
+    if (isTransientError(error)) return { reported: false, reason: 'gangguan koneksi sesaat' }
 
     const signature = signatureOf(plugin, command, error)
     const { count, due } = track(signature)

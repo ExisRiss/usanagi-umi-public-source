@@ -1,17 +1,17 @@
 // fitur : set intro
 let handler = async (m, { text, command }) => {
-  if (!m.isGroup) throw 'Fitur ini hanya untuk grup!'
+  if (!m.isGroup) return m.reply('Fitur ini hanya untuk grup!')
 
   let chat = global.db.data.chats[m.chat] || (global.db.data.chats[m.chat] = {})
 
   if (command === 'setintro') {
-    if (!text) throw 'Contoh:\n.setintro Selamat datang di grup ini'
+    if (!text) return m.reply('Contoh:\n.setintro Selamat datang di grup ini')
     chat.intro = text
     return m.reply('✅ Intro grup berhasil disimpan')
   }
 
   if (command === 'intro') {
-    if (!chat.intro) throw 'Intro belum diset'
+    if (!chat.intro) return m.reply('Intro belum diset')
     return m.reply(chat.intro)
   }
 

@@ -178,20 +178,20 @@ async function processAnimatedWebp(buffer, canvasBuffer, outputPath) {
 
 let handler = async (m, { conn, text, usedPrefix, command }) => {
   if (!text) {
-    throw `Format: ${usedPrefix + command} <teks atas>|<teks bawah>`
+    return m.reply(`Format: ${usedPrefix + command} <teks atas>|<teks bawah>`)
   }
 
   let q = m.quoted ? m.quoted : m
   let mime = (q.msg || q).mimetype || q.mediaType || ''
 
   if (!mime) {
-    throw `Balas media dengan perintah\n\n${usedPrefix + command} <teks atas>|<teks bawah>`
+    return m.reply(`Balas media dengan perintah\n\n${usedPrefix + command} <teks atas>|<teks bawah>`)
   }
 
   await m.react('🕒')
 
   const buffer = await q.download()
-  if (!buffer) throw 'Gagal mengunduh media.'
+  if (!buffer) return m.reply('Gagal mengunduh media. Coba kirim ulang atau perkecil berkasnya.')
 
   const isVideo = mime.startsWith('video/')
   const isGif = mime === 'image/gif'
@@ -269,8 +269,9 @@ let handler = async (m, { conn, text, usedPrefix, command }) => {
     await m.react('✨')
 
   } catch (e) {
-    await m.react('❌')
-    throw `Gagal memproses meme:\n${e.message || e}`
+    try { await m.react('❌') } catch { }
+    console.error('[smeme]', e?.message || e)
+    await m.reply(`Gagal memproses meme: ${String(e?.message || e).slice(0, 140)}`)
   } finally {
     safeUnlink(inputPath, canvasPath, outputPath)
   }

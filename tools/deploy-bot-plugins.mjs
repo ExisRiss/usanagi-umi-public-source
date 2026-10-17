@@ -142,14 +142,17 @@ let failed = 0
 
 for (const file of filesToUpload) {
   const localPath = path.join(ROOT, file)
-  const remotePath = file // relative to server root
-  
+  // Bot berjalan dari root container dan memuat `./plugins` (lihat handler.js).
+  // Dulu berkas diunggah ke `bot/plugins/...` yang tidak pernah dibaca bot,
+  // sehingga perbaikan plugin tampak berhasil di panel tetapi tidak berpengaruh.
+  const remotePath = '/' + file.replace(/^bot\//, '')
+
   if (!fs.existsSync(localPath)) {
-    err(`Local file not found: ${localPath}`)
-    failed++
+    // Berkas yang dihapus di repo bukan kegagalan deploy.
+    log(`Lewati (tidak ada di repo): ${file}`)
     continue
   }
-  
+
   if (uploadFile(localPath, remotePath)) {
     success++
   } else {

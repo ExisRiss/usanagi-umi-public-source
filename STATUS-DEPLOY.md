@@ -978,6 +978,80 @@ sistem room `game.js` yang sama dengan UNO/Catur/Ular Tangga/Werewolf.
   (bisa ditutup host / dibiarkan gugur oleh pembersihan room otomatis).
 
 
+## Task 29 — Halaman Feedback bersih: 34 laporan bot ditelusuri & diperbaiki (2026-10-17 19.10 WITA)
+
+Permintaan: *"Benerin bug di bot whatsapp cek halaman feedback dan lihat semua laporan bot
+otomatis error semua benerin semua yang ada di situ halaman feedback."*
+
+### 1. Isi halaman Feedback saat diperiksa
+- `platform_audit_logs?action=eq.feedback.submit` → **75 baris**, 71 di antaranya `source: bot`,
+  **34 laporan unik**, status `open` 54 / `resolved` 21.
+- Setiap kejadian tampil 2 baris karena `POST /api/platform/feedback/bot` memang menulis satu baris
+  untuk **pemilik sesi** dan satu untuk **owner platform** (`FIXED_OWNER`). `GET /feedback`
+  memfilter `actor_id`, jadi tiap orang tetap melihat satu baris per kejadian — bukan duplikat
+  yang bisa dihapus tanpa menghilangkan akses salah satu pihak.
+- Laporan dibagi tiga: (a) bug kode nyata, (b) panduan pemakaian yang ikut dilaporkan sebagai
+  error (false positive), (c) laporan lama yang sudah beres tetapi belum ditandai.
+
+### 2. Bug kode yang diperbaiki
+| Berkas | Gejala di Feedback | Perbaikan |
+|---|---|---|
+| `game/trading-umi.js` | `.trading` / `.portofolio` / `.saham` → `ReferenceError: usedPrefix is not defined` | `accountCard(..., prefix)` & `boardCard(..., prefix)`; call-site kirim `usedPrefix` |
+| `game/trading-umi.js` | `.pasar` menampilkan `*undefined*` | API memakai kunci `sym`, bukan `symbol` (diperbaiki di kartu harga & daftar posisi) |
+| `maker/maker-cewekbrat.js` | `Cannot read properties of undefined (reading 'deline')` | `global.APIs` tidak pernah diisi config → basis API `api.deline.web.id` + validasi `content-type` |
+| `maker/maker-faketweet.js`, `maker/maker-ytcomment.js` | sumber masalah sama (`global.APIs.deline`) | pola yang sama diterapkan |
+| `info/info-script.js` | `.sc` → `Input Buffer is empty` | `/media` tidak ada di server; thumbnail dicari di 4 berkas (`bg-template.jpg` ada), kalau kosong dibuat gambar polos |
+| `tools/usanagi-hdvid.js` | `cpb: bitrate max/min/avg: 0/0/0` | `-c:a aac` (bukan `copy`) + dimensi genap `trunc(...)`; gagal → balasan jelas, bukan throw |
+| `maker/brat.js` | `Connection Closed` | reaksi WA dibungkus `safeReact`, timeout 20 s, pesan alasan yang ramah |
+| `group/group-totag.js` | `Cannot read properties of undefined (reading 'map')` | `participants` bisa kosong → sekarang array aman, validasi kutipan jalan lebih dulu |
+| `rpg/rpg-bank.js`, `rpg/rpg-sell.js` | `global.rpg.emoticon` TypeError | dibaca aman (`global.rpg?.emoticon`) + nilai saldo default |
+
+### 3. Akar "semua error": throw-string dianggap kegagalan plugin
+Banyak plugin memakai `throw 'Teksnya mana?'` / `throw 'Format: …'` untuk menampilkan petunjuk.
+`handler.js` menangkapnya sebagai error plugin lalu mengirim laporan otomatis.
+- `lib/error-report.js` dapat `isUserFacingError()` (string, Error tanpa `stack`, atau pesan
+  berpola Format/Contoh/Reply/Balas/Teksnya/…) dan `isTransientError()` (`Connection Closed`,
+  `ECONNRESET`, `AbortError`, …) → keduanya **tidak** dilaporkan.
+- Plugin yang melempar panduan diubah menjadi `return m.reply(...)`:
+  `group-setintro` (`.setintro`, `.intro`), `group-setcostum` (`.setwelcome`), `group-totag`
+  (`.totag`), `group-hidetag` (`.h`, `@all`), `sticker-smeme` (`.smeme`), `maker/wm` (`.wm`),
+  `misc/tool-translate` (`.t`), `rpg-sell` (`.sell`).
+
+### 4. Data & tampilan halaman Feedback
+- 51 baris lama (semua laporan bot yang masih `open`) ditandai `status: resolved` beserta
+  `resolution` per plugin dan `resolved_at`; tersisa **3 laporan manual pengguna** yang memang
+  belum dikerjakan (bukan error otomatis).
+- `website/public/assets/app.js` + `theme-liquid-glass.css`: laporan selesai diberi blok
+  **PERBAIKAN** (isi `resolution`) dan tanda ✓, warna ditenangkan agar yang masih rusak menonjol.
+
+### 5. Alat deploy yang selama ini salah sasaran
+- `tools/deploy-bot-plugins.mjs` mengunggah ke `bot/plugins/...`, padahal bot membaca `/plugins`
+  di root container. Sekarang tujuan dipetakan ke `/plugins/...`, dan berkas yang tidak ada di
+  repo dilewati (bukan dihitung gagal).
+- `tools/e2e-error-report.mjs` mencari `lib/error-report.js` di root; kini mendeteksi dua tata
+  letak (container: root, repo: `bot/`).
+
+### 6. Verifikasi
+- `node --check` 18 berkas berubah → lolos; `tools/test-error-report.mjs` **55/55**.
+- Uji saring langsung: string panduan, `Error` tanpa `stack`, dan `Connection Closed` → 
+  `{reported:false}`; `ReferenceError` sungguhan → `{reported:true}`.
+- Uji e2e live (`node tools/e2e-error-report.mjs` dengan rahasia server) → laporan masuk
+  halaman Feedback, lalu baris ujinya dihapus supaya tidak mengotori daftar.
+- Uji handler `.pasar`, `.saham`, `.portofolio`, `.trading`, `.tradingkaya`, `.peringkat`
+  memakai token game produksi → semuanya membalas kartu normal, tanpa `usedPrefix`.
+- Deploy: 18 berkas diunggah ke `/plugins/...` & `/lib/error-report.js` (sha256 **11/11 SAMA**
+  saat diperiksa ulang), restart `HTTP 204`, `/api/health` v1.4.0 naik dari 0. Setelah restart
+  **tidak ada laporan error baru**.
+- Website: deployment `dpl_2rbj1WgfwU8kbqodcWzwMQABSr6R` READY; `assets/app.js` dan
+  `theme-liquid-glass.css` di produksi memuat blok `is-resolved`.
+
+### 7. Catatan
+- `.cewekbrat` diuji langsung ke API: `200 image/png` 1,5 MB; `.brat` `200 image/png` 30 KB.
+- Saldo `AlzRiss` di papan peringkat trading terbaca $AS 10 T (akibat permainan, bukan bug
+  tampilan) — tidak diubah karena di luar lingkup perbaikan error.
+- Laporan manual yang masih terbuka: "Respon bot lambat", "Tidak bisa kode pairing"
+  (pesan ini berasal dari layanan jadibot, bukan repo bot ini), dan satu laporan uji pengguna.
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix

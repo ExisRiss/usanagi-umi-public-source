@@ -1,7 +1,11 @@
 let handler = async (m, { args }) => {
 
 	let user = global.db.data.users[m.sender]
-	let e = global.rpg.emoticon
+	if (!user) return m.reply('Data pengguna tidak ditemukan. Coba kirim pesan lain dulu.')
+	// Sama seperti rpg-bank: jangan asumsikan global.rpg selalu ada.
+	const e = typeof global.rpg?.emoticon === 'function'
+		? global.rpg.emoticon
+		: (key) => ({ money: '💵', bank: '🏦' }[key] || '')
 
 	// Terima dua urutan argumen: ".sell harimau 8" dan ".sell 8 harimau".
 	// Laporan Feedback 15 Okt 2026: pengguna mengetik ".sell 8 harimau" dan

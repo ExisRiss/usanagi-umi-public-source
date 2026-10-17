@@ -18,7 +18,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const ROOT = process.cwd()
-const ENV_FILE = path.join(ROOT, '.error-report.env')
+// Skrip ini dipakai di dua tempat: di container bot semua berkas ada di root,
+// sedangkan di repo letaknya di bawah bot/ (bot/lib, bot/.error-report.env).
+const BOT_ROOT = fs.existsSync(path.join(ROOT, 'lib', 'error-report.js'))
+  ? ROOT
+  : path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'bot')
+const ENV_FILE = [path.join(ROOT, '.error-report.env'), path.join(BOT_ROOT, '.error-report.env')].find((file) => fs.existsSync(file)) || path.join(ROOT, '.error-report.env')
 const dry = process.argv.includes('--dry')
 
 /** Baca .error-report.env tanpa memakai shell (aman dari policy konsol). */
@@ -55,7 +60,7 @@ if (dry) {
 }
 
 // Skrip ini berada di tools/, jadi modulnya satu tingkat di atas.
-const { reportPluginError } = await import(new URL('../lib/error-report.js', import.meta.url))
+const { reportPluginError } = await import(new URL(`file://${path.join(BOT_ROOT, 'lib', 'error-report.js')}`))
 
 const result = await reportPluginError({
   error: new Error('UJI end-to-end: laporan otomatis dikirim dari dalam container bot.'),

@@ -167,11 +167,11 @@ function accountCard(summary, session, extra, prefix = '.') {
   if (summary.positions && summary.positions.length) {
     rows.push('├─ Portofolio')
     summary.positions.slice(0, 8).forEach((pos) => {
-      rows.push(`│ • ${pos.symbol} ${Number(pos.qty).toFixed(2)} lot @ ${money(pos.avgPrice)}`)
+      rows.push(`│ • ${pos.sym || pos.symbol || '—'} ${Number(pos.qty).toFixed(2)} lot @ ${money(pos.avgPrice)}`)
       rows.push(`│   nilai $AS ${money(pos.value)} · ${pos.pl >= 0 ? '+' : ''}$${'AS'} ${money(pos.pl)}`)
     })
   } else {
-    rows.push('├─ Portofolio kosong — ketik .pasar lalu .belisaham UMI 5')
+    rows.push(`├─ Portofolio kosong — ketik ${prefix}pasar lalu ${prefix}belisaham UMI 5`)
   }
   if (session) {
     rows.push('├─ Pasar')
@@ -180,12 +180,12 @@ function accountCard(summary, session, extra, prefix = '.') {
   }
   if (extra) rows.push(`├─ ${extra}`)
   rows.push('╰────────────────')
-  rows.push(`Tips: ${usedPrefix}pasar · ${usedPrefix}belisaham UMI 5 · ${usedPrefix}jualsaham UMI 5 · ${usedPrefix}tradingkaya · ${usedPrefix}tradingoffline (main di chat)`)
+  rows.push(`Tips: ${prefix}pasar · ${prefix}belisaham UMI 5 · ${prefix}jualsaham UMI 5 · ${prefix}tradingkaya · ${prefix}tradingoffline (main di chat)`)
   return rows.join('\n')
 }
 
-function boardCard(rows, mode, total) {
-  if (!rows || !rows.length) return '📊 Papan peringkat masih kosong. Ajak teman pakai .trading!'
+function boardCard(rows, mode, total, prefix = '.') {
+  if (!rows || !rows.length) return `📊 Papan peringkat masih kosong. Ajak teman pakai ${prefix}trading!`
   const isRich = mode === 'rich'
   const head = isRich ? '🏆 *TRADER TERKAYA*' : '🪙 *TRADER TERMISKIN*'
   const body = rows.map((row) => {
@@ -193,7 +193,7 @@ function boardCard(rows, mode, total) {
     const who = row.number ? `${row.username} (wa.me/${row.number})` : row.username
     return `${medal} ${who}\n   💰 $AS ${money(row.netWorth)} · kas ${money(row.balance)} · ${row.positions || 0} emiten`
   }).join('\n')
-  return `${head}\n━━━━━━━━━━━━━━━\n${body}\n━━━━━━━━━━━━━━━\nTotal ${total || rows.length} trader · ubah nasibmu dengan .trading`
+  return `${head}\n━━━━━━━━━━━━━━━\n${body}\n━━━━━━━━━━━━━━━\nTotal ${total || rows.length} trader · ubah nasibmu dengan ${prefix}trading`
 }
 
 function marketCard(market) {
@@ -201,7 +201,10 @@ function marketCard(market) {
   const rows = (market.symbols || []).map((q) => {
     const up = numOr(q.changePct, numOr(q.pct, 0)) >= 0
     const pct = numOr(q.changePct, numOr(q.pct, 0))
-    return `${up ? '🟢' : '🔴'} *${q.symbol}* $AS ${money(q.price)}  ${up ? '+' : ''}${money(pct)}%`
+    // API pasar memakai kunci `sym`; dulu hanya `q.symbol` sehingga daftar
+    // harga tampil sebagai "*undefined*".
+    const code = q.sym || q.symbol || '—'
+    return `${up ? '🟢' : '🔴'} *${code}* $AS ${money(q.price)}  ${up ? '+' : ''}${money(pct)}%`
   }).join('\n')
   return `📊 *PASAR $AS* · 🌙 pasar normal 24 jam\n${ses.timezone ? `zona ${ses.timezone} · tanpa sesi boost` : 'tanpa sesi boost'}\n━━━━━━━━━━━━━━━\n${rows}\n━━━━━━━━━━━━━━━\nBeli: .belisaham KODE LOT · Jual: .jualsaham KODE LOT`
 }
@@ -284,7 +287,7 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
     }
     const data = await callGame(config, '/api/trading/leaderboard')
     const rich = wanted !== 'miskin'
-    return m.reply(boardCard(rich ? data.richest : data.poorest, rich ? 'rich' : 'poor', data.total))
+    return m.reply(boardCard(rich ? data.richest : data.poorest, rich ? 'rich' : 'poor', data.total, usedPrefix))
   }
 
   /* ── daftar harga ── */

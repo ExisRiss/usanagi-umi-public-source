@@ -1,6 +1,8 @@
 let handler = async (m, { conn, participants }) => {
-	let users = participants.map((u) => u.id).filter((v) => v !== conn.user.jid);
-	if (!m.quoted) throw `✳️ Reply Pesan`;
+	// `participants` bisa kosong saat metadata grup belum termuat; dulu ini
+	// melempar TypeError sebelum validasi kutipan sempat berjalan.
+	let users = (participants || []).map((u) => u.id).filter((v) => v !== conn.user?.jid);
+	if (!m.quoted) return m.reply(`✳️ Reply Pesan`);
 	conn.sendMessage(m.chat, { forward: m.quoted.fakeObj, mentions: users });
 };
 

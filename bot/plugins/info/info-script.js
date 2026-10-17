@@ -6,7 +6,26 @@ import {
 import fs from 'fs'
 import sharp from 'sharp'
 
-const THUMB_PATH = './media/menu.png'
+/* Dulu hanya './media/menu.png'. Di server bot folder /media tidak ada,
+ * sehingga buffer kosong masuk ke sharp dan muncul "Input Buffer is empty"
+ * (laporan Feedback 15 Okt 2026). Sekarang dicoba beberapa berkas yang memang
+ * ada, dan kalau semuanya tidak ada dibuat gambar polos supaya .sc tetap jalan. */
+const THUMB_CANDIDATES = [
+  './media/menu.png',
+  './media/thumbnail.jpg',
+  './assets/image/menu.png',
+  './bg-template.jpg',
+]
+
+function readThumbnail() {
+  for (const file of THUMB_CANDIDATES) {
+    try {
+      const buffer = fs.readFileSync(file)
+      if (buffer.length > 1024) return buffer
+    } catch { }
+  }
+  return null
+}
 
 let handler = async (m, { conn }) => {
   const scriptUrl = global.scriptUrl || ''
@@ -25,13 +44,18 @@ Usanagi Umi AI adalah bot WhatsApp multi-device dengan sistem plugin dinamis.
 
 Tekan tombol di bawah untuk membuka halaman script.`
 
-  const rawThumb = fs.existsSync(THUMB_PATH)
-    ? fs.readFileSync(THUMB_PATH)
-    : Buffer.alloc(0)
-  const thumb = await sharp(rawThumb)
-    .resize(1280, 720, { fit: 'cover', position: 'center' })
-    .jpeg({ quality: 90 })
-    .toBuffer()
+  let thumb
+  try {
+    const rawThumb = readThumbnail()
+    thumb = rawThumb
+      ? await sharp(rawThumb).resize(1280, 720, { fit: 'cover', position: 'center' }).jpeg({ quality: 90 }).toBuffer()
+      : await sharp({ create: { width: 1280, height: 720, channels: 3, background: { r: 22, g: 17, b: 40 } } })
+        .jpeg({ quality: 90 })
+        .toBuffer()
+  } catch (error) {
+    console.error('[info-script] thumbnail gagal:', error?.message || error)
+    return m.reply('Gagal menyiapkan gambar untuk kartu script.')
+  }
   const hdImage = await createHighQualityThumbnail(conn, thumb)
 
   if (!hdImage) return m.reply('Gagal menyiapkan thumbnail script.')
