@@ -1,108 +1,28 @@
-import sharp from 'sharp'
+import { getGroqSettings } from '../../lib/groq-client.js'
+import { botInfoHtml, sendRichInfo } from '../../lib/rich-info-cards.js'
 
-let handler = async (m, { conn }) => {
-  if (!global.bootTime) global.bootTime = Date.now()
-
-  async function getThumb(input) {
-    try {
-      let buffer
-
-      if (Buffer.isBuffer(input)) {
-        buffer = input
-      } else if (typeof input === 'string' && /^https?:\/\//i.test(input)) {
-        let res = await fetch(input)
-        buffer = Buffer.from(await res.arrayBuffer())
-      } else {
-        let res = await fetch('https://u.pone.rs/arpqzmrr.jpg')
-        buffer = Buffer.from(await res.arrayBuffer())
-      }
-
-      return await sharp(buffer)
-        .resize(300, 300, { fit: 'cover' })
-        .jpeg({ quality: 80 })
-        .toBuffer()
-    } catch (e) {
-      return Buffer.alloc(0)
-    }
+const handler = async (m, { conn, usedPrefix = '.' }) => {
+  const config = conn.botConfig || m.botConfig || {}
+  const seconds = Math.max(0,Math.floor(process.uptime()))
+  const days = Math.floor(seconds/86400),hours=Math.floor(seconds%86400/3600),minutes=Math.floor(seconds%3600/60)
+  const uptime = `${days ? days+'h ' : ''}${hours}j ${minutes}m ${seconds%60}d`
+  const settings = global.db?.data?.settings?.[conn.user?.jid || conn.user?.id] || {}
+  const groq = getGroqSettings()
+  const info = {
+    name: String(config.values?.botName || config.botName || global.namebot || 'Usanagi Umi AI'),
+    type: config.type === 'jadibot' ? 'Sesi Jadibot' : 'Bot utama',
+    mode: (typeof config.public === 'boolean' ? !config.public : Boolean(global.opts?.self)) ? 'Mode self' : 'Mode publik',
+    uptime,
+    plugins: Object.values(global.plugins || {}).filter(p=>typeof p === 'function' && p.command && !p.disabled).length,
+    ai: groq.enabled && groq.configured && global.umiAutoAI?.enabled !== false && config.autoAIEnabled !== false && config.values?.autoAI?.enabled !== false,
+    autoread: settings.autoread === true,
+    version: String(global.version || 'Tidak tersedia'),
   }
-
-  const thumb = await getThumb(global.thumb)
-
-  const runtime = Math.floor((Date.now() - global.bootTime) / 1000)
-  const days = Math.floor(runtime / 86400)
-  const hours = Math.floor((runtime % 86400) / 3600)
-  const minutes = Math.floor((runtime % 3600) / 60)
-  const seconds = runtime % 60
-
-  const runtimeText = [
-    days ? `${days} Hari` : '',
-    hours ? `${hours} Jam` : '',
-    minutes ? `${minutes} Menit` : '',
-    `${seconds} Detik`
-  ].filter(Boolean).join(' ')
-
-  const mode = global.opts && global.opts.self ? 'SELF' : 'PUBLIC'
-
-  const totalUsers = global.db && global.db.data && global.db.data.users
-    ? Object.keys(global.db.data.users).length
-    : 0
-
-  const totalChats = global.db && global.db.data && global.db.data.chats
-    ? Object.keys(global.db.data.chats).length
-    : 0
-
-  const start = Date.now()
-  const ping = Date.now() - start
-
-  await conn.relayMessage(m.chat, {
-    buttonsMessage: {
-      locationMessage: {
-        degreesLatitude: 0,
-        degreesLongitude: 0,
-        name: global.wm || '❀ USANAGI UMI AI ❀',
-        address: global.ownername || 'AlzRiss',
-        jpegThumbnail: thumb
-      },
-
-      contentText:
-`🌸 「 ALZRISS SYSTEM STATUS 」 🌸
-
-🤖 Bot     : ${global.wm || 'Usanagi Umi AI'}
-📡 Mode    : ${mode}
-⚡ Ping    : ${ping} ms
-⏳ Runtime : ${runtimeText}
-👥 Users   : ${totalUsers}
-💬 Chats   : ${totalChats}
-✅ Status  : Online
-
-✨ AlzRiss masih aktif dan siap membantu~`,
-
-      footerText: global.wm || '❀ USANAGI UMI AI ❀',
-
-      buttons: [
-        {
-          buttonId: '.menu',
-          buttonText: {
-            displayText: '📋 Menu'
-          },
-          type: 1
-        },
-        {
-          buttonId: '.owner',
-          buttonText: {
-            displayText: '👑 Owner'
-          },
-          type: 1
-        }
-      ],
-
-      headerType: 6
-    }
-  }, {})
+  const fallback = `${info.name}\n${info.type} · ${info.mode}\nUptime proses: ${uptime}\nPlugin command: ${info.plugins}\nPrefix: ${usedPrefix}\nMenu: ${usedPrefix}menu`
+  return sendRichInfo(conn,m,botInfoHtml(info,usedPrefix),'UMI · INFO BOT',fallback)
 }
-
 handler.help = ['statusbot', 'botinfo', 'infobot', 'runtime', 'alive']
 handler.tags = ['info']
 handler.command = /^(statusbot|botinfo|infobot|runtime|alive)$/i
-
+handler.description = 'Kartu rich HTML informasi bot, runtime proses, prefix dan status sesi langsung di WhatsApp'
 export default handler

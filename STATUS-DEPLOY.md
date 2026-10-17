@@ -1658,3 +1658,44 @@ User meminta hasil bratvid2 berupa stiker. Perbaikan adapter impor sebelumnya su
 - Pesan rich HTML lama tidak berubah otomatis; panggil `ular` / `ularpapan` lagi dengan prefix aktif untuk mendapatkan papan baru.
 
 - Verifikasi setelah restart: `Successfully Loaded 2052 Plugins`, 0 baris error pada log startup yang diperiksa.
+
+## Task 44 — Kartu rich HTML informasi + optimasi lag ular tangga (2026-10-18)
+
+### Permintaan dan cakupan
+User meminta saham, portofolio, info bot, info grup, dan fitur terkait tampil sebagai rich HTML dalam pesan WhatsApp; ular tangga terasa lag.
+Diterapkan untuk saham/pasar/harga, portofolio/trading, peringkat trader, bukti beli/jual saham, infobot/statusbot/runtime/alive, serta groupinfo/infogrup/infogroup/grupinfo. Bukan klaim konversi semua 2.052 plugin.
+
+### Rich HTML
+- Modul baru `lib/rich-info-cards.js`: renderer HTML mandiri dengan CSS ringan, details yang bisa dibuka, snapshot timestamp, kartu metrik, posisi, alokasi aset, dan instruksi perintah sesuai prefix aktif.
+- Memakai pengirim rich message yang sama dengan game (`awang-rich-forward.js`), bukan hanya mengirim file HTML/link web. Jika relay gagal, fallback teks yang menyebut kegagalannya secara jujur; tidak mengklaim pasti ter-render di semua versi WhatsApp.
+- `.saham` tanpa argumen kini menampilkan pasar, seperti `.pasar`/`.harga`/`.marketas`. `.portofolio`/`.trading` mengambil ringkasan akun token melalui `/api/trading/me`. Token/credential tidak dimasukkan dalam HTML atau JS klien.
+- Menjaga instruksi login sebelumnya: token tidak ada/invalid → tutorial login, bukan diam-diam memakai akun WA berbeda. Transaksi tetap endpoint server asli dan hanya setelah command eksplisit; HTML kartu tidak mengeksekusi order.
+- Kartu pasar/account adalah snapshot saat command diproses, bukan live ticker atau simulasi angka lokal. Pembaruan dengan mengirim ulang command. Snapshot tidak memuat fetch/polling/skrip berat.
+- Peringkat dan bukti transaksi juga rich HTML; receipt hanya setelah server mengonfirmasi transaksi. Tidak mengubah saldo riil akun saat pengujian, harga mesin pasar, PUMP_ENABLED, boost emiten, game trading offline, atau aset trading lama.
+- Infobot menampilkan sesi aktif (utama/jadibot), mode, uptime proses, prefix, jumlah function command, Auto-AI dan autoread. Menghapus fake ping 0ms dan download thumbnail eksternal yang tidak perlu.
+- Infogrup hanya dari grup pemanggil, mengambil metadata grup itu; anggota/admin, tanggal dibuat, pengaturan dan deskripsi. Tidak menaruh token, undangan, atau daftar nomor anggota di kartu. Semua teks dinamis di-escape untuk mencegah HTML/script injection.
+
+### Lag ular tangga
+- Papan vintage tetap terlihat sama, tetapi ilustrasi statis di-raster sekali ke WebP 996×996 (95.654 byte) dan ditanam langsung dalam HTML. Menghapus feTurbulence/mix-blend/filter/backdrop blur serta ratusan node path yang terus dicat ulang.
+- Pion bergerak memakai translate3d, bukan animasi left/top. Ukuran papan dicache melalui ResizeObserver; animasi tidak membaca layout/SVG geometry setiap frame.
+- Rute ular/tangga memakai titik prakomputasi; pembaruan animasi maksimum sekitar 30fps, animasi perpindahan 900ms. Tidak ada loop render idle; confetti dikurangi.
+- Mencegah timer giliran bot ganda dan memperbaiki progres yang dimuat saat giliran bot agar tidak macet. Aturan/map/progres v1, suara dan mode 2 pemain dipertahankan.
+- Ukuran HTML naik karena gambar ditanam (~152 KB), sebagai tradeoff untuk mengurangi kerja render/CPU saat bermain dan tetap offline.
+
+### Pengujian
+- **79/79 tes lulus**: regresi AI/menu, 17 tes rich info/transport/data, 15 tes browser ular. Tes transport mendekode payload richResponse dan memeriksa HTML, endpoint dan token; tidak mengirim pesan uji ke grup user.
+- Data pasar live dibaca dari API `/api/trading/market`: HTTP 200, 10 emiten. Tidak mengeksekusi perdagangan real untuk tes; transaksi dalam suite dimock.
+- 12 pemeriksaan kartu Chromium pada 320/390/768px tanpa overflow; details bisa dibuka. Preview memakai harga pasar snapshot live dan data contoh yang jelas ditandai untuk portfolio/bot/grup.
+- Profil browser dengan CPU throttling 4×, gerak ular 36→6: node DOM **753→283**, layout **74→11**, waktu layout **47,7→12,7ms**, total task terukur **794,2→390,4ms** (~51% turun). Ini hasil sandbox, bukan jaminan performa setiap HP/WhatsApp.
+- `ular-tangga-ringan.html` adalah preview game terbaru. `preview-rich-whatsapp.html` berisi preview 4 kartu, data contoh ditandai. Tampilan aktual rich message dan kelancaran di HP user masih perlu konfirmasi.
+
+### Deploy
+- Sync repo ke HEAD 089c27a, simpan snapshot tracked lama. Unduh file produksi sebelum edit dan cocokkan: sama; cek ulang sebelum upload agar tidak menimpa perubahan live.
+- Lima file runtime diupload dan diunduh ulang, seluruh byte sama:
+  - `/lib/rich-info-cards.js` 12.599 B `de4a0b72f4a0942b`
+  - `/plugins/game/trading-umi.js` 22.566 B `361bccb918330db1`
+  - `/plugins/info/info-runtime.js` 1.874 B `d2d2d96ba839fffc`
+  - `/plugins/group/usanagi-groupinfo.js` 1.275 B `11c4bfa4b41a48e8`
+  - `/plugins/game/ular-tangga-wa-html.js` 152.093 B `3da315e5017ae390`
+- Restart panel API 204; `Successfully Loaded 2052 Plugins`; 0 baris error pada log startup yang diperiksa.
+- Sesi, backup, key/token, autoread dan website produksi tidak diubah. Pesan game/kartu lama tidak diperbarui otomatis; kirim perintah ulang untuk menerima versi terbaru.

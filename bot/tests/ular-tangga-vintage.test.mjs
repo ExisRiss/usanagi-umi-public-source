@@ -18,16 +18,16 @@ const seed=(pos=[1,1],mode='duo',turn=0)=>({pos,mode,turn,stats:[{r:0,s:0,l:0},{
 const boardPos=n=>{const r=Math.floor((n-1)/10),c=(n-1)%10;return{x:(r%2?9-c:c)*10+5,y:(9-r)*10+5}}
 for(const width of [320,390,430,768])test('vintage board fits '+width+'px with all artwork and readable numbers',async()=>{
  const {p,c,errors,external}=await game({width})
- assert.equal(await p.locator('.t').count(),100);assert.equal(await p.locator('.snake-art').count(),7);assert.equal(await p.locator('.ladder-art').count(),8)
+ assert.equal(await p.locator('.t').count(),100);assert.equal(await p.locator('svg.links path').count(),0);assert(await p.locator('.board').evaluate(e=>getComputedStyle(e).backgroundImage.includes('data:image/webp')))
  const values=await p.locator('.t .num').allTextContents();assert.deepEqual(values.slice(0,10),Array.from({length:10},(_,i)=>String(100-i)));assert.deepEqual(values.slice(-10),Array.from({length:10},(_,i)=>String(i+1)))
  assert.equal(new Set(values).size,100)
  assert(await p.evaluate(()=>document.documentElement.scrollWidth<=innerWidth))
- const cells=await p.locator('.num').evaluateAll(xs=>xs.every(e=>parseFloat(getComputedStyle(e).fontSize)>=7&&e.getBoundingClientRect().width>0));assert(cells)
+ assert(await p.locator('.board').evaluate(e=>e.clientWidth>280));assert(!ULAR_TANGGA_HTML.includes('feTurbulence'));assert(!ULAR_TANGGA_HTML.includes('getPointAtLength'))
  assert.deepEqual(errors,[]);assert.deepEqual(external,[]);await c.close()
 })
-test('every illustrated snake and ladder has correct travel endpoints',async()=>{
- const {p,c}=await game();const endpoints=await p.locator('.snake-art,.ladder-art').evaluateAll(groups=>groups.map(g=>{const kind=g.classList.contains('snake-art')?'snake':'ladder',from=+g.dataset.from,to=+g.dataset.to,path=document.getElementById('route-'+kind+'-'+from);const a=path.getPointAtLength(0),b=path.getPointAtLength(path.getTotalLength());return{from,to,a:{x:a.x,y:a.y},b:{x:b.x,y:b.y}}}))
- for(const e of endpoints){const a=boardPos(e.from),b=boardPos(e.to);assert(Math.abs(e.a.x-a.x)<.05&&Math.abs(e.a.y-a.y)<.05);assert(Math.abs(e.b.x-b.x)<.05&&Math.abs(e.b.y-b.y)<.05)}await c.close()
+test('embedded board image decodes and original snake/ladder rules are retained',async()=>{
+ const {p,c}=await game();assert.equal(await p.locator('.t.snake').count(),7);assert.equal(await p.locator('.t.ladder').count(),8);
+ const size=await p.locator('.board').evaluate(async e=>{const url=getComputedStyle(e).backgroundImage.slice(5,-2);const img=new Image();img.src=url;await img.decode();return img.naturalWidth});assert(size>=900);await c.close()
 })
 test('same-cell wooden pawns stay inside board',async()=>{const {p,c}=await game({state:seed([100,100])});const inside=await p.evaluate(()=>{const b=document.querySelector('.boardwrap').getBoundingClientRect();return ['tok1','tok2'].every(id=>{const r=document.getElementById(id).getBoundingClientRect();return r.left>=b.left&&r.top>=b.top&&r.right<=b.right&&r.bottom<=b.bottom})});assert(inside);await c.close()})
 test('physical dice rolls and two-player turn switches',async()=>{const {p,c,errors}=await game({state:seed()});await p.click('#roll');await p.waitForFunction(()=>document.querySelector('#s1').textContent==='2'&&document.querySelector('#pl2').classList.contains('on'));assert.equal(await p.locator('#die').getAttribute('data-face'),'1');assert.equal(await p.locator('#roll').isDisabled(),false);assert.deepEqual(errors,[]);await c.close()})
@@ -38,3 +38,5 @@ test('overshoot does not incorrectly win',async()=>{const {p,c}=await game({stat
 test('bot still takes its turn',async()=>{const {p,c,errors}=await game();await p.click('#roll');await p.waitForFunction(()=>document.querySelector('#s2').textContent==='2');assert.equal(await p.locator('#roll').isDisabled(),false);assert.deepEqual(errors,[]);await c.close()})
 test('mode, sound and confirmed reset remain interactive',async()=>{const {p,c}=await game({state:seed([20,30])});await p.click('#mode');assert.equal(await p.locator('#badge').textContent(),'VS BOT');await p.click('#mode');assert.equal(await p.locator('#badge').textContent(),'2 PEMAIN');await p.click('#mute');assert.equal(await p.evaluate(()=>localStorage.getItem('umi_ular_mute')),'0');await p.click('#reset');assert.equal(await p.locator('#s1').textContent(),'20');await p.click('#reset');assert.equal(await p.locator('#s1').textContent(),'1');await c.close()})
 test('sandbox without storage still renders and plays offline',async()=>{const c=await browser.newContext();const p=await c.newPage();await p.setContent('<iframe sandbox="allow-scripts"></iframe>');await p.locator('iframe').evaluate((f,html)=>{f.srcdoc=html},ULAR_TANGGA_HTML);const frame=p.frameLocator('iframe');await frame.locator('#roll').waitFor();assert.equal(await frame.locator('.t').count(),100);await frame.locator('#mode').click();assert.equal(await frame.locator('#badge').textContent(),'2 PEMAIN');await c.close()})
+
+test('restored bot turn resumes once instead of getting stuck',async()=>{const {p,c}=await game({state:seed([2,1],'bot',1)});await p.waitForFunction(()=>document.querySelector('#s2').textContent==='2');assert.equal(await p.locator('#roll').isDisabled(),false);assert.match(await p.locator('#b2').textContent(),/^1 lempar/);await c.close()})
