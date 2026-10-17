@@ -879,7 +879,7 @@ export async function gameHandler(req, res) {
         const url = new URL(req.url || '/', 'http://localhost')
         const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
         try {
-            if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'umi-web-games', version: '2.1.0', rooms: rooms.size, games: Object.keys(GAMES), openJoinDefault: OPEN_JOIN_DEFAULT, trading: { accounts: Object.keys(tradingDB.accounts || {}).length, session: sessionInfo().label }, time: new Date().toISOString() })
+            if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'umi-web-games', version: '2.1.1', rooms: rooms.size, games: Object.keys(GAMES), openJoinDefault: OPEN_JOIN_DEFAULT, trading: { accounts: Object.keys(tradingDB.accounts || {}).length, session: sessionInfo().label }, time: new Date().toISOString() })
             /* Aset statis: logo, dadu, kartu, papan game */
             if (req.method === 'GET' && parts[0] === 'assets' && parts.length >= 2 && parts.slice(1).every(p => /^[a-z0-9._-]+$/i.test(p))) {
                 const file = path.join(HERE, 'assets', ...parts.slice(1))

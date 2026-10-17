@@ -1055,7 +1055,7 @@ function showGameOver(force) {
     <div class="divider"></div>
     <div class="kv"><span class="k">Total giliran</span><span class="v">${S.turnCount}</span>
       <span class="k">Petak terjual</span><span class="v">${Object.values(S.holdings).filter(h => h.owner !== null).length}</span>
-      <span class="k">Bangunan berdiri</span><span class="v">${Object.values(S.holdings).reduce((a, h) => a + (h.hotel ? 1 : 0), 0)} hotel</span></div>`
+      <span class="k">Bangunan berdiri</span><span class="v">${Object.values(S.holdings).reduce((a, h) => a + (h.hotel ? 0 : h.houses || 0), 0)} rumah · ${Object.values(S.holdings).reduce((a, h) => a + (h.hotel ? 1 : 0), 0)} hotel</span></div>`
   openModal('over', modalShell('Permainan Selesai', body,
     `<button class="btn ghost" data-act="menu">Menu Utama</button><button class="btn gold" data-act="again">Main Lagi</button>`, true))
   $('[data-act="menu"]').onclick = () => { localStorage.removeItem(SAVE_KEY); S = null; closeModal(); openSetup(); render() }
@@ -1269,9 +1269,11 @@ init()
 /* Debug ringan untuk pengujian otomatis (tidak menyimpan data sensitif). */
 window.__empire = {
   get state() { return S },
+  set state(v) { S = v },
   get phase() { return S ? S.phase : null },
   get busy() { return busy },
   get modal() { return modalKind },
   render() { render(); },
   pump() { pump(); },
+  afterAction() { afterAction(); },
 }
