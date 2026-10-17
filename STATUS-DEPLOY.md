@@ -1205,6 +1205,29 @@ Permintaan: memasang API key Groq agar Auto AI bisa menjawab chat.
 - Auto AI (`lib/auto-ai.js`) aktif saat bot di-mention atau pesannya di-reply, dan tetap
   menghormati sakelar `UMI_AUTO_AI_ENABLED` serta setelan per-bot.
 
+## Task 33 — Fix TypeError `mentionedJid` getter di Auto AI dispatch (2026-10-17 20.02 WITA)
+
+Laporan: `TypeError: Cannot set property mentionedJid of #<WebMessageInfo> which has only a
+getter` di `handler.js:725`.
+
+- Akar masalah: objek `WebMessageInfo` dari Baileys mendefinisikan `mentionedJid` sebagai
+  **getter read-only**. Di jalur auto-AI (`aiPlan.kind === 'command'`), handler mencoba menimpa
+  field itu dengan assignment biasa; karena ESM berjalan strict mode, assignment melempar
+  TypeError dan perintah gagal sebelum plugin dipanggil.
+- Perbaikan di `bot/handler.js`:
+  - hasil filter mention disimpan ke variabel lokal `aiMentions`;
+  - dipasang lewat `Object.defineProperty(m, 'mentionedJid', { value, writable, configurable,
+    enumerable })` di dalam `try/catch` (properti milik objek menutupi getter prototipe);
+  - `m.quoted = null` pada blok yang sama juga diganti `Object.defineProperty` karena berisiko
+    kena getter yang sama.
+- Verifikasi:
+  - reproduksi kelas dengan getter-only `mentionedJid` di ESM: assignment melempar TypeError
+    yang sama, sedangkan `defineProperty` berhasil;
+  - `node --check bot/handler.js` lolos;
+  - `/handler.js` di server **47.374 B**, sha256 `7dc8dd38608f5ff4…` = repo;
+  - restart `HTTP 204`, boot `Successfully Loaded 2047 Plugins`, **0** error plugin, WEBGAME
+    7 meja (empire ikut termuat).
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
