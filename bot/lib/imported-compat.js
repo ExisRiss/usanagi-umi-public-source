@@ -99,7 +99,7 @@ export async function runImportedFeature(source,file,meta,m,extra) {
     let failed=false
     const message=Object.create(m)
     const command=meta.aliasMap?.[extra.command]||String(extra.command||'').replace(new RegExp('^'+source+'-'),'')
-    for(const [key,value] of Object.entries({text:extra.text||'',body:m.text,command,args:extra.args||[],prefix:extra.usedPrefix,isOwner:Boolean(extra.isOwner),isAdmin:Boolean(extra.isAdmin),isBotAdmin:Boolean(extra.isBotAdmin),isPremium:Boolean(extra.isPrems),pushName:m.pushName||m.name||'User'})) Object.defineProperty(message,key,{value,writable:true,configurable:true,enumerable:true})
+    for(const [key,value] of Object.entries({text:extra.text||'',body:m.text,command,args:extra.args||[],prefix:extra.usedPrefix,isOwner:Boolean(extra.isOwner),isAdmin:Boolean(extra.isAdmin),isBotAdmin:Boolean(extra.isBotAdmin),isPremium:Boolean(extra.isPrems),pushName:m.pushName||m.name||'User',groupMetadata:extra.groupMetadata||m.groupMetadata||{},groupMembers:extra.participants||m.groupMembers||[]})) Object.defineProperty(message,key,{value,writable:true,configurable:true,enumerable:true})
     // PENTING: `message` dibuat dengan Object.create(m), sehingga mewarisi properti
     // dari prototype WebMessageInfo (lib/simple.js) yang didefinisikan TANPA
     // `writable` — alias read-only. Penugasan biasa (`message.reply = ...`) melempar

@@ -46,7 +46,18 @@ const pluginConfig = {
 
 async function handler(m, { sock }) {
     try {
-        const groupMeta = m.groupMetadata;
+        // `m.groupMetadata` bisa kosong (mis. dipanggil dari jalur auto-AI atau
+        // objek pesan mentah). Ambil ulang dari soket sebelum menyerah.
+        let groupMeta = m.groupMetadata;
+        if (!groupMeta || !groupMeta.subject) {
+            try {
+                if (sock && typeof sock.groupMetadata === 'function') groupMeta = await sock.groupMetadata(m.chat);
+            } catch { groupMeta = null; }
+        }
+        if (!groupMeta) {
+            await m.reply('❌ *ɢᴀɢᴀʟ*\n\n> Tidak bisa membaca data grup.\n> Kirim perintah ini di dalam grup dan pastikan bot jadi admin.');
+            return;
+        }
         
         if (!groupMeta.announce) {
             await m.reply(
