@@ -1628,3 +1628,33 @@ User meminta hasil bratvid2 berupa stiker. Perbaikan adapter impor sebelumnya su
 - Unduh ulang: byte identik dengan lokal. Restart via panel API: HTTP 204.
 
 - Sesudah restart: `Successfully Loaded 2052 Plugins`; 0 baris error pada log startup yang diperiksa. API panel masih menandai state `starting` ketika dicek, tetapi proses bot sudah memuat plugin.
+
+## Task 43 — Papan ular tangga chat bergaya vintage (2026-10-18)
+
+### Pilihan user / cakupan
+- User tidak suka papan sebelumnya dan meminta tampilan lebih seperti papan asli.
+- Klarifikasi: user memilih **langsung di chat** dan **klasik vintage**. Room web/utweb, aset trading, dan game lain tidak diubah.
+
+### Perubahan
+- Rombak `plugins/game/ular-tangga-wa-html.js` menjadi edisi nostalgia: kertas bertekstur (SVG data URI), warna cetak pudar, judul serif, bingkai kayu, label mulai/akhir, dan 100 petak bernomor zigzag.
+- 7 ular digambar sebagai badan melengkung meruncing, kepala, mata, lidah, dan sisik; bukan garis putus-putus. Warna hijau/terakota/oker dengan outline tinta.
+- 8 tangga bergambar dua batang kayu, anak tangga, detail garis kayu; posisi awal/akhir persis mengikuti aturan lama.
+- Pion merah/hijau berbentuk pion kayu dengan bayangan, muat dalam petaknya bahkan saat dua pion berada bersama. Dadu fisik dengan titik 1–6 dan animasi kocok.
+- Gerakan pada ular/tangga mengikuti jalur SVG, bukan menelusuri semua petak angka yang dilewati; aturan tujuan tetap sama.
+- Mode bot / 2 pemain satu HP, suara, reset konfirmasi, kemenangan tepat 100, dan progres `umi_ular_v1` dipertahankan. Tidak ada aset/CDN jaringan baru.
+- Preview mandiri identik dengan HTML produksi: `/home/user/ular-tangga-vintage.html`.
+
+### Pengujian
+- Chromium/Playwright, 14 tes: viewport 320/390/430/768px tanpa overflow; 100 nomor unik; 7 ular + 8 tangga; seluruh endpoint SVG sesuai nomor petak; dua pion tetap di dalam papan.
+- Interaksi aktual: lempar, pergantian pemain, tangga 4→14, ular 36→6, penyimpanan/reload, tepat 100/overshoot, reset setelah menang, giliran bot, mode dan mute.
+- Diuji juga dalam iframe sandbox allow-scripts tanpa localStorage yang dapat diakses; render dan kontrol dasar tetap jalan tanpa jaringan.
+- Total regresi AI/menu + papan: **61/61 lulus**. Screenshot mobile diperiksa secara visual.
+- Ini uji browser dan deploy, bukan konfirmasi bahwa pesan rich HTML baru sudah terlihat di HP user.
+
+### Deploy
+- Sinkron repo dari GitHub HEAD `9ccff80` (snapshot tracked lama disimpan sebelum reset). Unduh dua file ular live sebelum perubahan: sesuai HEAD.
+- Hanya satu file runtime diupload: `/plugins/game/ular-tangga-wa-html.js`, **29.501 byte**, SHA-256 awal **48c37c2da1b4cf0e**.
+- Upload 204; unduh ulang identik; restart melalui panel API 204. File pengirim game dan semua session/key tidak diubah.
+- Pesan rich HTML lama tidak berubah otomatis; panggil `ular` / `ularpapan` lagi dengan prefix aktif untuk mendapatkan papan baru.
+
+- Verifikasi setelah restart: `Successfully Loaded 2052 Plugins`, 0 baris error pada log startup yang diperiksa.
