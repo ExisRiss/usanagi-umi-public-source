@@ -879,7 +879,7 @@ export async function gameHandler(req, res) {
         const url = new URL(req.url || '/', 'http://localhost')
         const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
         try {
-            if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'umi-web-games', version: '2.0.0', rooms: rooms.size, games: Object.keys(GAMES), openJoinDefault: OPEN_JOIN_DEFAULT, trading: { accounts: Object.keys(tradingDB.accounts || {}).length, session: sessionInfo().label }, time: new Date().toISOString() })
+            if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'umi-web-games', version: '2.1.0', rooms: rooms.size, games: Object.keys(GAMES), openJoinDefault: OPEN_JOIN_DEFAULT, trading: { accounts: Object.keys(tradingDB.accounts || {}).length, session: sessionInfo().label }, time: new Date().toISOString() })
             /* Aset statis: logo, dadu, kartu, papan game */
             if (req.method === 'GET' && parts[0] === 'assets' && parts.length >= 2 && parts.slice(1).every(p => /^[a-z0-9._-]+$/i.test(p))) {
                 const file = path.join(HERE, 'assets', ...parts.slice(1))
@@ -903,6 +903,28 @@ export async function gameHandler(req, res) {
                         res.writeHead(200, { 'Content-Type': mime, 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=604800' })
                         return res.end(buf)
                     } catch { }
+                }
+            }
+            /* Property Empire — papan 40 petak. HTML + dua modul ES (mesin & UI)
+             * dilayani dari folder yang sama supaya tidak perlu bundler. */
+            if (req.method === 'GET' && (url.pathname === '/empire' || url.pathname === '/empire/')) {
+                try {
+                    const html = fs.readFileSync(path.join(HERE, 'empire.html'), 'utf8')
+                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(html), 'Cache-Control': 'no-cache' })
+                    return res.end(html)
+                } catch (e) {
+                    return sendJson(res, 500, { error: 'Halaman Property Empire belum tersedia' })
+                }
+            }
+            if (req.method === 'GET' && ['/empire/engine.js', '/empire/ui.js'].includes(url.pathname)) {
+                try {
+                    const map = { '/empire/engine.js': 'empire.js', '/empire/ui.js': 'empire-ui.js' }
+                    const file = path.join(HERE, map[url.pathname])
+                    const js = fs.readFileSync(file, 'utf8')
+                    res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Content-Length': Buffer.byteLength(js), 'Cache-Control': 'no-cache' })
+                    return res.end(js)
+                } catch (e) {
+                    return sendJson(res, 404, { error: 'modul tidak ditemukan' })
                 }
             }
             /* Trading page */

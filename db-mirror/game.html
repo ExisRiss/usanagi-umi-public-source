@@ -107,6 +107,17 @@
 
   /* ---------- grid game ---------- */
   .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:26px 0 30px}
+  /* Property Empire — kartu sorotan di lobi */
+  .feature{display:grid;grid-template-columns:1.1fr .9fr;gap:0;border-radius:18px;overflow:hidden;
+    margin:18px 0 6px;border:1px solid var(--line);background:linear-gradient(120deg,#0f1e36,#17294a 55%,#2a1f45);
+    box-shadow:0 18px 44px rgba(6,10,22,.45);text-decoration:none;color:inherit;transition:transform .2s,border-color .2s}
+  .feature:hover{transform:translateY(-2px);border-color:#3a5b8f}
+  .feature .txt{padding:24px 26px;display:flex;flex-direction:column;align-items:flex-start;gap:8px;justify-content:center}
+  .feature h2{font-size:clamp(19px,2.4vw,27px);margin:0;letter-spacing:-.01em}
+  .feature p{margin:0;color:var(--muted);font-size:13.5px;line-height:1.55;max-width:52ch}
+  .feature img{width:100%;height:100%;object-fit:cover;min-height:210px}
+  .feature .go{margin-top:6px}
+  @media (max-width:760px){.feature{grid-template-columns:1fr}.feature img{height:160px;min-height:0;order:-1}.feature .txt{padding:18px}}
   .gcard{
     position:relative;padding:18px;cursor:pointer;text-align:left;overflow:hidden;
     border-radius:var(--r-lg);background:var(--surface);border:1px solid var(--line);
@@ -265,6 +276,28 @@
   .pw img.pc{filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))}
 
   /* ---------- ular tangga & monopoli ---------- */
+  /* papan ular tangga baru (SVG bergambar) */
+  .snakewrap{position:relative;max-width:600px;margin:12px auto 8px;padding:10px;border-radius:18px;
+    background:linear-gradient(160deg,#3a2a1a,#241a10);border:1px solid #5c4526;
+    box-shadow:0 20px 46px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.08)}
+  .snk-svg{display:block;width:100%;height:auto;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+  .snk-ladder,.snk-snake{filter:drop-shadow(0 2px 3px rgba(0,0,0,.25))}
+  .snk-pawn{transition:transform .32s cubic-bezier(.34,1.4,.5,1)}
+  .snk-pawn.hop{animation:snkHop .35s ease-out}
+  @keyframes snkHop{0%{opacity:.4}60%{opacity:1}100%{opacity:1}}
+  .snk-pawn.on image{filter:drop-shadow(0 0 6px rgba(255,255,255,.8))}
+  .snk-legend{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;margin-top:8px;font-size:11px;color:#e7d9bd}
+  .snk-legend span{display:inline-flex;align-items:center;gap:6px}
+  .snk-legend i{width:16px;height:6px;border-radius:3px;display:inline-block}
+  .snk-legend .sw-lad{background:linear-gradient(90deg,#f0c674,#8a5a1e)}
+  .snk-legend .sw-snk{background:linear-gradient(90deg,#57b84a,#0f3d24)}
+  .snk-legend .sw-you{background:#fff;border-radius:50%;width:10px;height:10px;box-shadow:0 0 6px #fff}
+  .snk-players{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin:8px 0 12px}
+  .snk-pchip{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;font-size:12px;
+    background:rgba(255,255,255,.06);border:1px solid var(--line)}
+  .snk-pchip.now{background:rgba(61,220,154,.16);border-color:rgba(61,220,154,.45);box-shadow:0 0 0 1px rgba(61,220,154,.2)}
+  .snk-pchip img{width:18px;height:24px;object-fit:contain}
+  .snk-pchip b{color:#fff}
   .snakeboard{display:grid;grid-template-columns:repeat(10,1fr);max-width:520px;margin:12px auto;gap:3px}
   .cell{
     aspect-ratio:1;border-radius:7px;background:var(--surface-2);border:1px solid var(--line);
@@ -433,6 +466,16 @@
         <span>Enam papan siap dimainkan — dari UNO sampai Werewolf, tinggal pilih mejanya.</span>
       </figcaption>
     </figure>
+
+    <a class="feature" href="/empire">
+      <div class="txt">
+        <span class="eyebrow">BARU · PAPAN 40 PETAK</span>
+        <h2>Property Empire</h2>
+        <p>Papan lengkap seperti aslinya: beli, bangun rumah & hotel, gadai, lelang, tukar properti, penjara, kartu kesempatan. Lawan bot dengan 4 gaya main — atau 6 pemain bergiliran di satu perangkat. Progres tersimpan otomatis.</p>
+        <span class="btn btn-lime go">Buka papan →</span>
+      </div>
+      <img src="/assets/papan-monopoli.jpg" alt="Papan properti 40 petak" loading="lazy">
+    </a>
 
     <div class="grid" id="gameGrid"></div>
 
@@ -1126,30 +1169,182 @@ if (isRoom) {
     })
   }
 
+  /* ============================================================
+   * ULAR TANGGA — papan bergambar (SVG asli, bukan emoji)
+   * ============================================================ */
+  const SNK_GREEN = ['#3fae6a','#2f9e5f','#57b84a','#2f8f7a','#4aa35b','#3d9a4e','#48a86b','#35945a']
+  const SNK_LADDER = '#c9973f'
+
+  /* nomor → koordinat tengah kotak (papan ular tangga: 1 kiri-bawah, zig-zag) */
+  function snkCell(n) {
+    const i = Math.max(1, Math.min(100, n)) - 1
+    const row = Math.floor(i / 10), col = i % 10
+    const c = row % 2 === 0 ? col : 9 - col
+    return { x: c * 100 + 50, y: (9 - row) * 100 + 50, row, col: c }
+  }
+  function snkLite(hex, amt) {
+    const n = parseInt(hex.slice(1), 16)
+    const r = Math.min(255, Math.max(0, (n >> 16) + amt))
+    const g = Math.min(255, Math.max(0, ((n >> 8) & 255) + amt))
+    const b = Math.min(255, Math.max(0, (n & 255) + amt))
+    return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0')
+  }
+
+  function snkLadder(from, to) {
+    const a = snkCell(from), b = snkCell(to)
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1
+    const ux = dx / len, uy = dy / len, px = -uy, py = ux
+    const off = 13
+    let rungs = '', rails = ''
+    for (let d = 16; d < len - 8; d += 33) {
+      const cx = a.x + ux * d, cy = a.y + uy * d
+      rungs += `<line x1="${(cx - px * off).toFixed(1)}" y1="${(cy - py * off).toFixed(1)}" x2="${(cx + px * off).toFixed(1)}" y2="${(cy + py * off).toFixed(1)}" stroke="#7a4d15" stroke-width="8" stroke-linecap="round"/>`
+      rungs += `<line x1="${(cx - px * off).toFixed(1)}" y1="${(cy - py * off).toFixed(1)}" x2="${(cx + px * off).toFixed(1)}" y2="${(cy + py * off).toFixed(1)}" stroke="#f0c674" stroke-width="4.5" stroke-linecap="round"/>`
+    }
+    for (const sgn of [-1, 1]) {
+      const ax = a.x + px * off * sgn, ay = a.y + py * off * sgn
+      const bx = b.x + px * off * sgn, by = b.y + py * off * sgn
+      rails += `<line x1="${ax.toFixed(1)}" y1="${ay.toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" stroke="rgba(0,0,0,.35)" stroke-width="11" stroke-linecap="round" transform="translate(2,4)"/>`
+      rails += `<line x1="${ax.toFixed(1)}" y1="${ay.toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" stroke="#7a4d15" stroke-width="10" stroke-linecap="round"/>`
+      rails += `<line x1="${ax.toFixed(1)}" y1="${ay.toFixed(1)}" x2="${bx.toFixed(1)}" y2="${by.toFixed(1)}" stroke="#e8bb6f" stroke-width="6.5" stroke-linecap="round"/>`
+    }
+    return `<g class="snk-ladder">${rungs}${rails}</g>`
+  }
+
+  function snkSnake(from, to, idx) {
+    const a = snkCell(from), b = snkCell(to)
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1
+    const ux = dx / len, uy = dy / len, px = -uy, py = ux
+    const dir = idx % 2 ? 1 : -1
+    const amp = Math.min(140, Math.max(55, len * 0.26)) * dir
+    const c1x = a.x + dx * 0.28 + px * amp, c1y = a.y + dy * 0.28 + py * amp
+    const c2x = a.x + dx * 0.72 - px * amp * 0.8, c2y = a.y + dy * 0.72 - py * amp * 0.8
+    const d = `M ${a.x} ${a.y} C ${c1x.toFixed(1)} ${c1y.toFixed(1)} ${c2x.toFixed(1)} ${c2y.toFixed(1)} ${b.x} ${b.y}`
+    const col = SNK_GREEN[idx % SNK_GREEN.length]
+    const eye = (sx, sy) => `<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="6.2" fill="#fdfdf5" stroke="rgba(0,0,0,.35)" stroke-width="1"/>
+      <circle cx="${(sx + ux * 1.6).toFixed(1)}" cy="${(sy + uy * 1.6).toFixed(1)}" r="3.1" fill="#132a1c"/>
+      <circle cx="${(sx + ux * 1.6 - .8).toFixed(1)}" cy="${(sy + uy * 1.6 - .8).toFixed(1)}" r="1" fill="#fff"/>`
+    const e1 = eye(a.x + ux * 5 + px * 8, a.y + uy * 5 + py * 8)
+    const e2 = eye(a.x + ux * 5 - px * 8, a.y + uy * 5 - py * 8)
+    /* lidah bercabang ke arah luar (berlawanan badan) */
+    const tx = a.x - ux * 24, ty = a.y - uy * 24
+    const t1x = a.x - ux * 30 + px * 9, t1y = a.y - uy * 30 + py * 9
+    const t2x = a.x - ux * 30 - px * 9, t2y = a.y - uy * 30 - py * 9
+    return `<g class="snk-snake">
+      <path d="${d}" fill="none" stroke="rgba(0,0,0,.3)" stroke-width="30" stroke-linecap="round" transform="translate(4,6)"/>
+      <path d="${d}" fill="none" stroke="#0f3d24" stroke-width="31" stroke-linecap="round"/>
+      <path class="body" d="${d}" fill="none" stroke="${col}" stroke-width="25" stroke-linecap="round"/>
+      <path d="${d}" fill="none" stroke="${snkLite(col, 45)}" stroke-width="7" stroke-linecap="round" stroke-dasharray="3 26" opacity=".7"/>
+      <line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${tx.toFixed(1)}" y2="${ty.toFixed(1)}" stroke="#c2185b" stroke-width="3.4" stroke-linecap="round"/>
+      <line x1="${tx.toFixed(1)}" y1="${ty.toFixed(1)}" x2="${t1x.toFixed(1)}" y2="${t1y.toFixed(1)}" stroke="#c2185b" stroke-width="2.6" stroke-linecap="round"/>
+      <line x1="${tx.toFixed(1)}" y1="${ty.toFixed(1)}" x2="${t2x.toFixed(1)}" y2="${t2y.toFixed(1)}" stroke="#c2185b" stroke-width="2.6" stroke-linecap="round"/>
+      <circle cx="${a.x}" cy="${a.y}" r="22" fill="${col}" stroke="#0f3d24" stroke-width="3"/>
+      <ellipse cx="${(a.x + ux * 6).toFixed(1)}" cy="${(a.y + uy * 6).toFixed(1)}" rx="9" ry="6" fill="${snkLite(col, 26)}" opacity=".75"/>
+      ${e1}${e2}
+    </g>`
+  }
+
   function renderSnakes(A, s) {
     const st = s.state
     const over = st.winner !== null && st.winner !== undefined
     const myTurn = !over && st.turn === s.viewer
-    let html = '<h2>🐍 Ular Tangga</h2>'
-    if (over) html += '<div class="notice good">🏆 <b>' + esc(s.seats[st.winner] ? s.seats[st.winner].name : 'Pemain') + '</b> mencapai kotak 100!</div>'
-    else html += '<div class="row" style="align-items:center;gap:8px;margin:2px 0 4px">'
-      + (st.dice ? diceHTML(st.dice, changed('snk-dice:' + s.roomId, st.dice)) : '')
-      + '<span class="sub" style="margin:0">Giliran <b>' + esc(s.seats[st.turn] ? s.seats[st.turn].name : '—') + '</b></span></div>'
-    if (st.dice && changed('snk-sound:' + s.roomId, st.dice)) SFX.dice()
-    html += '<div class="snakeboard">'
-    for (let cell = 100; cell >= 1; cell--) {
-      const pawns = st.pos.map((p, i) => p === cell ? i : -1).filter(i => i >= 0)
-      const cls = st.ladders[cell] ? 'lad' : st.snakes[cell] ? 'snk' : ''
-      const icon = st.ladders[cell] ? '🪜' : st.snakes[cell] ? '🐍' : ''
-      html += '<div class="cell ' + cls + '"><span>' + cell + ' ' + icon + '</span><span class="pawn">' + pawns.map(i => PIONS[i] || '⚪').join('') + '</span></div>'
+    const cols = ['#7ee787','#7fd3f7','#ffd166','#f78fb3','#c792ea','#ffa94d','#63e6be','#ff8787','#a5b4fc','#f9e79f','#9ae6b4','#f5b7b1']
+
+    let svg = `<svg class="snk-svg" viewBox="0 0 1000 1000" role="img" aria-label="Papan ular tangga 100 kotak">
+      <defs>
+        <linearGradient id="snkPaper" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#f7f1df"/><stop offset=".55" stop-color="#efe6cf"/><stop offset="1" stop-color="#e6dcc0"/>
+        </linearGradient>
+        <linearGradient id="snkFrame" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#d8ae62"/><stop offset="1" stop-color="#a9772f"/>
+        </linearGradient>
+        <pattern id="snkWeave" width="16" height="16" patternUnits="userSpaceOnUse">
+          <path d="M0 8h16M8 0v16" stroke="#000" stroke-opacity=".035" stroke-width="1"/>
+        </pattern>
+      </defs>
+      <rect width="1000" height="1000" fill="url(#snkPaper)"/>
+      <rect width="1000" height="1000" fill="url(#snkWeave)"/>`
+
+    /* kotak */
+    for (let n = 1; n <= 100; n++) {
+      const c = snkCell(n)
+      const x = c.col * 100, y = (9 - c.row) * 100
+      const shade = (c.row + c.col) % 2 === 0 ? '#fffdf4' : '#f2ead4'
+      const isLad = !!st.ladders[n], isSnk = !!st.snakes[n]
+      let fill = shade
+      if (isLad) fill = '#dff3df'
+      if (isSnk) fill = '#fbe2e2'
+      if (n === 100) fill = '#ffe9a8'
+      if (n === 1) fill = '#dff3ff'
+      svg += `<g class="snk-cell" data-n="${n}">
+        <rect x="${x + 1.5}" y="${y + 1.5}" width="97" height="97" rx="9" fill="${fill}" stroke="rgba(80,60,30,.22)" stroke-width="1.4"/>
+        <text x="${x + 12}" y="${y + 27}" font-size="21" font-weight="800" fill="${isLad ? '#1c7a44' : isSnk ? '#a52a3a' : '#8a7a55'}" opacity=".8">${n}</text>
+        ${n === 100 ? `<text x="${x + 50}" y="${y + 70}" font-size="40" text-anchor="middle">🏆</text>` : ''}
+        ${isLad ? `<text x="${x + 88}" y="${y + 90}" font-size="17" text-anchor="end" fill="#1c7a44" font-weight="800">▲${st.ladders[n]}</text>` : ''}
+        ${isSnk ? `<text x="${x + 88}" y="${y + 90}" font-size="17" text-anchor="end" fill="#a52a3a" font-weight="800">▼${st.snakes[n]}</text>` : ''}
+      </g>`
     }
-    html += '</div><p class="tiny">' + s.seats.map((seat, i) => PIONS_BIG[i] + ' ' + esc(seat.name) + ' = ' + st.pos[i]).join(' · ') + '</p>'
+
+    /* tangga & ular */
+    svg += '<g class="snk-paths">'
+    for (const [from, to] of Object.entries(st.ladders)) svg += snkLadder(Number(from), to)
+    let k = 0
+    for (const [from, to] of Object.entries(st.snakes)) { svg += snkSnake(Number(from), to, k); k++ }
+    svg += '</g>'
+
+    /* pion pemain */
+    const groups = {}
+    st.pos.forEach((p, i) => { (groups[p] = groups[p] || []).push(i) })
+    const offs = [[-20, -24], [20, -24], [-20, 20], [20, 20], [0, -38], [0, 30]]
+    st.pos.forEach((p, i) => {
+      if (!p) return
+      const c = snkCell(p)
+      const o = offs[(groups[p] || []).indexOf(i)] || [0, 0]
+      const isTurn = !over && st.turn === i
+      svg += `<g class="snk-pawn${isTurn ? ' on' : ''}" data-pawn="${i}" style="transform:translate(${(c.x + o[0] - 23).toFixed(1)}px,${(c.y + o[1] - 31).toFixed(1)}px)">
+        ${isTurn ? `<circle cx="23" cy="34" r="27" fill="${cols[i % cols.length]}" opacity=".28"/>` : ''}
+        <image href="/assets/pieces/pawn/pawn-${(i % 12) + 1}.png" width="56" height="75" x="-5" y="-6" preserveAspectRatio="xMidYMid meet"/>
+        <circle cx="23" cy="60" r="11" fill="${cols[i % cols.length]}" stroke="rgba(0,0,0,.45)" stroke-width="1.6"/>
+        <text x="23" y="64.5" font-size="12" font-weight="900" text-anchor="middle" fill="#12211a">${i + 1}</text>
+      </g>`
+    })
+    svg += '</svg>'
+
+    let html = '<h2>🐍 Ular Tangga <span class="tiny" style="font-weight:500">papan 100 kotak</span></h2>'
+    if (over) html += '<div class="notice good">🏆 <b>' + esc(s.seats[st.winner] ? s.seats[st.winner].name : 'Pemain') + '</b> mencapai kotak 100!</div>'
+    else html += '<div class="row" style="align-items:center;gap:10px;margin:2px 0 6px">'
+      + (st.dice ? diceHTML(st.dice, changed('snk-dice:' + s.roomId, st.dice)) : '')
+      + '<span class="sub" style="margin:0">Giliran <b>' + esc(s.seats[st.turn] ? s.seats[st.turn].name : '—') + '</b> · lempar dadu 1–6, dapat 6 lempar lagi</span></div>'
+    if (st.dice && changed('snk-sound:' + s.roomId, st.dice)) SFX.dice()
+    html += '<div class="snakewrap">' + svg + '<div class="snk-legend"><span><i class="sw-lad"></i>' + Object.keys(st.ladders).length + ' tangga</span>'
+      + '<span><i class="sw-snk"></i>' + Object.keys(st.snakes).length + ' ular</span>'
+      + '<span><i class="sw-you"></i>pion giliran berkedip</span></div></div>'
+    html += '<div class="snk-players">' + s.seats.map((seat, i) =>
+      '<span class="snk-pchip' + (!over && st.turn === i ? ' now' : '') + '"><img src="/assets/pieces/pawn/pawn-' + ((i % 12) + 1) + '.png" alt="">'
+      + esc(seat.name) + ' <b>' + st.pos[i] + '</b></span>').join('') + '</div>'
     if (myTurn) html += '<button class="btn btn-pri anim-glow" id="rollBtn" type="button"><img class="dice-ic" src="/assets/pieces/dice/dice-5.png" alt="">Lempar dadu</button>'
     A.innerHTML = html
+
+    /* sisik ular ditempel di sepanjang badan */
+    A.querySelectorAll('.snk-snake .body').forEach(path => {
+      const g = path.parentNode
+      const total = path.getTotalLength()
+      const count = Math.max(6, Math.floor(total / 42))
+      for (let i = 1; i < count; i++) {
+        const pt = path.getPointAtLength(total * i / count)
+        const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+        dot.setAttribute('cx', pt.x.toFixed(1))
+        dot.setAttribute('cy', pt.y.toFixed(1))
+        dot.setAttribute('r', i % 2 ? 4.6 : 6.4)
+        dot.setAttribute('fill', 'rgba(255,255,255,.26)')
+        g.insertBefore(dot, path.nextSibling)
+      }
+    })
+
     /* animasi pion yang berpindah */
     const posKey = st.pos.join(',')
     if (changed('snk-pos:' + s.roomId, posKey)) {
-      A.querySelectorAll('.pawn img').forEach(img => img.classList.add('anim-hop'))
+      A.querySelectorAll('.snk-pawn').forEach(g => g.classList.add('hop'))
       setTimeout(() => SFX.hop(), 120)
     }
     const r = $('rollBtn'); if (r) r.onclick = () => { SFX.dice(); act({ type:'roll' }) }

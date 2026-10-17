@@ -85,7 +85,8 @@ async function main() {
   // pastikan /game ada
   await api('/files/create-folder', { method: 'POST', body: JSON.stringify({ root: '/', name: 'game' }) })
 
-  for (const name of ['game.js', 'game.html', 'trading.html', 'trading-offline.html']) {
+  for (const name of ['game.js', 'game.html', 'trading.html', 'trading-offline.html',
+                      'empire.html', 'empire.js', 'empire-ui.js']) {
     const file = src(name)
     if (!fs.existsSync(file)) { log(`lewat ${name} (tidak ada)`); continue }
     await signedUpload(file, '/', name)
