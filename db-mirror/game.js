@@ -1013,10 +1013,10 @@ const noise = (seed, x) => { const i = Math.floor(x), f = x - i, a = frac(i * 1.
  * sampai 06.00. Owner minta boost itu dihapus, jadi PUMP_ENABLED = false:
  * pumpFactor() selalu 1 dan sessionInfo() selalu "Pasar normal 24 jam".
  * Kode lama dibiarkan supaya mudah dinyalakan lagi kalau suatu saat perlu. */
-function pumpFactor(tick) {
-    if (!PUMP_ENABLED) return 1
+function pumpFactor(tick, sym) {
     const ms = tick * TICK_MS
-    let pct = 0
+    let pct = boostFactor(sym, ms)
+    if (!PUMP_ENABLED) return 1 + pct
     const win = (tradingDB && tradingDB.market && tradingDB.market.pump) || null
     if (win && ms > Number(win.start || 0) && ms < Number(win.end || 0)) {
         const rate = Number(win.rate) || PUMP_SESSION_RATE
@@ -1032,10 +1032,54 @@ function pumpFactor(tick) {
     return 1 + pct
 }
 
+/* ── BOOST SATU EMITEN ──────────────────────────────────────────────────────
+ * Owner bisa menyalakan boost untuk satu saham saja (mis. TRD) selama N menit:
+ * harga naik terus tiap menit, lalu mendarat perlahan (decay) sesudah jendela
+ * habis supaya tidak ada jurang harga. Disimpan di tradingDB.market.boost:
+ * { symbol:'TRD', start, end, rate, cap, decayMin, note, by }.
+ * Faktor hanya fungsi dari waktu + konfigurasi, jadi semua klien menghitung
+ * harga yang sama. */
+function boostWindow() {
+    return (tradingDB && tradingDB.market && tradingDB.market.boost) || null
+}
+
+function boostFactor(sym, ms) {
+    const b = boostWindow()
+    if (!b || !b.symbol || (sym && b.symbol !== sym)) return 0
+    const start = Number(b.start || 0), end = Number(b.end || 0)
+    if (!start || !end) return 0
+    const rate = Number(b.rate) || BOOST_RATE_DEFAULT
+    const cap = Number(b.cap) || BOOST_CAP_DEFAULT
+    const decayMin = Number(b.decayMin === undefined ? 15 : b.decayMin) || 0
+    if (ms >= start && ms < end) return Math.min(cap, ((ms - start) / 60000) * rate)
+    if (ms >= end) {
+        const peak = Math.min(cap, ((end - start) / 60000) * rate)
+        if (decayMin <= 0) return 0
+        const left = 1 - (ms - end) / (decayMin * 60000)
+        return left > 0 ? Math.max(0, peak * left) : 0
+    }
+    return 0
+}
+
 /** Info sesi untuk klien/bot: aktif atau tidak, sampai kapan, naik berapa persen. */
 function sessionInfo(tick = nowTick()) {
-    if (!PUMP_ENABLED) return { active: false, boostPct: 0, until: null, timezone: 'WITA (UTC+8)', label: 'Pasar normal 24 jam', next: null }
     const ms = tick * TICK_MS
+    const b = boostWindow()
+    if (b && b.symbol) {
+        const start = Number(b.start || 0), end = Number(b.end || 0)
+        const decayMin = Number(b.decayMin === undefined ? 15 : b.decayMin) || 0
+        const live = ms >= start && ms < end
+        const landing = !live && ms >= end && decayMin > 0 && ms < end + decayMin * 60000
+        if (live || landing) {
+            return {
+                active: live, boostPct: round2(boostFactor(b.symbol, ms) * 100),
+                until: end, timezone: 'WITA (UTC+8)', symbol: b.symbol,
+                label: live ? `BOOST ${b.symbol} · naik terus` : `BOOST ${b.symbol} · mendarat`,
+                next: null,
+            }
+        }
+    }
+    if (!PUMP_ENABLED) return { active: false, boostPct: 0, until: null, timezone: 'WITA (UTC+8)', label: 'Pasar normal 24 jam', next: null }
     const localMin = ((ms + PUMP_TZ_OFFSET) % 86400000) / 60000
     const win = (tradingDB && tradingDB.market && tradingDB.market.pump) || null
     const dailyActive = localMin >= PUMP_SESSION_START_MIN && localMin < PUMP_SESSION_END_MIN
@@ -1067,7 +1111,7 @@ function priceAt(sym, tick) {
     const trend = (noise(s, tick / 4800) - 0.5) * 0.30    // tren beberapa jam
     const swing = (noise(s + 13, tick / 240) - 0.5) * 0.13 // ayunan puluhan menit
     const micro = (noise(s + 41, tick / 8) - 0.5) * 0.015  // gerak tiap tick
-    return Math.max(0.05, item.base * (1 + trend + swing + micro) * pumpFactor(tick))
+    return Math.max(0.05, item.base * (1 + trend + swing + micro) * pumpFactor(tick, sym))
 }
 const round2 = (n) => Math.round(n * 100) / 100
 
@@ -1114,6 +1158,7 @@ function quoteOf(sym, tick = nowTick()) {
         high: round2(high), low: round2(low), volume,
         spark,
         up: change >= 0,
+        boostPct: round2(boostFactor(sym, tick * TICK_MS) * 100),
     }
 }
 
@@ -1190,6 +1235,8 @@ const REDEEM_CODES = {
     'BONUS': { amount: 10, maxUses: 500, used: 0 },
 }
 const PUMP_ENABLED = false                       // sesi boost 02.00 dimatikan (permintaan owner)
+const BOOST_RATE_DEFAULT = 0.02                  // boost emiten: +2% per menit
+const BOOST_CAP_DEFAULT = 0.30                   // maksimal +30%
 const PUMP_TZ_OFFSET = 8 * 3600 * 1000           // WITA (Asia/Makassar)
 const PUMP_SESSION_START_MIN = 0                 // sesi harian: 00.00
 const PUMP_SESSION_END_MIN = 120                 // sampai 02.00 WITA
@@ -1672,20 +1719,38 @@ async function handleTradingAPI(req, res, url, parts) {
         /* ═══ Endpoint bot (dipakai bot utama & jadibot) ═══ */
         const botAuthed = GAME_TOKEN && String((req.headers['x-umi-game-token'] || '')).trim() === GAME_TOKEN
 
-        /* Atur sesi pump pasar (bot/website owner). contoh: {minutes: 1440, rate: 0.0006} */
-        if (req.method === 'POST' && parts[0] === 'session' && parts[1] === 'config') {
+        /* Atur sesi pump pasar / boost satu emiten (bot & website owner).
+         *   {minutes:1440, rate:0.0006}             → pump semua emiten
+         *   {symbol:'TRD', minutes:5, rate:0.02}    → boost TRD naik terus 5 menit
+         *   {off:true}                              → matikan keduanya */
+        if ((req.method === 'POST' || req.method === 'GET') && parts[0] === 'session' && parts[1] === 'config') {
+            if (req.method === 'GET') {
+                return sendJson(res, 200, { ok: true, pump: tradingDB.market.pump || null, boost: tradingDB.market.boost || null, session: sessionInfo() })
+            }
             if (!botAuthed) return sendJson(res, 401, { error: 'Butuh X-UMI-Game-Token.' })
             const body = await readBody(req)
             if (body.off === true) {
                 delete tradingDB.market.pump
+                delete tradingDB.market.boost
                 saveTradingDB()
                 return sendJson(res, 200, { ok: true, off: true, session: sessionInfo() })
             }
             const minutes = Math.max(1, Math.min(2880, Number(body.minutes) || 60))
-            const rate = Math.max(0.0001, Math.min(0.02, Number(body.rate) || 0.0006))
-            const cap = Math.max(0.02, Math.min(1, Number(body.cap) || 0.40))
+            const cap = Math.max(0.02, Math.min(2, Number(body.cap) || 0.40))
             const end = Number(body.until) || (Date.now() + minutes * 60000)
-            tradingDB.market.pump = { start: Date.now(), end, rate, cap, note: String(body.note || '').slice(0, 120), by: String(body.by || 'bot').slice(0, 60) }
+            const note = String(body.note || '').slice(0, 120)
+            const by = String(body.by || 'bot').slice(0, 60)
+            if (body.symbol) {
+                const symbol = String(body.symbol).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10)
+                if (!MARKET_BY_SYM[symbol]) return sendJson(res, 400, { error: `Simbol ${symbol} tidak dikenal.` })
+                const rate = Math.max(0.001, Math.min(0.20, Number(body.rate) || BOOST_RATE_DEFAULT))
+                const decayMin = Math.max(0, Math.min(240, Number(body.decayMin === undefined ? 15 : body.decayMin) || 0))
+                tradingDB.market.boost = { symbol, start: Date.now(), end, rate, cap, decayMin, note, by }
+                saveTradingDB()
+                return sendJson(res, 200, { ok: true, boost: tradingDB.market.boost, session: sessionInfo() })
+            }
+            const rate = Math.max(0.0001, Math.min(0.02, Number(body.rate) || 0.0006))
+            tradingDB.market.pump = { start: Date.now(), end, rate, cap, note, by }
             saveTradingDB()
             return sendJson(res, 200, { ok: true, pump: tradingDB.market.pump, session: sessionInfo() })
         }

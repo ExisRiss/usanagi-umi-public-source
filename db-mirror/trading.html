@@ -580,7 +580,7 @@
       const pos = state.holdings.find((h) => h.sym === s.sym)
       return `<div class="mkt" data-sym="${esc(s.sym)}">
         <div class="symbadge">${esc(s.sym)}</div>
-        <div class="mkt-info"><b>${esc(s.name)}</b><span>${esc(s.sector)} · vol ${money(s.volume, 0)}${pos ? ` · ${money(pos.qty)} lot` : ''}</span></div>
+        <div class="mkt-info"><b>${esc(s.name)}${s.boostPct > 0 ? ` <span style="display:inline-block;margin-left:5px;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:800;color:#ffcc57;background:rgba(255,204,87,.12);border:1px solid rgba(255,204,87,.45)">🔥 BOOST +${money(s.boostPct)}%</span>` : ''}</b><span>${esc(s.sector)} · vol ${money(s.volume, 0)}${pos ? ` · ${money(pos.qty)} lot` : ''}</span></div>
         <canvas class="spark" data-spark="${esc(s.sym)}"></canvas>
         <div class="mkt-price"><b class="num">${money(s.price)}</b><span class="${cls(s.changePct)}">${sgn(s.changePct)}${money(s.changePct)}%</span></div>
       </div>`
@@ -729,12 +729,23 @@
     </div>`).join('')
   }
 
-  /* ─────────── banner pasar (tanpa sesi boost 02.00) ─────────── */
+  /* ─────────── banner pasar / boost emiten ─────────── */
   function renderSession() {
     const info = state.session
     const box = $('sessionBanner')
     if (!box) return
     if (!info) { box.classList.add('hidden'); return }
+    const until = info.until ? new Date(info.until).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Makassar' }) : ''
+    if (info.symbol && info.active) {
+      box.className = 'notice ok'
+      box.innerHTML = `🔥 <b>BOOST ${esc(info.symbol)}</b> — harga naik terus sampai ${until} WITA (saat ini +${money(info.boostPct)}%). Setelah itu mendarat perlahan.`
+      return
+    }
+    if (info.symbol && !info.active) {
+      box.className = 'notice warn'
+      box.innerHTML = `🪂 <b>BOOST ${esc(info.symbol)} selesai</b> — harga mendarat perlahan (+${money(info.boostPct)}% tersisa).`
+      return
+    }
     box.className = 'notice'
     box.innerHTML = `🌙 <b>Pasar normal 24 jam</b> — tanpa sesi boost 02.00. Harga bergerak dari aktivitas pasar saja. Zona waktu: ${esc(info.timezone || 'WITA')}.`
   }

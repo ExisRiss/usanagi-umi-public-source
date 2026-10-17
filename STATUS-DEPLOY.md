@@ -489,6 +489,48 @@ repo memakai `https://apiii-xrina.my.id`. Itu sebab pesan `❌ Gagal membuat bra
 - Log pasca-deploy: `Successfully Loaded 2046 Plugins`, `⚙️ Bot utama: AKTIF`,
   `Bot siap digunakan!`, jadibot 4 sesi `berhasil terhubung`, `/api/health` 200, game `/health` 200.
 
+## Task 20 — Boost satu emiten (TRD) naik terus 5 menit di website trading (2026-10-17 14.40 WITA)
+
+**Permintaan owner:** "boost saham TRD di website game trading, naik terus 5 menit aja".
+
+**Mesin pasar `db-mirror/game.js`:**
+- `boostFactor(sym, ms)` + `boostWindow()` — jendela boost **per emiten**, disimpan di
+  `tradingDB.market.boost = {symbol, start, end, rate, cap, decayMin, note, by}`.
+  Selama jendela: harga naik terus `rate` per menit (default **+2%/menit**, batas +30–40%),
+  sesudah jendela **mendarat perlahan** (`decayMin`, default 15 menit) supaya tidak ada jurang harga.
+- `pumpFactor(tick, sym)` sekarang menerima simbol → pump harian tetap mati (`PUMP_ENABLED=false`),
+  boost emiten tetap jalan.
+- `priceAt()` meneruskan `sym`; `quoteOf()` menambah field `boostPct` per emiten.
+- `sessionInfo()` melaporkan boost: `{active, boostPct, until, symbol, label:'BOOST TRD · naik terus'}`
+  dan `'BOOST TRD · mendarat'` saat fase decay. `/health` ikut menampilkan label itu.
+- Endpoint `POST /api/trading/session/config` (header `X-UMI-Game-Token`):
+  * `{symbol:'TRD', minutes:5, rate:0.02, decayMin:15}` → boost satu emiten
+  * `{minutes, rate, cap}` → pump semua emiten (lama)
+  * `{off:true}` → matikan pump **dan** boost
+  * `GET` → lihat pump/boost/session yang sedang jalan.
+
+**Website `db-mirror/trading.html`:**
+- Banner hijau saat boost: `🔥 BOOST TRD — harga naik terus sampai HH.MM WITA (saat ini +x%)`;
+  fase mendarat pakai banner kuning.
+- Daftar saham menampilkan badge `🔥 BOOST +x%` di sebelah nama emiten yang di-boost.
+
+**Bot — plugin baru `bot/plugins/owner/usanagi-boost.js`** (owner only):
+- `.boost TRD 5` · `.boost TRD 5 4` (rate 4%/menit) · `.boosttrd 5` (singkat)
+- `.boostinfo` — status boost + sisa waktu
+- `.booststop` — matikan pump & boost
+- Token dibaca dari `lib/webgame.json` → env → `game-token.txt`; host dicoba
+  `127.0.0.1:3900` dulu lalu `game.gwenna.my.id`.
+
+**Deploy & bukti**
+- `game.js`, `trading.html`, `usanagi-boost.js` diunggah; restart; `Successfully Loaded 2047 Plugins`.
+- Uji langsung di server: `POST .../session/config {symbol:'TRD',minutes:5}` → HTTP 200,
+  lalu market: `TRD 0.41 / boostPct 0.79%` → `0.42 / 2.29%` → `0.43 / 3.79%` (naik terus ±2%/menit),
+  `session: "BOOST TRD · naik terus"`, `/health` ikut berubah.
+- Uji plugin bot (tanpa WhatsApp): `.boosttrd 5` → aktif (rate +2%/menit, selesai 14.42 WITA),
+  `.boostinfo` jalan, simbol salah ditolak.
+- Backup berkas lama: `/backup/task20-game.js`, `/backup/task20-trading.html`.
+- Skrip uji sementara (`test-boost.mjs`, `boost-trigger.mjs`) dihapus dari root server.
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
@@ -501,6 +543,8 @@ repo memakai `https://apiii-xrina.my.id`. Itu sebab pesan `❌ Gagal membuat bra
   dan `.tradingoffline file` diuji langsung di server
 - Trading versi WhatsApp masih memakai saldo localStorage terpisah dari akun web (sengaja, biar
   jalan tanpa internet) — kalau mau disatukan, perlu endpoint game yang bisa dipanggil rich HTML
+- Boost emiten hanya berlaku di game online (website & bot). Game WA/offline menghitung harga
+  sendiri di HP, jadi tidak ikut ter-boost
 - Plugin lama `bot/plugins/game/trading1.js` (37.464 B) masih menunggu keputusan: hapus atau
   pindahkan ke arsip supaya tidak dobel dengan `trading-umi.js`
 - ~~Jadibot `6282343823200` reconnect loop~~ **selesai**: sesi + backup dihapus otomatis (Task 17)
