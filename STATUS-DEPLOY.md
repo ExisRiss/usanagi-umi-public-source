@@ -1052,6 +1052,26 @@ Banyak plugin memakai `throw 'Teksnya mana?'` / `throw 'Format: …'` untuk mena
 - Laporan manual yang masih terbuka: "Respon bot lambat", "Tidak bisa kode pairing"
   (pesan ini berasal dari layanan jadibot, bukan repo bot ini), dan satu laporan uji pengguna.
 
+### 8. Tambahan: `global.APIs` diisi sekali saat boot (`lib/api-globals.js`)
+Masih ada satu akar yang belum tertutup di commit sebelumnya. Perbaikan `.cewekbrat` hanya
+memasang cadangan lokal di dalam plugin itu, sedangkan **19 pemakaian `global.APIs.deline` dan
+22 pemakaian `global.APIs.faa`** tersebar di plugin maker/ai/search/fun. Kalau `global.APIs`
+kosong, perintah lain akan gagal dengan `TypeError … reading 'deline'` yang sama.
+
+- `bot/lib/api-globals.js` → `installApiGlobals()` mengisi `global.APIs` dengan
+  `{ deline: 'https://api.deline.web.id', faa: 'https://api-faa.my.id' }`, **idempoten** dan
+  **tidak menimpa** nilai yang sudah disetel config/custom (diuji 3× berturut-turut +
+  nilai custom `https://x.example` tetap utuh).
+- Dipanggil di `bot/main.js` sebelum `await filesInit()`, jadi semua plugin yang di-load
+  sesudahnya sudah melihat `global.APIs`.
+- Berkas live: `/main.js` **44.239 B** dan `/lib/api-globals.js` **1.721 B**, sha256 **identik**
+  dengan repo (dicek lewat Client API `files/contents`).
+- Verifikasi ulang 17 Okt: `node --check` 18 berkas lolos; **20/20 berkas** (main, lib, dan 18
+  plugin) sha256 **SAMA** antara server dan repo; konsol `ptero watch` 30 detik tanpa
+  `error|syntax|failed|gagal`; uji handler nyata `.trading` (prefix `.` dan `/`), `.totag`,
+  `.setintro`, `.intro`, `.setwelcome`, `.bank`, `.sell` semuanya membalas normal; halaman
+  Feedback **tidak menerima laporan otomatis baru** setelah restart.
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix

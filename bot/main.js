@@ -17,6 +17,7 @@ import { makeWASocket, protoType, serialize } from './lib/simple.js';
 import { installAutoTyping } from './lib/auto-typing.js';
 import { installBotConfigAccessors, getMainBotConfig } from './lib/bot-config.js';
 import { installRpgGlobals } from './lib/rpg/awang-rpg-globals.js';
+import { installApiGlobals } from './lib/api-globals.js';
 import { syncMainPrefix } from './core/awang-prefix.js';
 import { getExplicitlyEnabledWelcomeGroups } from './core/awang-welcome.js';
 import { startJadibotPlatformApi } from './lib/jadibot-platform-api.js';
@@ -834,6 +835,9 @@ async function filesInit() {
 // gagal seketika dengan TypeError, sebelum satu baris pun kode plugin berjalan.
 // Dipasang DI SINI, sebelum filesInit(), supaya sudah tersedia saat plugin dimuat.
 installRpgGlobals();
+// Puluhan plugin maker/ai/search/fun memakai `global.APIs.deline` / `.faa`.
+// Tanpa ini, perintah seperti .cewekbrat gagal dengan TypeError sebelum jalan.
+installApiGlobals();
 
 await filesInit();
 
