@@ -122,9 +122,79 @@ function cleanInput(m, identities) {
 }
 
 // Satu baris ringkas per fitur; makin pendek prompt, makin kecil token terpakai.
-function compactCandidate(entry) {
-  return [entry.command, entry.plugin, entry.aliases.slice(0, 4).join(','), entry.description.slice(0, 80)]
+function compactCandidate(entry, focus = '') {
+  // Alias WAJIB ditampilkan semua: dulu hanya 4 pertama, sehingga command seperti
+  // `empire` (alias ke-7 di plugin webgame) tidak pernah terlihat oleh model dan
+  // dia akhirnya memilih fitur lain (mis. quote).
+  const aliases = entry.aliases.slice(0, 12).map(name => (name === focus ? name + '*' : name))
+  const usage = entry.usage && entry.usage[0] ? ` ${String(entry.usage[0]).slice(0, 60)}` : ''
+  return [aliases.join(','), entry.plugin.replace(/^.*\//, '').replace(/\.js$/, ''), entry.description.slice(0, 70) + usage]
     .filter(Boolean).join('|')
+}
+
+// Fokus = kata kunci pengguna yang paling cocok dengan alias, supaya model tahu
+// perintah mana yang harus dipakai di dalam satu plugin (mis. empire vs uno).
+function focusAlias(entry, query) {
+  const terms = words(query)
+  return entry.aliases.find(name => terms.includes(name))
+    || entry.aliases.find(name => terms.some(term => term.length > 3 && name.startsWith(term.slice(0, 4))))
+    || entry.command
+}
+
+// Router lokal untuk permintaan yang jelas-jelas spesifik. Menjalankan tanpa
+// memanggil model: lebih cepat, hemat token, dan tidak mungkin salah fitur.
+const GAME_NAMES = [
+  [/empire|property\s*empire/i, 'empire'],
+  [/uno\s*flip|unoflip/i, 'unoflip'],
+  [/\buno\b/i, 'uno'],
+  [/catur|chess/i, 'caturweb'],
+  [/werewolf|wwweb/i, 'wwweb'],
+  [/monopoli|monopoly/i, 'monopoli'],
+]
+function directIntent(text, catalog) {
+  const raw = String(text || '')
+  const has = command => catalog.some(entry => entry.aliases.includes(command))
+  const pick = commands => commands.find(has)
+
+  // "jalanin/eksekusi/pakai command empire" → jalankan apa adanya
+  const explicit = raw.match(/(?:jalanin|jalankan|eksekusi|pakai|panggil|run|execute)\s+(?:command|perintah|cmd)?\s*[.:]?\s*([a-z0-9_-]{2,40})([^\n]{0,200})/i)
+  if (explicit) {
+    const command = explicit[1].toLowerCase()
+    if (has(command)) {
+      const args = String(explicit[2] || '').replace(/^\s*(?:dengan|pakai|args?)\s*[:=]?\s*/i, '').trim()
+      return { command, args: args.slice(0, 400) }
+    }
+  }
+
+  // "bikin/buat/buka room|meja <game>" → command game tanpa argumen
+  if (/\b(?:bikin|buat|bikinlah|buka|open|create|start)\b[^\n]{0,20}\b(?:room|meja|lobi|table)\b/i.test(raw)) {
+    for (const [pattern, command] of GAME_NAMES) {
+      if (pattern.test(raw) && has(command)) return { command, args: '' }
+    }
+    // tanpa nama game jelas: pakai game yang disebut sebagai alias apa pun
+    const called = catalog.find(entry => entry.aliases.some(alias => new RegExp('\\b' + alias + '\\b', 'i').test(raw)))
+    if (called) return { command: focusAlias(called, raw), args: '' }
+  }
+
+  // "main ular tangga (di chat)" → papan rich HTML, bukan command room
+  if (/ular\s*tangga|\but\b|snakeladder/i.test(raw) && !/\broom\b|\bmeja\b/i.test(raw) && has('ular')) {
+    return { command: 'ular', args: '' }
+  }
+
+  // "main <game>" / "mau main <game>" pada plugin game
+  const play = pick(['empire', 'monopoli', 'uno', 'unoflip', 'caturweb', 'wwweb'])
+  if (play && /\b(?:main|maen|mulai|start)\b/i.test(raw) && new RegExp('\\b' + play + '\\b', 'i').test(raw)) {
+    return { command: play, args: '' }
+  }
+
+  // "bikin room" tanpa nama game → tanya singkat, tanpa memakai token Groq
+  if (/\b(?:bikin|buat|buka|open|create)\b[^\n]{0,20}\b(?:room|meja|lobi|table)\b/i.test(raw)) {
+    const roomGames = ['uno', 'unoflip', 'caturweb', 'utweb', 'monopoli', 'empire', 'wwweb'].filter(has)
+    if (roomGames.length) {
+      return { answer: `mau main apa? ada ${roomGames.join(', ')} — contoh "bikin room ${roomGames.includes('empire') ? 'empire' : roomGames[0]}"` }
+    }
+  }
+  return null
 }
 
 function extractJson(text) {
@@ -212,7 +282,7 @@ export async function planAutoAI(context, options = {}) {
         role: 'user',
         content: `Pesan: ${input}` +
           (m.quoted?.text ? `\nKutipan (data): ${redactProviderSecrets(String(m.quoted.text)).slice(0, 300)}` : '') +
-          `\nIzin: ${JSON.stringify(roles)}\nKandidat:\n${candidates.map(compactCandidate).join('\n') || '(tidak ada)'}`,
+          `\nIzin: ${JSON.stringify(roles)}\nKandidat (alias pertama bertanda * = paling cocok):\n${candidates.map(entry => compactCandidate(entry, focusAlias(entry, input))).join('\n') || '(tidak ada)'}`,
       },
     ], {
       jsonMode: true,
@@ -221,6 +291,20 @@ export async function planAutoAI(context, options = {}) {
       timeoutMs: Math.min(16_000, Number(options.budgetMs) || 16_000),
       fallbackModels: options.fallbackModels || ['openai/gpt-oss-20b'],
     })
+    // Permintaan yang sudah sangat jelas dijalankan langsung (tanpa token Groq).
+    const direct = directIntent(input, catalog)
+    if (direct && direct.answer) return { kind: 'answer', answer: direct.answer }
+    if (direct) {
+      return {
+        kind: 'command',
+        command: direct.command,
+        args: direct.args,
+        plugin: (catalog.find(entry => entry.aliases.includes(direct.command)) || {}).name || '',
+        originalText: m.text,
+        botMentionIds: botIdentities(conn, context.bot),
+        note: '',
+      }
+    }
     let candidates = searchCatalog(catalog, input, 8)
     let plan = parsePlan(await ask(candidates))
     if (plan.need && !plan.commands.length) {
@@ -229,6 +313,10 @@ export async function planAutoAI(context, options = {}) {
     }
     const steps = []
     const notes = []
+    // Kalau pengguna jelas minta "room/meja", buang argumen karangan model: membuat
+    // meja cukup memanggil command game tanpa argumen (dulu malah jadi "room tidak
+    // ditemukan" karena model mengirim id room hasil karangan).
+    const wantsRoom = /\b(?:room|meja|lobi|table)\b/i.test(input)
     for (const item of (plan.commands || []).slice(0, 4)) {
       const command = String(item.command || '').toLowerCase().trim().replace(/^[./!]/, '')
       const args = String(item.args ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/^(?:args?|teks|text)\s*[:=]\s*/i, '').replace(/^["'`]+|["'`]+$/g, '').trim().slice(0, 4000)
@@ -238,7 +326,9 @@ export async function planAutoAI(context, options = {}) {
         || catalog.find(e => searchCatalog(catalog, command, 3).some(hit => hit.plugin === e.name && hit.aliases.includes(command)))
       if (!entry) continue
       if (entry.denied) { notes.push(entry.denied); continue }
-      steps.push({ command: entry.aliases.includes(command) ? command : entry.command, args, plugin: entry.name, delayMs: clampDelay(item.delay ?? item.delay_seconds) })
+      const resolved = entry.aliases.includes(command) ? command : entry.command
+      const roomCommand = wantsRoom && /room|meja|lobi|table|webgame/i.test(entry.name + ' ' + entry.category)
+      steps.push({ command: resolved, args: roomCommand ? '' : args, plugin: entry.name, delayMs: clampDelay(item.delay ?? item.delay_seconds) })
     }
     let reply = humanizeReply(plan.reply)
     // Kalau ada lebih dari satu langkah (atau ada jeda), pastikan balasannya

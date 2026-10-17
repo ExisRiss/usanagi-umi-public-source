@@ -1500,6 +1500,49 @@ natural (“siap, grup ditutup dulu, 5 detik lagi dibuka ya”).
   `/lib/groq-client.js` 9.801 B `79f209d8…` — ketiganya SAMA dengan repo.
 - Restart `204` → `Successfully Loaded 2052 Plugins`, 0 error di konsol.
 
+## Task 40 — Auto-AI salah fitur: minta "room empire" malah quote / "room tidak ditemukan" (2026-10-18 03.00 WITA)
+
+Laporan: disuruh bikin room malah bilang room tidak ditemukan; disuruh jalanin command
+`empire` malah bikin quotes.
+
+### Akar masalah
+1. **Alias dipotong 4 di prompt.** `compactCandidate()` hanya menampilkan 4 alias pertama.
+   Plugin webgame mendaftarkan 8 meja (`webgame, uno, unoflip, caturweb, utweb, monopoli,
+   empire, wwweb`), jadi `empire` (alias ke-7) **tidak pernah terlihat model** → dia memilih
+   fitur lain yang kebetulan muncul (quote).
+2. **Tidak ada arahan soal "room".** Model tidak tahu bahwa "bikin room <game>" = jalankan
+   command game tanpa argumen, sehingga dia mengarang id room → plugin menjawab
+   "Room id tidak dikenal / room tidak ditemukan".
+3. Permintaan yang sudah jelas masih dilempar ke model (boros token + bisa salah).
+
+### Perbaikan
+- `lib/auto-ai.js`
+  - `compactCandidate()` menampilkan **semua alias (maks 12)** + `focusAlias()` menandai
+    alias yang paling cocok dengan kata kunci pengguna (tanda `*`).
+  - **Router lokal `directIntent()`** sebelum memanggil model:
+    - "jalanin/pakai/eksekusi command X …" → jalankan X + argumennya;
+    - "bikin/buat/buka room|meja|lobi <game>" → command game **tanpa argumen**
+      (empire, monopoli, uno, unoflip, caturweb, utweb, wwweb);
+    - "main ular tangga di chat" → `ular` (papan rich HTML), bukan room;
+    - "bikin room" tanpa nama game → tanya balik singkat (tanpa token Groq).
+  - Saat model tetap dipakai: kalau pesan memuat "room/meja", argumen hasil karangan model
+    dibuang (dipaksa kosong) supaya tidak muncul error room.
+- `lib/auto-ai-prompt.js` — ditambah **PETA FITUR** (room/meja, game chat, grup, stiker,
+  trading) dan larangan menjawab "room tidak ditemukan / fitur tidak ada" sebelum mencoba
+  command.
+
+### Verifikasi
+- Uji router lokal (tanpa model): `jalanin command empire` → `empire`; `bikin room empire` →
+  `empire`; `buat meja monopoli dong` → `monopoli`; `bikin room` → "mau main apa? ada uno,
+  unoflip, caturweb, utweb, monopoli, empire, wwweb…"; `main ular tangga langsung di chat` →
+  `ular`. Semua **0 token**.
+- Uji dengan Groq asli: `empire dong` → `empire` (936 token, 483 ms); `open room werewolf ya`
+  → `wwweb` (router lokal, 0 token); `aku mau main monopoli sama temen` → `monopoli` (949
+  token); `coba bikin quote kata kata mutiara` → `quote` args `kata kata mutiara` (906 token)
+  — quote tetap dipilih hanya ketika memang diminta quote.
+- Deploy `/lib/auto-ai.js` 22.957 B `eaefe2eb…` dan `/lib/auto-ai-prompt.js` 2.548 B
+  `25e2252e…` (SAMA dengan repo); restart `204`, `Successfully Loaded 2052 Plugins`, 0 error.
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
