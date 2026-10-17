@@ -69,6 +69,25 @@ const sleep = ms => new Promise(resolve => setTimeout(resolve, Math.max(0, ms)))
 // Sisa kuota token tiap model dicatat dari header Groq supaya permintaan
 // berikutnya otomatis memakai model yang masih punya ruang (bukan selalu 120b).
 const modelLimits = new Map()
+// Pemakaian token per menit (dari field `usage` Groq) supaya Auto-AI tahu
+// kapan harus menahan diri sebelum menembus 8.000 TPM.
+const usageLog = []
+export function recordGroqUsage(model, usage) {
+  if (!usage) return
+  usageLog.push({
+    at: Date.now(),
+    model,
+    total: Number(usage.total_tokens || 0) || (Number(usage.prompt_tokens || 0) + Number(usage.completion_tokens || 0)),
+  })
+  const cutoff = Date.now() - 120_000
+  while (usageLog.length && usageLog[0].at < cutoff) usageLog.shift()
+}
+export function groqBudget(windowMs = 60_000) {
+  const since = Date.now() - windowMs
+  let used = 0
+  for (const row of usageLog) if (row.at >= since) used += row.total
+  return { used, limit: 8000, remaining: Math.max(0, 8000 - used) }
+}
 function readLimitState(response) {
   const headers = response && response.headers
   if (!headers) return null
@@ -112,7 +131,13 @@ async function requestCompletion({ apiKey, model, body, timeout, options }) {
   }
   const result = payload.choices?.[0]?.message
   if (!result || (!result.content && !result.tool_calls?.length)) throw Object.assign(new Error('Groq mengembalikan jawaban kosong. Coba lagi.'), { status: 502 })
-  return { role: 'assistant', content: result.content || null, ...(result.tool_calls?.length ? { tool_calls: result.tool_calls } : {}) }
+  recordGroqUsage(model, payload.usage)
+  return {
+    role: 'assistant',
+    content: result.content || null,
+    ...(result.tool_calls?.length ? { tool_calls: result.tool_calls } : {}),
+    usage: payload.usage || null,
+  }
 }
 
 export async function chatGroq(messages, options = {}) {
@@ -134,8 +159,9 @@ export async function chatGroq(messages, options = {}) {
     .sort((a, b) => b.remaining - a.remaining || a.index - b.index)
     .map(row => row.model)
   const bodyFor = model => {
-    const body = { model, messages, max_completion_tokens: options.maxTokens || 1600, temperature: 0.25 }
-    if (model.startsWith('openai/gpt-oss-')) body.reasoning_effort = 'low'
+    const body = { model, messages, max_completion_tokens: options.maxTokens || 1600, temperature: options.temperature ?? 0.25 }
+    if (model.startsWith('openai/gpt-oss-')) body.reasoning_effort = options.reasoningEffort || 'low'
+    if (options.jsonMode) body.response_format = { type: 'json_object' }
     if (options.tools?.length) Object.assign(body, { tools: options.tools, tool_choice: options.toolChoice || 'auto', parallel_tool_calls: false })
     return body
   }

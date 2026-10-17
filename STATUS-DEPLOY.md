@@ -1454,6 +1454,52 @@ terasa seperti manusia (bukan laporan sistem).
 - Restart `204` → `Successfully Loaded 2052 Plugins`, 0 error di konsol.
 - `grep` memastikan tidak ada lagi teks "JADWAL AUTO-AI" di `handler.js`.
 
+## Task 39 — Groq cepat kena limit: pemakaian token dipotong 8x (2026-10-18 02.05 WITA)
+
+Laporan: kuota Groq cepat habis padahal pemakaian belum banyak.
+
+### Penyebab terukur
+- Batas Groq untuk key ini **8.000 token/menit** (dihitung input + output + **reasoning**
+  token; `gpt-oss` adalah model reasoning, jadi token berpikir ikut dihitung).
+- Alur lama: 2–4 panggilan model per permintaan (cari fitur → pilih command → tulis balasan),
+  tiap panggilan membawa system prompt 4,4 rb karakter + daftar tool + kandidat katalog.
+  Hasil ukur: **±5.400 token untuk satu permintaan** → hanya **~1,5 permintaan/menit**
+  sebelum 429.
+- Dua orang chat bersamaan langsung menembus batas.
+
+### Perbaikan
+- `lib/auto-ai-prompt.js`: prompt dipadatkan dari 4.416 → **1.447 byte** (aturan gaya bicara
+  tetap ada, tapi ringkas). Tool calling dihapus.
+- `lib/auto-ai.js`:
+  - **satu panggilan model per permintaan**: kandidat fitur dicari lokal (`searchCatalog`),
+    lalu model diminta menjawab JSON `{reply, commands:[{command,args,delay}]}` sekaligus —
+    balasan manusia + perintah dalam satu respons;
+  - mode `json_object` (`response_format`) supaya keluaran tidak bertele-tele;
+  - `maxTokens` 500, `temperature` 0,4, timeout 16 detik;
+  - validasi command dilakukan lokal terhadap katalog (tanpa token), termasuk cek
+    `DANGEROUS` dan izin; kalau model minta cari lagi (`need`) baru satu panggilan tambahan;
+  - pengaman kuota `groqBudget()`: kalau sisa token/menit < 700, bot menjawab
+    “bentar ya, ai-ku lagi penuh…” tanpa memanggil API.
+- `lib/groq-client.js`: mencatat `usage` tiap respons (`recordGroqUsage`) dan menyediakan
+  `groqBudget()` (total token 60 detik terakhir vs 8.000).
+
+### Hasil ukur (Groq asli, setelah perbaikan)
+| permintaan | dulu | sekarang |
+|---|---|---|
+| tutup grup + buka 5 detik | ±5.400 token, 1.088 ms | **689 token**, 494 ms |
+| bratvid2 teks ayam | ±5.400 token, 807 ms | **627 token**, 301 ms |
+| sapaan biasa | ±5.400 token, 241 ms | **569 token**, 316 ms |
+| ular tangga | ±5.400 token | **725 token**, 325 ms |
+
+Artinya satu menit kini cukup untuk **±12 permintaan** (dulu ±1,5). Pemilihan perintah tetap
+benar: `tutup@0 + buka@5000`, `bratvid2 ayam`, `ular` (bukan `ulartangga`), balasan tetap
+natural (“siap, grup ditutup dulu, 5 detik lagi dibuka ya”).
+
+### Deploy
+- `/lib/auto-ai.js` 18.350 B `221f72ff…`, `/lib/auto-ai-prompt.js` 1.447 B `4a178655…`,
+  `/lib/groq-client.js` 9.801 B `79f209d8…` — ketiganya SAMA dengan repo.
+- Restart `204` → `Successfully Loaded 2052 Plugins`, 0 error di konsol.
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
