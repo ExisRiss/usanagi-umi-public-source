@@ -531,6 +531,35 @@ repo memakai `https://apiii-xrina.my.id`. Itu sebab pesan `❌ Gagal membuat bra
 - Backup berkas lama: `/backup/task20-game.js`, `/backup/task20-trading.html`.
 - Skrip uji sementara (`test-boost.mjs`, `boost-trigger.mjs`) dihapus dari root server.
 
+## Task 21 — Atur saldo $AS akun trading dari bot (2026-10-17 13.50 WITA)
+
+**Permintaan owner:** naikkan saldo akun **AlzRiss** sampai **$AS 11.000**.
+
+**Mesin game `db-mirror/game.js`:**
+- `findTradingAccount(query)` — cari akun dari **id**, **nomor WA**, atau **username**
+  (tidak peka huruf besar-kecil, boleh potongan nama ≥3 huruf).
+- `GET /api/trading/admin/accounts` (header `X-UMI-Game-Token`) — daftar semua akun:
+  username, nomor, saldo, equity, total aset, jumlah emiten.
+- `POST /api/trading/admin/balance` — `{account, amount, mode:'set'|'add', note}`.
+  Saldo diubah, entri `adjust` ditambahkan ke riwayat akun, lalu `saveTradingDB()`.
+  Menolak saldo negatif dan jumlah tidak valid.
+
+**Bot — plugin baru `bot/plugins/owner/usanagi-saldoas.js`** (owner only):
+- `.setas AlzRiss 11000` / `.setas AlzRiss 11.000` → saldo jadi $AS 11.000
+- `.addas AlzRiss 500` → tambah $AS 500
+- `.listas` → daftar semua akun trading + saldo
+- Parser angka menerima `11000`, `11.000`, dan `11,000` (semua = 11000), serta `1,5` = 1,5.
+
+**Hasil:**
+- Saldo akun **AlzRiss** (`web:4b269d68f83c98a6`): **$AS 4.840,62 → $AS 11.000,00**
+  (total aset juga $AS 11.000,00 karena belum ada posisi saham).
+- Tersimpan di `game/trading-data.json`; riwayat akun mencatat `adjust +6.159,38`
+  ("permintaan owner: saldo jadi $AS 11.000").
+- Papan peringkat: **rank 1 AlzRiss $AS 11.000**, disusul clara & 6287813709432 ($AS 110).
+- Uji plugin di server: `.listas` (5 akun) dan `.setas AlzRiss 11.000` berjalan.
+- Deploy: restart → `Successfully Loaded 2048 Plugins`, hash server ↔ repo SAMA.
+  Backup game.js sebelumnya: `/backup/task21-game.js`.
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix

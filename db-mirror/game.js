@@ -1321,6 +1321,25 @@ function accountForToken(token) {
 }
 function accountForNumber(number) { return ensureAccount(accountIdForNumber(number)) }
 
+/* Cari akun dari id / nomor WA / username (tidak peka huruf besar-kecil). */
+function findTradingAccount(query) {
+    const q = String(query || '').trim()
+    if (!q) return null
+    const accounts = tradingDB.accounts || {}
+    if (accounts[q]) return accounts[q]
+    const digits = q.replace(/\D/g, '')
+    if (digits.length >= 8) {
+        const byNumber = accounts[accountIdForNumber(digits)]
+        if (byNumber) return byNumber
+    }
+    const needle = q.toLowerCase()
+    const list = Object.values(accounts)
+    return list.find((a) => String(a.username || '').toLowerCase() === needle)
+        || list.find((a) => String(a.number || '') === digits && digits.length >= 8)
+        || list.find((a) => needle.length >= 3 && String(a.username || '').toLowerCase().includes(needle))
+        || null
+}
+
 function accountPublic(account) {
     if (!account) return null
     return { id: account.id, username: account.username || '', number: account.number || '', source: account.source || 'web', joined: account.createdAt }
@@ -1754,6 +1773,50 @@ async function handleTradingAPI(req, res, url, parts) {
             saveTradingDB()
             return sendJson(res, 200, { ok: true, pump: tradingDB.market.pump, session: sessionInfo() })
         }
+        /* ═══ Endpoint admin trading (khusus owner lewat bot) ═══ */
+        if (parts[0] === 'admin' && parts[1] === 'accounts' && req.method === 'GET') {
+            if (!botAuthed) return sendJson(res, 401, { error: 'Butuh X-UMI-Game-Token.' })
+            const list = Object.values(tradingDB.accounts || {}).map((a) => {
+                const view = portfolioView(a)
+                return {
+                    id: a.id, username: a.username || '', number: a.number || '',
+                    source: a.source || 'web', balance: round2(a.balance),
+                    equity: view.equity, netWorth: view.netWorth,
+                    positions: Object.keys(a.portfolio || {}).length,
+                }
+            }).sort((x, y) => y.netWorth - x.netWorth)
+            return sendJson(res, 200, { ok: true, total: list.length, accounts: list })
+        }
+
+        /* Set/tambah saldo $AS satu akun.
+         *   {account:'AlzRiss', amount:11000, mode:'set'}  → saldo jadi $AS 11.000
+         *   {account:'628xxxx', amount:500, mode:'add'}    → saldo +500 */
+        if (parts[0] === 'admin' && parts[1] === 'balance' && req.method === 'POST') {
+            if (!botAuthed) return sendJson(res, 401, { error: 'Butuh X-UMI-Game-Token.' })
+            const body = await readBody(req)
+            const account = findTradingAccount(body.account || body.username || body.number || body.id)
+            if (!account) return sendJson(res, 404, { error: 'Akun trading tidak ditemukan.' })
+            const amount = Number(body.amount)
+            if (!Number.isFinite(amount)) return sendJson(res, 400, { error: 'Jumlah saldo tidak valid.' })
+            const mode = String(body.mode || 'set').toLowerCase() === 'add' ? 'add' : 'set'
+            const before = Number(account.balance) || 0
+            const after = round2(mode === 'add' ? before + amount : amount)
+            if (after < 0) return sendJson(res, 400, { error: 'Saldo tidak boleh negatif.' })
+            account.balance = after
+            account.history = Array.isArray(account.history) ? account.history : []
+            account.history.push({
+                type: 'adjust', amount: round2(after - before), time: new Date().toISOString(),
+                symbol: '$AS', note: String(body.note || 'penyesuaian owner').slice(0, 80),
+            })
+            saveTradingDB()
+            const view = portfolioView(account)
+            return sendJson(res, 200, {
+                ok: true, mode, before: round2(before), balance: after,
+                equity: view.equity, netWorth: view.netWorth,
+                account: accountPublic(account),
+            })
+        }
+
         if (parts[0] === 'bot' && ['register', 'login-code', 'status'].includes(parts[1])) {
             if (!botAuthed) return sendJson(res, 401, { error: 'Endpoint bot butuh X-UMI-Game-Token.' })
             const body = req.method === 'POST' ? await readBody(req) : {}
