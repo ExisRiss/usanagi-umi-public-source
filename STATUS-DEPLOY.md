@@ -2,7 +2,7 @@
 
 **Log lengkap:** [repo `STATUS-DEPLOY.md`](./usanagi-umi-public-source/STATUS-DEPLOY.md)
 
-Terakhir diperbarui: **2026-10-17 04.40 WITA**
+Terakhir diperbarui: **2026-10-17 11.30 WITA**
 
 ## Done
 
@@ -255,6 +255,54 @@ punya sesi Supabase) — namun tiket yang dikirim website bentuknya identik deng
 sudah lolos 200. Metadata git lokal juga diperbaiki: `.git/config` hilang karena pemulihan snapshot,
 remote `origin` dipasang ulang, HEAD diselaraskan ke `3fe84f2` (berkas kerja tidak diubah).
 
+## Task 16 — Halaman Bot Utama error & pairing jadibot "ENOSPC" (2026-10-17 11.30 WITA)
+
+**Gejala.** (1) Buka halaman Bot Utama di website → "Layanan platform sedang bermasalah."
+(2) Mau pairing jadibot → "Pairing gagal: ENOSPC: no space left on device, write."
+
+**Satu akar: disk container 100% penuh.** `df -h` di server `b3f9c8df`:
+`/dev/vda1 49G 49G 0 100% /home/container`. Karena itu semua tulis gagal:
+`.main-bot.env` terpotong jadi **0 byte** (03:09) dan `.database.json.tmp` **0 byte** (03:11) —
+database gagal disimpan → bot balas 500 → `website/api/platform.js:1019` menerjemahkan 5xx jadi
+"Layanan platform sedang bermasalah." Sesi WhatsApp juga tak bisa menulis creds → ENOSPC saat pairing.
+
+**Penyebab disk habis.** `bot/lib/auto-backup.js` (backup harian ke WhatsApp owner) punya dua bug:
+1. **Folder `data/auto-backups` ikut dibackup ke dalam backup itu sendiri** (tidak ada daftar
+   exclude default) → ukuran berlipat tiap percobaan: 29 → 48 → 87 → 162 → 311 → 610 bagian.
+2. Saat pengiriman WA gagal (`Connection Closed` — jadibot yang dipakai sebagai conn sedang mati),
+   pecahan ZIP **tidak dihapus** dan dicoba ulang tiap **15 menit** → 1.474 berkas / **31 GB**
+   menumpuk (23 generasi; 16 di antaranya 0 byte).
+
+**Tindakan.**
+- Hapus semua generasi auto-backup kecuali satu set utuh terbaru yang belum memuat dirinya sendiri
+  (`usanagi-full-backup-20261017-0434`, 29 bagian, 430 MB, 0 berkas rusak) → **disk bebas 31 GB**
+  (18G terpakai / 49G). Panel API yang tadinya balas 500 langsung normal kembali.
+- Pulihkan `.main-bot.env` = `MAIN_BOT_ENABLED=false` (23 byte, 600) lewat `tools/ptero.mjs upload`.
+- Patch `bot/lib/auto-backup.js`:
+  * `DEFAULT_EXCLUDES` = `data/auto-backups`, `data/vercel-backup-exports`, `node_modules`, `.npm`,
+    `.git`, `tmp`, `bot-deploy.tar.gz`, `cloudflared`; plus penjagaan langsung di `collectFiles()`
+    agar folder output tidak pernah masuk.
+  * `pruneBackups()` kini per **generasi**: hapus generasi kedaluwarsa, generasi berisi bagian
+    0 byte (percobaan gagal), berkas bernama aneh, dan kelebihan `keepGenerations` (default 2).
+  * `maxParts` (default 60) — batal dengan pesan jelas kalau backup butuh lebih banyak bagian.
+  * `minFreeBytes` (default 3 GB) — tidak mulai backup kalau ruang disk tipis.
+  * Saat gagal, semua pecahan yang sudah dibuat **dihapus**; jeda percobaan ulang 15 menit → **6 jam**.
+- `tools/deploy-bot.mjs`: tambah `bot/lib/auto-backup.js` → `/lib/auto-backup.js` ke daftar deploy.
+- Uji lokal (`/tmp/ab-test`): hanya berkas sumber yang masuk ZIP (node_modules/tmp/folder backup
+  dikecualikan), generasi lama & 0-byte terhapus, pengaman disk bekerja (menolak saat sisa < batas).
+- Deploy: backup lama `auto-backup.js.2026-10-17T03-15-09-885Z.bak`, unggah 15.119 B, restart 204.
+  Setelah restart: `/api/health` 200 (v1.4.0), game `/health` 200, log
+  `[AUTO-BACKUP] Aktif setiap hari pukul 00:00 Asia/Makassar`, 2.044 plugin termuat,
+  `owner-console/status` 200 (`pairing_unavailable:false`, nomor pairing terbaca, autoread:true).
+
+**Sisa catatan.**
+- Pengiriman backup ke WhatsApp masih gagal karena `conn` yang dipakai (jadibot `6282343823200`)
+  selalu `disconnected`. Bug lama menjadikannya bencana disk; sekarang percobaan gagal dibersihkan
+  dan dijeda 6 jam. Backup yang benar-benar jalan tetap lewat `/api/cron/backup` (Vercel, per jam,
+  200 OK: website + bot 13,1 MB + jadibot).
+- Jadibot `6282343823200` masih reconnect loop → perlu pairing ulang dari perangkat (sesi lama
+  rusak/ter-logout). Setelah disk lega, pairing ulang seharusnya tidak lagi ENOSPC.
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
@@ -266,4 +314,6 @@ remote `origin` dipasang ulang, HEAD diselaraskan ke `3fe84f2` (berkas kerja tid
 - Harness plugin `bot/plugins/game/trading-umi.js` (unit/integration test) belum ditulis
 - Plugin lama `bot/plugins/game/trading1.js` (37.464 B) masih menunggu keputusan: hapus atau
   pindahkan ke arsip supaya tidak dobel dengan `trading-umi.js`
-- Jadibot `6282343823200` masih reconnect loop → perlu cek sesi/perangkat di sisi pengguna
+- Jadibot `6282343823200` masih reconnect loop → pairing ulang dari perangkat (sesi lama rusak)
+- Auto-backup WA masih gagal kirim (`Connection Closed`) → putuskan: matikan fitur ini (backup
+  sudah rutin lewat Vercel) atau batasi hanya kalau ada koneksi WhatsApp yang sehat

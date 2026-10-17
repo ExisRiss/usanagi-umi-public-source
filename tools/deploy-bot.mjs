@@ -45,6 +45,7 @@ const FILES = [
   { local: 'bot/lib/wallet-core.js', remote: '/lib/wallet-core.js', dir: '/lib' },
   { local: 'bot/lib/panel-autoorder.js', remote: '/lib/panel-autoorder.js', dir: '/lib' },
   { local: 'bot/lib/jadibot-platform-api.js', remote: '/lib/jadibot-platform-api.js', dir: '/lib' },
+  { local: 'bot/lib/auto-backup.js', remote: '/lib/auto-backup.js', dir: '/lib' },
   { local: 'db-mirror/companion.js', remote: '/scripts/companion.js', dir: '/scripts' },
 ]
 

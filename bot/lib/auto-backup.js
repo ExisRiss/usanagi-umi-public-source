@@ -17,6 +17,27 @@ const state = {
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 const normalize = value => String(value || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, '')
 
+/*
+ * Folder yang TIDAK BOLEH ikut dibackup.
+ *
+ * `data/auto-backups` wajib di sini: tanpa ini setiap percobaan backup ikut
+ * membungkus hasil backup sebelumnya, sehingga ukurannya berlipat ganda tiap
+ * percobaan (29 → 48 → 87 → 162 → 311 → 610 bagian) sampai disk penuh
+ * (kejadian 2026-10-17: 31 GB di satu container).
+ * Sisanya berkas besar yang bisa diunduh ulang (node_modules, cache npm,
+ * binary cloudflared, arsip deploy lama).
+ */
+const DEFAULT_EXCLUDES = [
+  'data/auto-backups',
+  'data/vercel-backup-exports',
+  'node_modules',
+  '.npm',
+  '.git',
+  'tmp',
+  'bot-deploy.tar.gz',
+  'cloudflared',
+]
+
 function config() {
   const value = global.autoBackup || {}
   return {
@@ -25,12 +46,21 @@ function config() {
     hour: Math.max(0, Math.min(23, Number(value.hour) || 0)),
     minute: Math.max(0, Math.min(59, Number(value.minute) || 0)),
     checkIntervalMs: Math.max(60_000, Number(value.checkIntervalMs) || 60_000),
-    retryDelayMs: Math.max(300_000, Number(value.retryDelayMs) || 900_000),
+    // Percobaan ulang setiap 15 menit terlalu rapat: satu percobaan bisa
+    // menulis ratusan MB. Enam jam cukup agar tidak menghabiskan disk.
+    retryDelayMs: Math.max(300_000, Number(value.retryDelayMs) || 6 * 60 * 60 * 1000),
     partTargetBytes: Math.max(5 * 1024 * 1024, Number(value.partTargetBytes) || 30 * 1024 * 1024),
     maxPartBytes: Math.max(10 * 1024 * 1024, Number(value.maxPartBytes) || 45 * 1024 * 1024),
+    // Batas keras jumlah bagian: > 60 bagian berarti ada folder raksasa yang
+    // lolos dari daftar exclude — lebih baik gagal jelas daripada menghabiskan disk.
+    maxParts: Math.max(1, Number(value.maxParts) || 60),
+    // Jumlah generasi backup yang disimpan di disk (selain batas umur).
+    keepGenerations: Math.max(1, Number(value.keepGenerations) || 2),
     retentionDays: Math.max(1, Number(value.retentionDays) || 3),
+    // Jangan mulai backup kalau ruang disk tinggal sedikit.
+    minFreeBytes: Math.max(0, Number(value.minFreeBytes) || 3 * 1024 * 1024 * 1024),
     outputDirectory: path.resolve(ROOT, value.outputDirectory || 'data/auto-backups'),
-    exclude: new Set((value.exclude || []).map(normalize).filter(Boolean)),
+    exclude: new Set([...DEFAULT_EXCLUDES, ...(value.exclude || [])].map(normalize).filter(Boolean)),
   }
 }
 
@@ -63,6 +93,8 @@ async function collectFiles(directory, cfg, base = ROOT, output = []) {
   const entries = await fsp.readdir(directory, { withFileTypes: true })
   for (const entry of entries) {
     const absolute = path.join(directory, entry.name)
+    // Jangan pernah membungkus folder output backup ke dalam backup itu sendiri.
+    if (absolute === cfg.outputDirectory || absolute.startsWith(cfg.outputDirectory + path.sep)) continue
     const relative = normalize(path.relative(base, absolute))
     if (excluded(relative, cfg)) continue
     if (entry.isSymbolicLink()) continue
@@ -151,14 +183,48 @@ function ownerJids() {
     .map(value => `${value}@s.whatsapp.net`))]
 }
 
+function generationOf(name) {
+  const match = /^(usanagi-full-backup-\d{8}-\d{4})-part-/.exec(name)
+  return match ? match[1] : null
+}
+
 async function pruneBackups(cfg) {
   await fsp.mkdir(cfg.outputDirectory, { recursive: true })
   const deadline = Date.now() - cfg.retentionDays * 86_400_000
+  const generations = new Map()
   for (const entry of await fsp.readdir(cfg.outputDirectory, { withFileTypes: true })) {
     if (!entry.isFile() || !entry.name.startsWith('usanagi-full-backup-')) continue
     const file = path.join(cfg.outputDirectory, entry.name)
-    const stat = await fsp.stat(file)
-    if (stat.mtimeMs < deadline) await fsp.unlink(file).catch(() => {})
+    const stat = await fsp.stat(file).catch(() => null)
+    if (!stat) continue
+    const generation = generationOf(entry.name)
+    if (!generation) {
+      // Nama tidak mengikuti pola bagian resmi → sisa percobaan lama.
+      await fsp.unlink(file).catch(() => {})
+      continue
+    }
+    const list = generations.get(generation) || []
+    list.push({ file, stat })
+    generations.set(generation, list)
+  }
+  const ordered = [...generations.entries()].sort((a, b) => b[0].localeCompare(a[0]))
+  for (let index = 0; index < ordered.length; index += 1) {
+    const files = ordered[index][1]
+    const expired = files.every(item => item.stat.mtimeMs < deadline)
+    // Bagian 0 byte = percobaan yang gagal di tengah jalan (mis. disk penuh).
+    const broken = files.some(item => item.stat.size === 0)
+    const surplus = index >= cfg.keepGenerations
+    if (!expired && !broken && !surplus) continue
+    for (const item of files) await fsp.unlink(item.file).catch(() => {})
+  }
+}
+
+async function freeDiskBytes(directory) {
+  try {
+    const stat = await fsp.statfs(directory)
+    return Number(stat.bavail) * Number(stat.bsize)
+  } catch {
+    return null
   }
 }
 
@@ -211,11 +277,19 @@ export async function runFullBackup({ conn = state.conn || global.conn, force = 
 
   state.running = true
   const startedAt = new Date().toISOString()
+  const created = []
   try {
     await pruneBackups(cfg)
+    const free = await freeDiskBytes(cfg.outputDirectory)
+    if (free !== null && free < cfg.minFreeBytes) {
+      throw new Error(`Ruang disk tidak cukup untuk backup (${(free / 1024 / 1024 / 1024).toFixed(2)} GB tersisa).`)
+    }
     const files = await collectFiles(ROOT, cfg)
     if (!files.length) throw new Error('Tidak ada file yang dapat dibackup')
     const groups = partitionFiles(files, cfg.partTargetBytes)
+    if (groups.length > cfg.maxParts) {
+      throw new Error(`Backup butuh ${groups.length} bagian (batas ${cfg.maxParts}). Periksa folder besar yang belum di-exclude.`)
+    }
     const archives = []
     const baseName = `usanagi-full-backup-${local.stamp}`
 
@@ -234,7 +308,9 @@ export async function runFullBackup({ conn = state.conn || global.conn, force = 
         files: group.map(file => ({ path: file.relative, size: file.size, modifiedAt: file.mtime })),
       }
       await createZip(zip, group, manifest)
-      archives.push(...await splitOversizeZip(zip, cfg.maxPartBytes))
+      const parts = await splitOversizeZip(zip, cfg.maxPartBytes)
+      archives.push(...parts)
+      created.push(...parts)
     }
 
     const records = []
@@ -267,6 +343,9 @@ export async function runFullBackup({ conn = state.conn || global.conn, force = 
     console.log(`[AUTO-BACKUP] ${files.length} file, ${records.length} bagian berhasil dikirim ke ${owners.length} Owner.`)
     return result
   } catch (error) {
+    // Percobaan gagal tidak boleh meninggalkan pecahan ZIP: dulu sisa ini
+    // menumpuk tiap 15 menit dan menghabiskan disk.
+    for (const file of created) await fsp.unlink(file).catch(() => {})
     state.nextRetryAt = Date.now() + cfg.retryDelayMs
     console.error('[AUTO-BACKUP]', error)
     throw error
