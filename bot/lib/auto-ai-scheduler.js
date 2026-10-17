@@ -45,6 +45,7 @@ export function listScheduled(scope = '') {
       id: job.id,
       scope: job.scope,
       chat: job.chat,
+      sender: job.sender,
       command: job.command,
       args: job.args,
       plugin: job.pluginName,

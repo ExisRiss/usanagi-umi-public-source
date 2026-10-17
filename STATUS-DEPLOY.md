@@ -1290,7 +1290,9 @@ dimainkan di WhatsApp lewat rich HTML seperti trading offline.
   - plugin diambil ulang dari `global.plugins`, metadata grup + status admin pengguna/bot
     dihitung ULANG saat waktu tiba (tidak ada pembekuan izin);
   - pesan dikirim tanpa kutipan karena key lama bisa kedaluwarsa;
-  - batas praktis: 200 tugas menunggu, 7 hari per tugas.
+  - batas praktis: 200 tugas menunggu, 7 hari per tugas;
+  - command `.jadwal` (plugin `plugins/tools/umi-jadwal.js`) menampilkan antrean + sisa waktu,
+    `.jadwal batal` membatalkan semua jadwal milik pengirim di chat itu (owner: semua orang).
 - `handler.js` — satu langkah tanpa jeda tetap dijalankan dispatcher asli (perilaku lama),
   langkah lain masuk penjadwal, dan pengguna menerima pesan konfirmasi
   `⏱️ JADWAL AUTO-AI` berisi perintah + "dalam X detik/menit".
@@ -1324,8 +1326,10 @@ dimainkan di WhatsApp lewat rich HTML seperti trading offline.
   `/lib/auto-ai-scheduler.js` 8.496 B `4412caab…`, `/lib/database.js` 3.486 B `b005a0ff…`,
   `/handler.js` 50.276 B `73b14b08…`, `/plugins/game/game-ular-tangga-wa.js` 2.826 B
   `ceaa721d…`, `/plugins/game/ular-tangga-wa-html.js` 16.945 B `fc6afe6a…`.
-- Restart `204` → `Successfully Loaded 2051 Plugins` (bertambah 2 berkas ular), 0 error,
-  WEBGAME 7 meja.
+- Restart `204` → `Successfully Loaded 2052 Plugins` (2 berkas ular + `.jadwal`), 0 error,
+  WEBGAME 7 meja. Sempat muncul `Failed to load plugin umi-jadwal.js: Cannot find module
+  '/home/lib/auto-ai-scheduler.js'` karena plugin taruh di `/plugins` (datar); dipindah ke
+  `/plugins/tools/` supaya `../../lib` benar, lalu boot bersih.
 - Uji perencanaan dengan Groq asli:
   - "tutup grup terus buka 5 detik kemudian" → `umi-group-close` delay 0 + `umi-group-open`
     delay 5000 (command nyata dari katalog);

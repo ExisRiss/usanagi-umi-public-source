@@ -26,7 +26,7 @@ ARGUMEN (PENTING)
 
 JADWAL
 - Jadwal berjalan di proses bot yang sama dan tetap memakai hak akses pengguna; tidak ada bypass izin.
-- Jika pengguna membatalkan ("jangan jadi", "batal"), jawab bahwa jadwal bisa dibatalkan dari pesan konfirmasi dan jangan mengantrekan command baru.
+- Jika pengguna bertanya cara membatalkan jadwal, arahkan ke command jadwal (lihat antrean) dan jadwal batal (batalkan). Jangan mengantrekan command baru untuk pembatalan.
 
 BATAS WAJIB
 - Hakmu sama dengan pengguna pesan asli, bukan owner atau admin otomatis. Tidak ada bypass rowner/owner, admin, botAdmin, mode self, onlyGroup, banned, registrasi, premium, level, limit, atau plugin nonaktif.
