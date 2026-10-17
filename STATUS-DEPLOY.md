@@ -1275,7 +1275,9 @@ Laporan: `.open` / `.buka` menjawab
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
 - Payment gateway (TriPay) belum dikonfigurasi (saat ini manual DANA)
 - ACC Top Up **sudah terbukti jalan** dari akun owner (2 permintaan Rp1.000.000 di-approve 20:29Z)
-- **Perlu 1x klik nyata dari akun owner**: tombol Auto Read & Bot Utama di halaman Bot Utama
+- ~~Perlu 1x klik nyata dari akun owner: tombol Auto Read~~ **Auto Read sudah OFF** untuk 13 sesi
+  (disetel lewat `POST /api/owner-console/autoread {enabled:false}`); tombol Bot Utama masih
+  perlu dicoba setelah bot utama dipasangkan ulang
 - Uji end-to-end WhatsApp: kirim `.daftar` dan `@verify` → akun trading otomatis muncul di
   papan peringkat (harness lokal sudah lolos, belum dari WA asli)
 - ~~Harness plugin `bot/plugins/game/trading-umi.js`~~ **selesai Task 19**: `.tradingoffline` (rich HTML)
