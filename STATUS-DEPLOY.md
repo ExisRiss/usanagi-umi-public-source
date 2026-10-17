@@ -609,6 +609,51 @@ sekarang saldo diatur dari halaman owner di website:
 - sha256 server ↔ repo **SAMA** setelah verifikasi ulang: `game.js 4fe54429df78…`,
   `trading.html 05973706b51f…` (versi halaman owner).
 
+## Task 23 — Ganti semua aset game jadi foto realistis (2026-10-17 16.35 WITA)
+
+**Permintaan owner:** "Buat lagi assets game di website ganti semua assets foto logo dll jelek
+banget aku mau kayak asli dan ada papan ada orang. Kecuali trading soal nya udah bagus."
+
+**Aset baru di `db-mirror/assets/` (semua foto realistis, ada papan & orang):**
+
+| Berkas | Isi | Ukuran |
+|---|---|---|
+| `hero-meja.jpg` | 4 orang tertawa main board game di meja kayu (banner lobi) | 214.442 B |
+| `kartu-uno.jpg` | kipas kartu warna di meja felt hijau + tangan pemain | 69.039 B |
+| `papan-catur.jpg` | papan catur kayu, pion ukir, dua tangan pemain | 63.892 B |
+| `papan-monopoli.jpg` | papan properti + rumah mini + uang mainan + tangan | 104.613 B |
+| `papan-ular-tangga.jpg` | papan ular tangga warna + pion + tangan anak | 103.126 B |
+| `werewolf.jpg` | 5 orang main kartu rahasia di ruangan remang lilin | 81.333 B |
+| `logo-umi-games.png` | emblem 3D emas huruf **U** + dadu (256px) | 70.306 B |
+| `game-icon-32/192/512.png` | ikon aplikasi dari emblem yang sama | 1,9 KB / 40,6 KB / 288,9 KB |
+| `apple-touch-games.png` | ikon iOS 180px | 35.856 B |
+| `og-umi-games.jpg` | kartu pratinjau tautan 1200×630 (foto meja + judul) | 127.961 B |
+| `manifest-games.webmanifest` | PWA khusus game (`start_url: /`) | 797 B |
+
+**Perubahan `db-mirror/game.html`:**
+- `head`: favicon/ikon pakai `game-icon-32/192`, `apple-touch-games.png`,
+  manifest `manifest-games.webmanifest`, `og:image` → `og-umi-games.jpg` (1200×630).
+- Logo brand header: SVG lama → `logo-umi-games.png` (emblem emas).
+- Foto suasana baru di lobi: `<figure class="hero-banner">` + caption
+  "Meja sungguhan, teman sungguhan." (tinggi 320px, gradient gelap di bawah).
+- Banner foto per room: `<figure class="room-banner" id="rmBanner">` — otomatis terisi
+  gambar game yang dimainkan (`rmBannerImg.src = info.img`).
+- 6 kartu game: `img` diganti ke `.jpg` baru; tinggi thumbnail 120px → 148px.
+- Responsif: banner jadi 210px (lobi) / 150px (room) di layar < 720px.
+
+**Yang TIDAK diubah:** seluruh halaman & aset **trading** (icon.svg, coin.svg, trophy.svg,
+apple-touch-icon.png, og-umi-trade.png, manifest trading) — sesuai permintaan owner.
+
+**Deploy & hasil uji:**
+- Backup halaman lama: `/backup/task23-game.html` (55.434 B).
+- Upload 13 aset + `game.html` lewat `tools/ptero.mjs` — semua `OK`. Tidak perlu restart
+  (berkas statis dibaca dari disk tiap request).
+- Cek publik: 13 URL `/assets/...` → **200** dengan MIME benar (`image/jpeg`, `image/png`,
+  `application/manifest+json`); halaman `/` → **200, 57.692 B**, memuat `hero-meja.jpg`,
+  `og-umi-games.jpg`, dan `manifest-games`.
+- Pratinjau offline semua aset: `/home/user/preview-umi-games.html` (gambar ditanam base64).
+- Sumber resolusi penuh hasil generate: `/home/user/asset-src/` (PNG 1408×768 & 1024×1024).
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix

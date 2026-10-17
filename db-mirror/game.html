@@ -8,18 +8,19 @@
 <meta name="theme-color" content="#070d18">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="UMI GAMES">
-<link rel="icon" href="/assets/logo-umi-games.svg" type="image/svg+xml">
-<link rel="icon" href="/favicon.ico" sizes="any">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/assets/game-icon-32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="/assets/game-icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" href="/assets/apple-touch-games.png">
+<link rel="manifest" href="/assets/manifest-games.webmanifest">
 <meta property="og:type" content="website">
 <meta property="og:title" content="UMI GAMES — Multiplayer WhatsApp">
 <meta property="og:description" content="6 meja: UNO, UNO Flip, Catur, Ular Tangga, Monopoli, Werewolf. Room dibuat dari WhatsApp, kursi bisa diisi bot AI.">
-<meta property="og:image" content="/og.png">
+<meta property="og:image" content="/assets/og-umi-games.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Empat teman main board game di meja kayu — UMI Games">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="/og.png">
+<meta name="twitter:image" content="/assets/og-umi-games.jpg">
 <style>
   :root{
     color-scheme:dark;
@@ -93,6 +94,16 @@
     border:1px solid rgba(255,209,102,.30);background:rgba(255,209,102,.08);
   }
   .hero{padding:44px 0 8px}
+  /* ---------- foto suasana (meja + orang) ---------- */
+  .hero-banner{position:relative;margin:20px 0 6px;border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--line);background:var(--bg);box-shadow:0 24px 60px rgba(5,3,12,.5)}
+  .hero-banner img{display:block;width:100%;height:320px;object-fit:cover;object-position:center 40%;transform:scale(1.01)}
+  .hero-banner::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(7,13,24,.18) 0%,rgba(7,13,24,.05) 38%,rgba(7,13,24,.86) 100%)}
+  .hero-cap{position:absolute;z-index:2;left:24px;right:24px;bottom:20px}
+  .hero-cap b{display:block;font-size:22px;letter-spacing:-.02em;text-shadow:0 2px 18px rgba(0,0,0,.6)}
+  .hero-cap span{display:block;margin-top:4px;font-size:13.5px;color:#d7dced;text-shadow:0 1px 12px rgba(0,0,0,.7)}
+  .room-banner{position:relative;margin:14px 0 0;border-radius:var(--r-lg);overflow:hidden;border:1px solid var(--line);box-shadow:0 18px 44px rgba(5,3,12,.45)}
+  .room-banner img{display:block;width:100%;height:190px;object-fit:cover;object-position:center 42%}
+  .room-banner::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(7,13,24,.55) 0%,rgba(7,13,24,0) 45%,rgba(7,13,24,.55) 100%)}
 
   /* ---------- grid game ---------- */
   .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:26px 0 30px}
@@ -104,7 +115,7 @@
   .gcard::after{content:"";position:absolute;inset:0 0 auto;height:3px;background:var(--accent,var(--gold));opacity:.65}
   .gcard:hover{transform:translateY(-3px);border-color:var(--line-2);background:var(--surface-2)}
   .gcard.sel{border-color:var(--accent,var(--gold));background:var(--surface-2);box-shadow:0 0 0 1px var(--accent,var(--gold)),0 14px 34px rgba(10,6,20,.45)}
-  .gcard .gimg{width:100%;height:120px;overflow:hidden;border-radius:8px;margin-bottom:8px;background:var(--bg)}
+  .gcard .gimg{width:100%;height:148px;overflow:hidden;border-radius:8px;margin-bottom:8px;background:var(--bg)}
   .gcard .gimg img{width:100%;height:100%;object-fit:cover;opacity:.85;transition:opacity .2s}
   .gcard:hover .gimg img{opacity:1}
   .gcard b{display:block;font-size:16px;letter-spacing:-.01em}
@@ -271,6 +282,9 @@
   }
   @media(max-width:480px){
     .grid{grid-template-columns:1fr}
+    .hero-banner img{height:210px}
+    .room-banner img{height:150px}
+    .hero-cap b{font-size:18px}
     .unocard{width:56px;height:82px;font-size:13px}
     .top-in{padding:9px 13px}
     .brand small{display:none}
@@ -280,7 +294,7 @@
 </head>
 <body>
 <header class="top"><div class="top-in">
-  <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo-umi-games.svg" alt="UMI" style="width:36px;height:36px;border-radius:8px"></span><span><b>UMI GAMES</b><small>MULTIPLAYER · WHATSAPP</small></span></a>
+  <a class="brand" href="/"><span class="brand-mark"><img src="/assets/logo-umi-games.png" alt="UMI Games" style="width:36px;height:36px;border-radius:10px"></span><span><b>UMI GAMES</b><small>MULTIPLAYER · WHATSAPP</small></span></a>
   <div class="top-right">
     <span class="pill hidden" id="connPill"><span class="dot"></span><span id="connText">menyambung…</span></span>
     <a class="btn btn-sm btn-lime" href="/trading" title="Pasar saham $AS">📈 $AS TRADE</a>
@@ -296,6 +310,14 @@
       <h1>Main bareng teman.<br>Mejanya di web, verifikasinya di WhatsApp.</h1>
       <p class="sub">Buat room, bagikan tautannya, lalu duduk di meja. Pemain kurang? Isi kursi kosong dengan bot AI — bisa 1 lawan 1, bertiga, berempat, sampai 10 orang di UNO.</p>
     </div>
+
+    <figure class="hero-banner">
+      <img src="/assets/hero-meja.jpg" alt="Empat teman tertawa sambil main board game di meja kayu" width="1200" height="630" fetchpriority="high">
+      <figcaption class="hero-cap">
+        <b>Meja sungguhan, teman sungguhan.</b>
+        <span>Enam papan siap dimainkan — dari UNO sampai Werewolf, tinggal pilih mejanya.</span>
+      </figcaption>
+    </figure>
 
     <div class="grid" id="gameGrid"></div>
 
@@ -348,6 +370,9 @@
 
   <!-- ================= ROOM ================= -->
   <section id="roomView" class="hidden">
+    <figure class="room-banner" id="rmBanner" hidden>
+      <img id="rmBannerImg" src="/assets/hero-meja.jpg" alt="" width="1200" height="764">
+    </figure>
     <div class="room-head">
       <div class="em" id="rmEmoji">🎮</div>
       <div style="flex:1;min-width:220px">
@@ -397,12 +422,12 @@ const PREFIX = '/'
  * dan werewolf memakai akhiran `web` karena nama polosnya sudah dipakai game
  * WhatsApp yang lama — kalau salah, bot tidak akan menjawab sama sekali. */
 const GAME_INFO = {
-  uno:      { label:'UNO', emoji:'🃏', desc:'Kartu +2, skip, reverse, wild', min:2, max:10, cmd:'uno', accent:'#e5484d', img:'/assets/kartu-uno.svg' },
-  unoflip:  { label:'UNO Flip', emoji:'🔄', desc:'Dua sisi kartu, gelap & terang', min:2, max:10, cmd:'unoflip', accent:'#8e4ec6', img:'/assets/kartu-uno.svg' },
-  chess:    { label:'Catur', emoji:'♟️', desc:'Klasik, ada skakmat & rokade', min:2, max:2, cmd:'caturweb', accent:'#c4cfe8', img:'/assets/papan-catur.svg' },
-  snakes:   { label:'Ular Tangga', emoji:'🐍', desc:'Balapan ke kotak 100', min:2, max:6, cmd:'utweb', accent:'#3ddc9a', img:'/assets/papan-ular-tangga.svg' },
-  monopoly: { label:'Monopoli', emoji:'🏠', desc:'Versi ringkas 16 petak', min:2, max:4, cmd:'monopoli', accent:'#5b7cfa', img:'/assets/papan-monopoli.svg' },
-  werewolf: { label:'Werewolf', emoji:'🐺', desc:'Peran rahasia, voting siang hari', min:5, max:12, cmd:'wwweb', accent:'#9b6bff', img:'/assets/werewolf.svg' },
+  uno:      { label:'UNO', emoji:'🃏', desc:'Kartu +2, skip, reverse, wild', min:2, max:10, cmd:'uno', accent:'#e5484d', img:'/assets/kartu-uno.jpg' },
+  unoflip:  { label:'UNO Flip', emoji:'🔄', desc:'Dua sisi kartu, gelap & terang', min:2, max:10, cmd:'unoflip', accent:'#8e4ec6', img:'/assets/kartu-uno.jpg' },
+  chess:    { label:'Catur', emoji:'♟️', desc:'Klasik, ada skakmat & rokade', min:2, max:2, cmd:'caturweb', accent:'#c4cfe8', img:'/assets/papan-catur.jpg' },
+  snakes:   { label:'Ular Tangga', emoji:'🐍', desc:'Balapan ke kotak 100', min:2, max:6, cmd:'utweb', accent:'#3ddc9a', img:'/assets/papan-ular-tangga.jpg' },
+  monopoly: { label:'Monopoli', emoji:'🏠', desc:'Versi ringkas 16 petak', min:2, max:4, cmd:'monopoli', accent:'#5b7cfa', img:'/assets/papan-monopoli.jpg' },
+  werewolf: { label:'Werewolf', emoji:'🐺', desc:'Peran rahasia, voting siang hari', min:5, max:12, cmd:'wwweb', accent:'#9b6bff', img:'/assets/werewolf.jpg' },
 }
 const parts = location.pathname.split('/').filter(Boolean)
 const isRoom = parts.length === 2 && !!GAME_INFO[parts[0]]
@@ -552,6 +577,12 @@ if (isRoom) {
   $('roomView').classList.remove('hidden')
   const info = GAME_INFO[gameKey]
   $('rmEmoji').textContent = info.emoji
+  if (info.img) {
+    const rb = $('rmBannerImg')
+    rb.src = info.img
+    rb.alt = info.label + ' — ' + info.desc
+    $('rmBanner').hidden = false
+  }
   $('rmTitle').textContent = info.label
   $('rmSub').textContent = info.desc + ' · ' + info.min + (info.min === info.max ? ' pemain' : '–' + info.max + ' pemain')
   $('rmId').textContent = roomId
