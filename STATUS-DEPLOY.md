@@ -894,6 +894,88 @@ Berkas baru, tanpa bundler (modul ES asli, tetap vanilla Node + HTML):
   `/empire/engine.js` 200 43.540 B.
 
 
+## Task 28 — Property Empire masuk room: bot WhatsApp + multiplayer online (2026-10-17 18.13 WITA)
+
+Permintaan lanjutan: *"Buat agar ke hubung sama bot dan dapat di main kan multiplayer"*.
+Property Empire (engine 40 petak yang sebelumnya lokal di `/empire`) sekarang hidup di
+sistem room `game.js` yang sama dengan UNO/Catur/Ular Tangga/Werewolf.
+
+### 1. Lapisan room untuk engine Empire (`db-mirror/game.js`)
+- `GAMES.empire` → label **Property Empire**, emoji 🏙️, min 2 / max 6, `cmd: 'empire'`
+  → rute otomatis `GET /empire/<roomId>` (halaman room) tanpa mengganggu `/empire` (mode lokal).
+- `STARTERS.empire = empireStart` — satu kursi = satu pemain; kursi bot dapat gaya AI
+  `balanced/aggressive/conservative/beginner` bergilir. `maxTurns: 0` (main sampai selesai).
+- `ACTIONS.empire = empireAction` — aksi dari klien: `roll`, `jailpay`, `jailcard`, `buy`,
+  `decline`, `bid`, `pass`, `debtpay`, `debtbankrupt`, `trade`, `tradeResp`, `end`,
+  `build`, `sellhouse`, `mortgage`, `unmortgage`. Setiap aksi divalidasi per kursi
+  (bukan giliranmu, bukan lelangmu, saldo kurang, dsb) dan pesan errornya dikirim balik ke UI.
+- `currentTurnSeat` + `scheduleAI` punya cabang `empire`: `empireCurrentSeat()` tahu bahwa
+  giliran bisa pindah ke lawan saat **lelang**, **bayar utang**, atau **menunggu jawaban tukar** —
+  bukan hanya `state.turn`. Bot berjalan otomatis tiap 900 ms lewat `EMP.botStep()`.
+- `empireFinish()` menutup room (`status: finished`) + mengumumkan pemenang & kekayaan akhir.
+- `publicState` mengirim state tersanitasi: 40 petak (nama/tipe/grup/harga/sewa), holdings,
+  kas + posisi + status penjara tiap pemain, dadu, pending, lelang, trade, kartu terakhir,
+  bank rumah/hotel, dan 40 baris log terakhir.
+- Bot WhatsApp: `bot/plugins/game/game-webmultiplayer.js` dapat entri
+  `empire: { id: 'empire', label: 'Property Empire', emoji: '🎩' }` → `.empire`, `.empire join <id>`,
+  `.empire <id>` (verifikasi + kode masuk) dan `.webgame room <id>` sudah berlaku.
+
+### 2. Papan & UI multiplayer (`db-mirror/game.html`)
+- Papan **11×11 CSS grid**: ring luar 40 petak, 4 sudut, tengah 9×9 berisi merek + dadu +
+  gaya giliran + sisa bank. Pita warna per kelompok, strip pemilik, penanda `GADAI`,
+  titik rumah / segitiga hotel.
+- Pion: PNG transparan 90×180 yang sama dengan Ular Tangga, ukuran 36% petak, ikut posisi
+  pemain; di kotak MULAI pion ikut tampil (sebelumnya tersembunyi karena `pos === 0`).
+- Ruang baca nama di layar sempit: peta titik pemenggalan (`empName()` + soft hyphen) untuk
+  nama panjang, `hyphens:manual`, ukuran font `clamp()`; nama >9 huruf otomatis lebih kecil.
+- Klik petak → kartu info (harga, sewa dasar, biaya rumah, pemilik, petak ke berapa).
+- Panel **Kelola** (bangun/jual rumah, gadai/tebus) dan **Tukar** (pilih properti dua sisi +
+  uang) langsung memakai validasi engine, jadi tidak ada aksi ilegal yang lolos.
+- Kartu Kesempatan/Dana Komunitas tampil sebagai pengumuman dengan tombol tutup.
+- Layout room: `body.empire-room` membuat kolom room jadi satu (papan lebar sampai 880 px),
+  Meja/Chat pindah ke bawah; di HP papan full-bleed 378 px (petak ±34 px) + tap untuk detail.
+- Papan mode lokal `/empire` tetap utuh dan sekarang punya tombol **🌐 Online** ke lobi.
+
+### 3. Bukti uji
+- `node --test db-mirror/empire.test.mjs` → **20/20 lulus** (papan 40 petak, gaji START, beli,
+  tolak→lelang, sewa prop/kereta/utilitas, gadai tanpa sewa, pajak, 2 dek kartu, masuk penjara,
+  keluar penjara, dadu kembar, bangun merata, hotel, gadai/tebus, tukar, bangkrut, bot main
+  sampai selesai, simpan/muat, saldo tak minus).
+- Simulasi room lokal lewat HTTP: 4 pemain (1 manusia + 3 bot) → **51 giliran**, aksi
+  `roll/buy/end/bid/pass` semua diterima, log sewa & gaji berjalan, tanpa error.
+- Uji dua peramban (2 manusia + 2 bot) di lokal: 40 petak di layar A & B, 4 pion, 2 dadu,
+  beli properti, giliran berpindah ke B, chat B sampai ke A, klik petak memunculkan info,
+  papan HP 378×378, **0 page error**.
+- Uji UI satu manusia vs 3 bot sampai selesai: 66 giliran, 77 jendela modal ditangani,
+  menang + papan peringkat tampil, 0 error.
+- **Live** `https://game.gwenna.my.id` (setelah deploy + restart):
+  `/health` **v2.2.0** `games: [uno,unoflip,chess,snakes,monopoly,empire,werewolf]`,
+  `/empire` 200 31.046 B, `/empire/engine.js` 200 43.540 B, `/empire/ui.js` 200 65.614 B,
+  beranda memuat "Property Empire".
+  Uji dua peramban di domain produksi (room `empire/<id>`): 2 kursi manusia, mulai 4 pemain,
+  40 petak, 4 pion, 2 dadu, beli properti, giliran B, chat masuk, 0 error.
+- sha256 server = repo **5/5 SAMA**: game.js 122.851 B, game.html 116.712 B,
+  empire.js 43.540 B, empire-ui.js 65.614 B, empire.html 31.046 B.
+- Plugin bot terunggah dan diverifikasi langsung dari panel: `game-webmultiplayer.js` 8.357 B
+  memuat `empire: { id: 'empire'`. Container di-restart setelah unggahan.
+
+### 4. Berkas yang berubah
+- `db-mirror/game.js` — impor `empire.js`, GAMES/STARTERS/ACTIONS, `empireStart/empireAction/
+  empireBotStep/empireCurrentSeat/empireFinish`, cabang `publicState`, `EMPIRE_TILES`.
+- `db-mirror/game.html` — CSS papan Empire (±190 baris), `renderEmpire()`, `empName()`,
+  entri `GAME_INFO.empire`, kelas `body.empire-room`, regex tautan room + `empire`.
+- `db-mirror/empire.html` — tombol **🌐 Online** di topbar.
+- `bot/plugins/game/game-webmultiplayer.js` — perintah `.empire` + komentar "Tujuh meja".
+
+### 5. Catatan
+- `/empire` (tanpa id) tetap halaman **mode lokal** dengan UI premium lama; room online ada di
+  `/empire/<id>` dan dibuat dari lobi, dari bot (`.empire`), atau tombol Online.
+- Verifikasi WhatsApp untuk room Empire mengikuti aturan room lain: room dari bot wajib
+  verifikasi, room dari website mengikuti `UMI_GAME_OPEN_JOIN` (sekarang bebas masuk).
+- Belum ada batas waktu per giliran; kalau pemain hilang di tengah permainan, room menunggu
+  (bisa ditutup host / dibiarkan gugur oleh pembersihan room otomatis).
+
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix

@@ -1,8 +1,8 @@
 /* By AlzRiss - Usanagi Umi AI
  *
  * Umi Web Games — jembatan WhatsApp ke server game multiplayer web
- * (db-mirror/game.js, game.gwenna.my.id). Enam meja: UNO, UNO Flip, Catur,
- * Ular Tangga, Monopoli, Werewolf.
+ * (db-mirror/game.js, game.gwenna.my.id). Tujuh meja: UNO, UNO Flip, Catur,
+ * Ular Tangga, Monopoli, Property Empire, Werewolf.
  *
  * Alur pemain:
  *   1. `.uno`              → bot membuat meja, kirim tautan + id room
@@ -33,6 +33,7 @@ const GAMES = {
   caturweb: { id: 'chess', label: 'Catur Web', emoji: '♟️' },
   utweb: { id: 'snakes', label: 'Ular Tangga Web', emoji: '🎲' },
   monopoli: { id: 'monopoly', label: 'Monopoli Web', emoji: '🏙️' },
+  empire: { id: 'empire', label: 'Property Empire', emoji: '🎩' },
   wwweb: { id: 'werewolf', label: 'Werewolf Web', emoji: '🐺' },
 }
 const COMMANDS = Object.keys(GAMES)
@@ -101,11 +102,7 @@ async function createRoom(m, conn, cmd, cfg) {
   const data = await api(cfg, '/api/rooms', {
     method: 'POST',
     asBot: true,
-    body: {
-      game: game.id, name: cleanName(m), number,
-      /* alamat asal room: dipakai bot untuk kirim notifikasi (grup = tag, privat = DM) */
-      origin: { chat: m.chat, sender: m.sender, isGroup: !!m.isGroup, number },
-    },
+    body: { game: game.id, name: cleanName(m), number },
   })
   await conn.reply(m.chat, `${game.emoji} *Meja ${game.label} siap!*
 

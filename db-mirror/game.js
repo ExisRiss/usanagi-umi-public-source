@@ -28,6 +28,7 @@
  *   POST /api/rooms/:id/action {token,action}     -> aksi game / host / chat
  */
 import http from 'node:http'
+import * as EMP from './empire.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -75,6 +76,7 @@ const GAMES = {
     chess: { label: 'Catur', emoji: '♟️', min: 2, max: 2, cmd: 'caturweb' },
     snakes: { label: 'Ular Tangga', emoji: '🐍', min: 2, max: 6, cmd: 'utweb' },
     monopoly: { label: 'Monopoli', emoji: '🏠', min: 2, max: 4, cmd: 'monopoli' },
+    empire: { label: 'Property Empire', emoji: '🏙️', min: 2, max: 6, cmd: 'empire', webCmd: 'empire' },
     werewolf: { label: 'Werewolf', emoji: '🐺', min: 5, max: 12, cmd: 'wwweb' },
 }
 const BOT_NAMES = ['Umi-Bot', 'Kiko-Bot', 'Rin-Bot', 'Sora-Bot', 'Mika-Bot', 'Yui-Bot', 'Ren-Bot', 'Aiko-Bot', 'Tama-Bot', 'Neko-Bot', 'Piko-Bot']
@@ -723,15 +725,157 @@ function werewolfAction(room, idx, act) {
     return 'Aksi tidak dikenal.'
 }
 
+/* ============================== PROPERTY EMPIRE (multiplayer) ============================== */
+/* Mesin lengkap ada di empire.js (40 petak, dua dadu, lelang, gadai, tukar,
+ * kartu, penjara, bangkrut). Di sini hanya lapisan tipis supaya state-nya
+ * hidup di sistem room: satu kursi = satu pemain, bot AI mengisi kursi kosong. */
+const EMPIRE_TILES = EMP.BOARD.map(t => ({ i: t.i, name: t.name, type: t.type, group: t.group || null, price: t.price || 0, amount: t.amount || 0, rents: t.rents || null, houseCost: t.group ? EMP.GROUPS[t.group].houseCost : 0 }))
+const EMPIRE_STYLES = ['balanced', 'aggressive', 'conservative', 'beginner']
+
+function empireStart(room) {
+    const players = room.seats.map((s, i) => ({
+        name: s.name,
+        isBot: s.kind === 'ai',
+        personality: EMPIRE_STYLES[i % EMPIRE_STYLES.length],
+    }))
+    room.state = EMP.createGame({ players, rules: { maxTurns: 0 } })
+    room.state.waCommand = GAMES.empire.cmd
+    say(room, `🏙️ Property Empire dimulai — ${players.length} pemain, modal awal Rp${room.state.rules.startingCash}.`)
+    for (const p of room.state.players) if (p.isBot) say(room, `🤖 ${p.name} siap bermain (gaya ${p.personality}).`)
+}
+
+/* Kursi yang harus bertindak sekarang — termasuk saat lelang / bayar utang /
+ * menunggu jawaban tukar, yang bisa berbeda dari pemilik giliran. */
+function empireCurrentSeat(st) {
+    if (!st || st.phase === 'over') return -1
+    if (st.phase === 'auction') return EMP.auctionCurrent(st)
+    if (st.phase === 'buy' && st.pending) return st.pending.player
+    if (st.phase === 'debt' && st.pending) return st.pending.player
+    if (st.phase === 'trade' && st.trade) return st.trade.to
+    return st.turn
+}
+
+function empireFinish(room) {
+    const st = room.state
+    if (!st || st.phase !== 'over' || room.status === 'finished') return
+    room.status = 'finished'
+    const w = st.winner
+    if (w !== null && w !== undefined && st.players[w]) say(room, `🏆 ${st.players[w].name} menang Property Empire! Kekayaan Rp${EMP.netWorth(st, w).toLocaleString('id-ID')}.`)
+    else say(room, '🏁 Property Empire selesai tanpa pemenang.')
+}
+
+function empireBotStep(room) {
+    const st = room.state
+    if (!st || st.phase === 'over') { empireFinish(room); return }
+    const seat = empireCurrentSeat(st)
+    if (seat < 0 || !room.seats[seat] || room.seats[seat].kind !== 'ai') return
+    try { EMP.botStep(st) } catch (e) { console.log('[game] empire AI error:', e.message) }
+    empireFinish(room)
+}
+
+function empireAction(room, idx, act) {
+    const st = room.state
+    if (!st) return 'Game belum dimulai.'
+    if (st.phase === 'over') return 'Permainan sudah selesai.'
+    const me = st.players[idx]
+    if (!me) return 'Kursi tidak dikenal.'
+    const myTurn = st.turn === idx
+    const done = () => { empireFinish(room); return null }
+
+    if (act.type === 'roll') {
+        if (!myTurn) return 'Bukan giliranmu.'
+        if (st.phase !== 'roll') return 'Sekarang bukan waktunya melempar dadu.'
+        EMP.roll(st)
+        return done()
+    }
+    if (act.type === 'jailpay') {
+        if (!myTurn) return 'Bukan giliranmu.'
+        if (!EMP.payJailFine(st)) return 'Tidak bisa membayar denda sekarang.'
+        return done()
+    }
+    if (act.type === 'jailcard') {
+        if (!myTurn) return 'Bukan giliranmu.'
+        if (!EMP.useJailCard(st)) return 'Kamu tidak punya kartu bebas penjara.'
+        return done()
+    }
+    if (act.type === 'buy') {
+        if (!st.pending || st.pending.type !== 'buy' || st.pending.player !== idx) return 'Tidak ada penawaran beli untukmu.'
+        if (!EMP.buyProperty(st)) return 'Uangmu tidak cukup untuk membeli petak ini.'
+        return done()
+    }
+    if (act.type === 'decline') {
+        if (!st.pending || st.pending.type !== 'buy' || st.pending.player !== idx) return 'Tidak ada penawaran beli untukmu.'
+        EMP.declineProperty(st)
+        return done()
+    }
+    if (act.type === 'bid' || act.type === 'pass') {
+        if (st.phase !== 'auction' || !st.auction) return 'Tidak ada lelang berjalan.'
+        if (EMP.auctionCurrent(st) !== idx) return 'Bukan giliran tawarmu.'
+        if (act.type === 'bid') {
+            const amount = Math.floor(Number(act.amount))
+            if (!Number.isFinite(amount) || amount <= 0) return 'Tawaran tidak sah.'
+            if (amount > me.cash) return 'Tawaran melebihi uangmu.'
+            if (!EMP.auctionBid(st, idx, amount)) return 'Tawaran harus lebih tinggi dari penawaran sekarang.'
+        } else if (!EMP.auctionPass(st, idx)) return 'Tidak bisa lewat sekarang.'
+        return done()
+    }
+    if (act.type === 'debtpay') {
+        if (!st.pending || st.pending.type !== 'debt' || st.pending.player !== idx) return 'Tidak ada utang untukmu.'
+        if (!EMP.payDebt(st)) return 'Uangmu masih kurang — jual bangunan atau gadai dulu.'
+        return done()
+    }
+    if (act.type === 'debtbankrupt') {
+        if (!st.pending || st.pending.type !== 'debt' || st.pending.player !== idx) return 'Tidak ada utang untukmu.'
+        EMP.bankrupt(st, idx, st.pending.creditor)
+        return done()
+    }
+    if (act.type === 'trade') {
+        if (!myTurn) return 'Ajukan tukar hanya pada giliranmu.'
+        if (!['roll', 'end'].includes(st.phase)) return 'Selesaikan dulu aksi yang sedang berjalan.'
+        const out = EMP.proposeTrade(st, {
+            from: idx, to: Number(act.to),
+            giveTiles: Array.isArray(act.giveTiles) ? act.giveTiles : [],
+            wantTiles: Array.isArray(act.wantTiles) ? act.wantTiles : [],
+            giveCash: Number(act.giveCash) || 0, wantCash: Number(act.wantCash) || 0,
+        })
+        if (!out.ok) return out.error || 'Tawaran tukar tidak sah.'
+        return done()
+    }
+    if (act.type === 'tradeResp') {
+        if (!st.trade || st.trade.to !== idx) return 'Tidak ada tawaran untukmu.'
+        EMP.respondTrade(st, !!act.accept)
+        return done()
+    }
+    if (act.type === 'end') {
+        if (!myTurn) return 'Bukan giliranmu.'
+        if (st.phase === 'debt') return 'Lunasi atau nyatakan bangkrut dulu.'
+        if (st.phase === 'buy' || st.phase === 'auction' || st.phase === 'trade') return 'Selesaikan aksi ini dulu.'
+        EMP.endTurn(st)
+        return done()
+    }
+    if (act.type === 'build' || act.type === 'sellhouse' || act.type === 'mortgage' || act.type === 'unmortgage') {
+        if (!myTurn) return 'Kelola properti hanya pada giliranmu.'
+        const tile = Number(act.tile)
+        if (!Number.isInteger(tile) || !st.holdings[tile]) return 'Petak tidak sah.'
+        const out = act.type === 'build' ? EMP.buildHouse(st, tile)
+            : act.type === 'sellhouse' ? EMP.sellHouse(st, tile)
+                : act.type === 'mortgage' ? EMP.mortgage(st, tile) : EMP.unmortgage(st, tile)
+        if (!out.ok) return out.error || 'Aksi tidak bisa dijalankan.'
+        return done()
+    }
+    return 'Aksi tidak dikenal.'
+}
+
 /* ============================== MESIN UMUM ============================== */
-const STARTERS = { uno: unoStart, unoflip: unoStart, chess: chessStart, snakes: snakesStart, monopoly: monopolyStart, werewolf: werewolfStart }
-const ACTIONS = { uno: unoAction, unoflip: unoAction, chess: chessAction, snakes: snakesAction, monopoly: monopolyAction, werewolf: werewolfAction }
+const STARTERS = { uno: unoStart, unoflip: unoStart, chess: chessStart, snakes: snakesStart, monopoly: monopolyStart, empire: empireStart, werewolf: werewolfStart }
+const ACTIONS = { uno: unoAction, unoflip: unoAction, chess: chessAction, snakes: snakesAction, monopoly: monopolyAction, empire: empireAction, werewolf: werewolfAction }
 
 function currentTurnSeat(room) {
     const st = room.state
     if (!st) return -1
     if (room.game === 'chess') return st.winner ? -1 : (st.turn === 'w' ? 0 : 1)
     if (room.game === 'monopoly') return st.pendingBuy !== -1 ? st.pendingBuy : st.turn
+    if (room.game === 'empire') return empireCurrentSeat(room.state)
     if (room.game === 'werewolf') return -1
     return st.turn
 }
@@ -746,6 +890,7 @@ function scheduleAI(room) {
             else if (room.game === 'chess') chessAI(room)
             else if (room.game === 'snakes') snakesAction(room, idx, { type: 'roll' })
             else if (room.game === 'monopoly') monopolyAI(room)
+            else if (room.game === 'empire') empireBotStep(room)
         } catch (e) { console.log('[game] AI error:', e.message) }
         broadcast(room)
         scheduleAI(room)
@@ -779,6 +924,20 @@ function publicState(room, viewerIdx) {
         base.state = { pos: st.pos, turn: st.turn, dice: st.dice, winner: st.winner, ladders: LADDERS, snakes: SNAKES }
     } else if (room.game === 'monopoly') {
         base.state = { pos: st.pos, cash: st.cash, owners: st.owners, tiles: MONO_TILES, turn: st.turn, dice: st.dice, pendingBuy: st.pendingBuy, jailed: st.jailed, solvent: st.solvent, winner: st.winner }
+    } else if (room.game === 'empire') {
+        base.state = {
+            phase: st.phase, turn: st.turn, turnCount: st.turnCount, winner: st.winner,
+            dice: st.dice, doublesCount: st.doublesCount, pending: st.pending, auction: st.auction,
+            auctionCurrent: EMP.auctionCurrent(st), trade: st.trade, lastCard: st.lastCard,
+            tiles: EMPIRE_TILES, holdings: st.holdings, bank: st.bank,
+            players: st.players.map(p => ({
+                id: p.id, name: p.name, isBot: p.isBot, personality: p.personality, color: p.color,
+                cash: p.cash, pos: p.pos, inJail: p.inJail, jailTurns: p.jailTurns,
+                getOutCards: p.getOutCards, bankrupt: p.bankrupt,
+            })),
+            wealth: st.players.map(p => EMP.netWorth(st, p.id)),
+            log: st.log.slice(-40),
+        }
     } else if (room.game === 'werewolf') {
         base.state = {
             phase: st.phase, day: st.day, alive: st.alive, winner: st.winner, lastNews: st.lastNews,
@@ -879,7 +1038,7 @@ export async function gameHandler(req, res) {
         const url = new URL(req.url || '/', 'http://localhost')
         const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
         try {
-            if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'umi-web-games', version: '2.1.1', rooms: rooms.size, games: Object.keys(GAMES), openJoinDefault: OPEN_JOIN_DEFAULT, trading: { accounts: Object.keys(tradingDB.accounts || {}).length, session: sessionInfo().label }, time: new Date().toISOString() })
+            if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'umi-web-games', version: '2.2.0', rooms: rooms.size, games: Object.keys(GAMES), openJoinDefault: OPEN_JOIN_DEFAULT, trading: { accounts: Object.keys(tradingDB.accounts || {}).length, session: sessionInfo().label }, time: new Date().toISOString() })
             /* Aset statis: logo, dadu, kartu, papan game */
             if (req.method === 'GET' && parts[0] === 'assets' && parts.length >= 2 && parts.slice(1).every(p => /^[a-z0-9._-]+$/i.test(p))) {
                 const file = path.join(HERE, 'assets', ...parts.slice(1))
