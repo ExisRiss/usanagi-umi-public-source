@@ -1586,6 +1586,42 @@ function accountForToken(token) {
 }
 function accountForNumber(number) { return ensureAccount(accountIdForNumber(number)) }
 
+/* Token website diverifikasi ke platform sebelum dipakai. Token sesi bot
+ * (hasil /api/trading/code-login) sudah tersimpan di tradingDB.sessions dan
+ * tidak perlu diverifikasi ulang. Tanpa ini, token ngawur malah membuat akun
+ * baru dengan saldo awal — persis keluhan "token tidak valid tapi tetap masuk". */
+const accountTokenCache = new Map()
+async function verifyAccountToken(token) {
+    const raw = String(token || '').trim()
+    if (!raw) return { ok: false, status: 401, error: 'Token diperlukan. Masuk dulu.' }
+    if (tradingDB.sessions[raw]) return { ok: true, session: true }
+    const key = crypto.createHash('sha1').update(raw).digest('hex')
+    const hit = accountTokenCache.get(key)
+    if (hit && Date.now() - hit.at < 60000) return hit.value
+    let value
+    try {
+        const res = await fetch(VERIFY_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: raw }),
+            signal: AbortSignal.timeout(15000),
+        })
+        const vd = await res.json().catch(() => ({}))
+        value = vd.ok
+            ? { ok: true, user: vd.user || {} }
+            : { ok: false, status: 401, error: vd.error || 'Token tidak dikenali. Buat token baru di halaman Profil.' }
+    } catch (error) {
+        return { ok: false, status: 502, error: 'Verifikasi token gagal: ' + (error && error.message ? error.message : error) }
+    }
+    if (value.ok) accountTokenCache.set(key, { at: Date.now(), value })
+    return value
+}
+async function tokenAccount(token) {
+    const check = await verifyAccountToken(token)
+    if (!check.ok) return { error: check }
+    return { account: accountForToken(token), user: check.user || null }
+}
+
 /* Cari akun dari id / nomor WA / username (tidak peka huruf besar-kecil). */
 function findTradingAccount(query) {
     const q = String(query || '').trim()
@@ -1828,7 +1864,9 @@ async function handleTradingAPI(req, res, url, parts) {
             if (!token) return sendJson(res, 401, { error: 'Masuk dulu dengan token website.' })
             const entry = tradingDB.loginCodes[code]
             if (!entry || entry.expiresAt < Date.now() || entry.kind !== 'link') return sendJson(res, 400, { error: 'Kode taut tidak valid atau kedaluwarsa.' })
-            const fromAccount = accountForToken(token)
+            const resolved = await tokenAccount(token)
+            if (resolved.error) return sendJson(res, resolved.error.status || 401, { error: resolved.error.error })
+            const fromAccount = resolved.account
             const merged = mergeAccounts(fromAccount.id, entry.accountId)
             delete tradingDB.loginCodes[code]
             saveTradingDB()
@@ -1840,7 +1878,9 @@ async function handleTradingAPI(req, res, url, parts) {
         if (req.method === 'GET' && parts[0] === 'me') {
             const token = url.searchParams.get('token')
             if (!token) return sendJson(res, 400, { error: 'Token diperlukan' })
-            const account = accountForToken(token); checkDailyBonus(account)
+            const resolved = await tokenAccount(token)
+            if (resolved.error) return sendJson(res, resolved.error.status || 401, { error: resolved.error.error })
+            const account = resolved.account; checkDailyBonus(account)
             const view = portfolioView(account)
             return sendJson(res, 200, {
                 ok: true, account: accountPublic(account), balance: round2(account.balance), portfolio: account.portfolio,
@@ -1864,7 +1904,11 @@ async function handleTradingAPI(req, res, url, parts) {
         /* ── Pasar ── */
         if (req.method === 'GET' && parts[0] === 'market') {
             const token = String(url.searchParams.get('token') || '')
-            const account = token ? accountForToken(token) : null
+            let account = null
+            if (token) {
+                const check = await verifyAccountToken(token)
+                if (check.ok) account = accountForToken(token)
+            }
             const view = account ? portfolioView(account) : { rows: [], equity: 0, unrealized: 0, netWorth: 0 }
             return sendJson(res, 200, { ok: true, symbols: mapQuotes(), time: Date.now(), tickMs: TICK_MS, holdings: view.rows, session: sessionInfo() })
         }
@@ -1922,7 +1966,9 @@ async function handleTradingAPI(req, res, url, parts) {
             if (!Number.isFinite(amount) || amount <= 0) return sendJson(res, 400, { error: 'Jumlah lot tidak valid.' })
             if (amount > 1000000) return sendJson(res, 400, { error: 'Jumlah terlalu besar.' })
             const price = round2(priceAt(sym, nowTick()))
-            const account = accountForToken(token)
+            const resolved = await tokenAccount(token)
+            if (resolved.error) return sendJson(res, resolved.error.status || 401, { error: resolved.error.error })
+            const account = resolved.account
             const total = round2(amount * price)
             if (side === 'buy') {
                 if (account.balance < total) {
@@ -1965,7 +2011,9 @@ async function handleTradingAPI(req, res, url, parts) {
             const body = await readBody(req)
             const { token, code } = body
             if (!token || !code) return sendJson(res, 400, { error: 'Token dan kode diperlukan' })
-            const account = accountForToken(token); const key = String(code).toUpperCase().trim()
+            const resolved = await tokenAccount(token)
+            if (resolved.error) return sendJson(res, resolved.error.status || 401, { error: resolved.error.error })
+            const account = resolved.account; const key = String(code).toUpperCase().trim()
             const rc = REDEEM_CODES[key]
             if (!rc) return sendJson(res, 400, { error: 'Kode tidak valid.' })
             if (rc.used >= rc.maxUses) return sendJson(res, 400, { error: 'Kode sudah habis.' })

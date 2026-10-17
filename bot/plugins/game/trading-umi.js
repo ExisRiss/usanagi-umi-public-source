@@ -128,6 +128,30 @@ const money = (n) => Number(n || 0).toLocaleString('id-ID', { minimumFractionDig
 const signed = (n) => `${Number(n) >= 0 ? '+' : '-'}$${'AS'} ${money(Math.abs(Number(n) || 0))}`
 const numOr = (value, fallback = 0) => (Number.isFinite(Number(value)) ? Number(value) : fallback)
 
+/* Panduan login token — dipakai saat token belum ada / tidak valid. */
+function tokenTutorial(prefix = '.', reason = '') {
+  const head = reason
+    ? `⚠️ *${reason}*`
+    : '🔑 *LOGIN PAKAI TOKEN AKUN*'
+  return [
+    head,
+    '',
+    'Token akun diambil dari website Umi:',
+    '1. Buka https://jadibot-alzriss.gwenna.my.id/#profile',
+    '2. Masuk pakai akun kamu (email/Google).',
+    '3. Cari bagian *Token Akun* → salin tokennya.',
+    `4. Kirim ke bot: ${prefix}trading login <token>`,
+    '',
+    `Contoh: ${prefix}trading login 8f2c1d9a...`,
+    '',
+    '🌐 Main lewat browser: https://game.gwenna.my.id/trading',
+    'Tempel token yang sama di tab *Token Website* di sana.',
+    '',
+    'Belum punya token? Buat baru di halaman Profil — token lama otomatis tidak berlaku.',
+    'Token cuma disimpan di server bot, tidak ditampilkan di chat.',
+  ].join('\n')
+}
+
 /* ── sesi bot untuk akun WA: kode sekali pakai ditukar jadi token sesi ── */
 const sessionCache = new Map()
 async function waSession(number, force) {
@@ -231,6 +255,35 @@ async function offlineHtml(config) {
   return null
 }
 
+/* Validasi token ke server game, lalu simpan tautan untuk nomor ini. */
+async function loginWithToken(m, config, number, token, prefix) {
+  try {
+    const login = await callGame(config, '/api/trading/login', { method: 'POST', body: { token } })
+    setLink(number, token)
+    sessionCache.delete(number)
+    return m.reply([
+      '✅ *Token terhubung!*',
+      `Akun: ${(login.user && login.user.username) || 'Trader'}${login.user && login.user.owner ? ' 👑 owner' : ''}`,
+      '',
+      accountCard({
+        username: (login.user && login.user.username) || 'Trader', number: '',
+        balance: login.balance, equity: login.equity, netWorth: login.netWorth,
+        unrealized: numOr(login.unrealized), realized: login.realized,
+        rank: null, total: null, positions: login.positions || [],
+      }, login.session, null, prefix),
+      '',
+      `Status akun ini otomatis tampil setiap kamu ketik ${prefix}trading.`,
+      `Lepas tautan: ${prefix}trading off`,
+    ].join('\n'))
+  } catch (error) {
+    const status = Number(error.status) || 0
+    const alasan = status === 401 || status === 403
+      ? `Token tidak valid atau sudah kedaluwarsa. ${error.message}`
+      : `Gagal memeriksa token: ${error.message}`
+    return m.reply(tokenTutorial(prefix, alasan))
+  }
+}
+
 /* ── handler ── */
 const handler = async (m, { conn, text, command, usedPrefix }) => {
   const cmd = String(command || '').toLowerCase()
@@ -319,23 +372,12 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
     return m.reply('🔓 Tautan token dilepas. Perintah trading sekarang pakai akun nomor WhatsApp kamu.')
   }
 
-  if (['trading', 'saham', 'trader', 'portofolio'].includes(cmd) && isToken(args[0]) && !['off', 'kaya', 'miskin', 'pasar'].includes(arg0)) {
-    const login = await callGame(config, '/api/trading/login', { method: 'POST', body: { token: args[0] } })
-    setLink(number, args[0])
-    sessionCache.delete(number)
-    return m.reply([
-      '✅ *Token terhubung!*',
-      `Akun: ${(login.user && login.user.username) || 'Trader'}${login.user && login.user.owner ? ' 👑 owner' : ''}`,
-      '',
-      accountCard({
-        username: (login.user && login.user.username) || 'Trader', number: '',
-        balance: login.balance, equity: login.equity, netWorth: login.netWorth,
-        unrealized: numOr(login.unrealized), realized: login.realized,
-        rank: null, total: null, positions: login.positions || [],
-      }, login.session, null, usedPrefix),
-      '',
-      'Status akun ini otomatis tampil setiap kamu ketik .trading.',
-    ].join('\n'))
+  if (['trading', 'saham', 'trader', 'portofolio', 'astrade', 'umitrade'].includes(cmd)) {
+    const sub = ['login', 'token', 'masuk'].includes(arg0)
+    const raw = String(sub ? (args[1] || '') : (args[0] || '')).trim()
+    const bukanToken = ['off', 'kaya', 'miskin', 'pasar', 'help', 'bantuan', ''].includes(arg0)
+    if (sub && !raw) return m.reply(tokenTutorial(usedPrefix))
+    if (raw && (!bukanToken || sub)) return loginWithToken(m, config, number, raw, usedPrefix)
   }
 
   /* ── beli / jual ── */
@@ -358,6 +400,8 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
         result.rank ? `Peringkat   : #${result.rank}` : '',
       ].filter(Boolean).join('\n'))
     } catch (error) {
+      const code = Number(error.status) || 0
+      if (code === 401 || code === 403) return m.reply(tokenTutorial(usedPrefix, `Sesi token tidak valid: ${error.message}`))
       const payload = error.payload || {}
       if (payload.code === 'INSUFFICIENT') return m.reply(`⚠️ Kas tidak cukup. Butuh $AS ${money(payload.need)} · kas kamu $AS ${money(payload.balance)} · maksimal ${money(payload.maxAmount)} lot.`)
       if (payload.code === 'NO_POSITION') return m.reply(`⚠️ Posisi ${symbol} tidak cukup (punya ${money(payload.holding)} lot).`)
@@ -377,6 +421,8 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
       const result = await callGame(config, '/api/trading/redeem', { method: 'POST', body: { token, code: args[0].toUpperCase() } })
       return m.reply(`🎉 Kode *${result.code}* ditukar! +$AS ${money(result.amount)}\nKas sekarang: $AS ${money(result.balance)}`)
     } catch (error) {
+      const code = Number(error.status) || 0
+      if (code === 401 || code === 403) return m.reply(tokenTutorial(usedPrefix, `Sesi token tidak valid: ${error.message}`))
       return m.reply(`❌ ${error.message}`)
     }
   }
@@ -392,8 +438,17 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
         unrealized: numOr(me.unrealized), realized: me.realized, rank: null, total: null, positions: me.positions || [],
       }, me.session, `via login token · ${usedPrefix}trading off untuk lepas`, usedPrefix))
     } catch (error) {
+      const code = Number(error.status) || 0
+      if (code !== 401 && code !== 403) {
+        return m.reply(`⚠️ Gagal memuat akun token: ${error.message}\nCoba lagi sebentar, atau ${usedPrefix}trading login <token>.`)
+      }
       setLink(number, '')
-      return m.reply(`⚠️ Token tersimpan sudah tidak valid (${error.message}). Menampilkan akun nomor WhatsApp kamu...\n\n${await statusWa(config, number, m, usedPrefix)}`)
+      return m.reply([
+        tokenTutorial(usedPrefix, `Token yang tersimpan sudah tidak berlaku (${error.message}). Tautan dilepas — buat token baru lalu login lagi.`),
+        '',
+        'Sementara itu akun nomor WhatsApp kamu tetap bisa dipakai:',
+        await statusWa(config, number, m, usedPrefix),
+      ].join('\n'))
     }
   }
   return m.reply(await statusWa(config, number, m, usedPrefix))
@@ -410,7 +465,8 @@ async function statusWa(config, number, m, prefix = '.') {
     try { const s = await callGame(config, '/api/trading/session'); return s } catch { return null }
   })()
   if (data.created) summary._new = true
-  return accountCard(summary, session, data.created ? '🎉 Akun trading baru dibuat — username = nomor WA kamu' : `Sesi bot · ${'-'}`, prefix)
+  const card = accountCard(summary, session, data.created ? '🎉 Akun trading baru dibuat — username = nomor WA kamu' : 'Sesi bot · akun nomor WhatsApp', prefix)
+  return `${card}\n\n🔑 Mau pakai akun website? ${prefix}trading login <token>\nTutorial: ${prefix}trading login (tanpa token)`
 }
 
 async function tradeToken(number, m) {
@@ -423,7 +479,7 @@ async function tradeToken(number, m) {
   return sessionFor(number, name)
 }
 
-handler.help = COMMANDS.map((c) => `${c} ${['belisaham', 'belias', 'jualsaham', 'jualas'].includes(c) ? '<saham> <lot>' : c === 'trading' ? '[token|off]' : c === 'redeem' ? '[kode]' : c === 'peringkat' ? 'kaya|miskin' : ''}`.trim())
+handler.help = COMMANDS.map((c) => `${c} ${['belisaham', 'belias', 'jualsaham', 'jualas'].includes(c) ? '<saham> <lot>' : c === 'trading' ? '[login <token>|off]' : c === 'redeem' ? '[kode]' : c === 'peringkat' ? 'kaya|miskin' : ''}`.trim())
 handler.tags = ['game', 'economy']
 handler.command = new RegExp(`^(${COMMANDS.join('|')})$`, 'i')
 handler.register = true
