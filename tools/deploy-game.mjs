@@ -92,16 +92,35 @@ async function main() {
     await move(`/${name}`, `/game/${name}`)
   }
 
-  // aset gambar/ikon/offline bundle -> /game/assets (dibuat sekali, lalu diisi)
+  // aset gambar/ikon/offline bundle -> /game/assets (rekursif, termasuk subfolder
+  // seperti pieces/chess, pieces/pawn, pieces/ikon, pieces/ww)
   const assetsDir = path.join(MIRROR, 'assets')
   if (fs.existsSync(assetsDir)) {
     await api('/files/create-folder', { method: 'POST', body: JSON.stringify({ root: '/game', name: 'assets' }) })
-    const names = fs.readdirSync(assetsDir).filter((n) => fs.statSync(path.join(assetsDir, n)).isFile()).sort()
-    for (const name of names) {
-      await signedUpload(path.join(assetsDir, name), '/', name)
-      await move(`/${name}`, `/game/assets/${name}`)
+    let count = 0
+    const files = []
+    const collect = (dir, rel) => {
+      for (const name of fs.readdirSync(dir).sort()) {
+        const full = path.join(dir, name)
+        const relPath = rel ? `${rel}/${name}` : name
+        if (fs.statSync(full).isDirectory()) collect(full, relPath)
+        else files.push({ full, relPath })
+      }
     }
-    log(`assets: ${names.length} berkas -> /game/assets`)
+    collect(assetsDir, '')
+    for (const { full, relPath } of files) {
+      const dirs = relPath.split('/').slice(0, -1)
+      let root = '/game'
+      for (const d of dirs) {
+        await api('/files/create-folder', { method: 'POST', body: JSON.stringify({ root, name: d }) })
+        root = `${root}/${d}`
+      }
+      const base = relPath.split('/').pop()
+      await signedUpload(full, '/', base)
+      await move(`/${base}`, `/game/assets/${relPath}`)
+      count++
+    }
+    log(`assets: ${count} berkas -> /game/assets (rekursif)`)
   } else log('db-mirror/assets tidak ada — lewati')
 
   if (!FILES_ONLY) {

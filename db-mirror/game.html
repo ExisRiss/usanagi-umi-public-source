@@ -224,10 +224,26 @@
   .unocard:hover{transform:translateY(-7px);box-shadow:0 12px 26px rgba(0,0,0,.4)}
   .unocard.no{opacity:.42;cursor:not-allowed}
   .unocard.no:hover{transform:none;box-shadow:none}
-  .c-red{background:#e5484d}.c-yellow{background:#f5b90d;color:#241b00;text-shadow:none}
-  .c-green{background:#30a46c}.c-blue{background:#3e63dd}.c-purple{background:#8e4ec6}
-  .c-pink{background:#e93d82}.c-orange{background:#f76b15}.c-teal{background:#12a594}
-  .c-wild{background:linear-gradient(135deg,#e5484d,#f5b90d,#30a46c,#3e63dd)}
+  .c-red{--cc:#d7263d}.c-yellow{--cc:#f5b90d}.c-green{--cc:#2e9e63}.c-blue{--cc:#2f5bd8}
+  .c-purple{--cc:#8e4ec6}.c-pink{--cc:#e93d82}.c-orange{--cc:#f76b15}.c-teal{--cc:#12a594}
+  .c-wild{--cc:#22242c}
+  /* Kartu UNO sungguhan: bingkai putih, badan warna, oval putih miring di tengah */
+  .unocard{position:relative;background:#fff;border:3px solid #fff;border-radius:12px;overflow:hidden;
+    width:66px;height:96px;padding:0;margin:4px;cursor:pointer;vertical-align:top;
+    transition:transform .12s ease,box-shadow .12s ease;box-shadow:0 4px 10px rgba(0,0,0,.35)}
+  .unocard::before{content:"";position:absolute;inset:0;background:var(--cc,#e5484d)}
+  .unocard::after{content:"";position:absolute;left:50%;top:50%;width:88%;height:54%;
+    transform:translate(-50%,-50%) rotate(-22deg);border-radius:50%;background:#fff;
+    box-shadow:inset 0 0 0 2px rgba(0,0,0,.06)}
+  .unocard.c-wild::before{background:conic-gradient(from 210deg,#d7263d 0 25%,#f5b90d 0 50%,#2e9e63 0 75%,#2f5bd8 0)}
+  .unocard .lab{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);z-index:2;display:block;
+    text-align:center;font-size:22px;font-weight:900;line-height:1;color:var(--cc,#e5484d);
+    letter-spacing:-.02em;text-shadow:0 1px 0 rgba(255,255,255,.6)}
+  .unocard .lab.sm{font-size:15px}
+  .unocard.c-wild .lab{color:#fff;text-shadow:0 2px 3px rgba(0,0,0,.55)}
+  .unocard small{position:absolute;left:0;right:0;bottom:3px;z-index:2;display:block;font-size:8.5px;font-weight:800;
+    letter-spacing:.04em;color:#fff;opacity:.85;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,.7)}
+  .unocard.c-wild::after{background:rgba(10,10,14,.62)}
   .topcard{transform:scale(1.12);transform-origin:left center;cursor:default;margin-left:6px}
   .topcard:hover{transform:scale(1.12);box-shadow:none}
   .colorpick{width:38px;height:38px;border-radius:50%;border:3px solid rgba(255,255,255,.35);cursor:pointer;padding:0;transition:transform .12s}
@@ -236,14 +252,17 @@
   .handwrap{display:flex;flex-wrap:wrap;margin:6px -4px}
 
   /* ---------- catur ---------- */
-  .board{display:grid;grid-template-columns:repeat(8,1fr);max-width:520px;margin:12px auto;border:2px solid var(--line-2);border-radius:12px;overflow:hidden}
-  .sq{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:clamp(20px,5.2vw,35px);cursor:pointer;user-select:none}
-  .sq.dk{background:rgba(129,140,248,.32)}.sq.lt{background:rgba(243,239,251,.86)}
+  .board{display:grid;grid-template-columns:repeat(8,1fr);grid-template-rows:repeat(8,1fr);aspect-ratio:1;
+    width:100%;max-width:520px;margin:12px auto;border:2px solid var(--line-2);border-radius:12px;overflow:hidden}
+  .sq{position:relative;min-width:0;min-height:0;overflow:hidden;display:flex;align-items:center;justify-content:center;cursor:pointer;user-select:none}
+  .sq.dk{background:url(/assets/pieces/kayu-gelap.jpg) center/cover}
+  .sq.lt{background:url(/assets/pieces/kayu-terang.jpg) center/cover}
   .sq.sel{outline:3px solid var(--lime);outline-offset:-3px}
-  .sq.hint{outline:3px solid rgba(110,231,183,.6);outline-offset:-6px}
-  .sq.last{background-color:rgba(251,191,36,.32)}
-  .pw{color:#fff;text-shadow:0 0 3px #000,0 2px 2px #000}
-  .pb{color:#141821;text-shadow:0 0 3px #fff}
+  .sq.hint{outline:3px solid rgba(110,231,183,.65);outline-offset:-6px}
+  .sq.last{box-shadow:inset 0 0 0 999px rgba(251,191,36,.34)}
+  .sq img.pc{position:absolute;inset:0;margin:auto;width:88%;height:88%;object-fit:contain;pointer-events:none;
+    filter:drop-shadow(0 3px 3px rgba(0,0,0,.45))}
+  .pw img.pc{filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))}
 
   /* ---------- ular tangga & monopoli ---------- */
   .snakeboard{display:grid;grid-template-columns:repeat(10,1fr);max-width:520px;margin:12px auto;gap:3px}
@@ -253,7 +272,19 @@
   }
   .cell.lad{background:rgba(110,231,183,.15);border-color:rgba(110,231,183,.30)}
   .cell.snk{background:rgba(251,113,133,.12);border-color:rgba(251,113,133,.25)}
-  .pawn{font-size:12px;line-height:1}
+  .pawn{display:inline-flex;gap:1px;flex-wrap:wrap;justify-content:center}
+  img.pwn{width:12px;height:16px;object-fit:contain;filter:drop-shadow(0 1px 2px rgba(0,0,0,.55))}
+  img.pwn.lg{width:18px;height:24px}
+  img.tic{width:20px;height:20px;object-fit:contain;vertical-align:-4px;margin-right:4px;
+    filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
+  button.btn img.dice-ic{width:20px;height:20px;object-fit:contain;vertical-align:-5px;margin-right:6px}
+  /* kartu peran Werewolf */
+  .rolecard{display:inline-block;width:168px;border-radius:14px;overflow:hidden;border:2px solid var(--gold);
+    box-shadow:0 10px 28px rgba(0,0,0,.45);margin:6px 10px 6px 0;vertical-align:top;background:#0d0b16}
+  .rolecard img{display:block;width:100%;height:210px;object-fit:cover}
+  .rolecard b{display:block;padding:7px 9px;font-size:12.5px;text-align:center;background:linear-gradient(180deg,rgba(255,209,102,.16),rgba(0,0,0,.35))}
+  .rolemini{display:inline-flex;align-items:center;gap:6px;margin:3px 8px 3px 0}
+  .rolemini img{width:30px;height:40px;object-fit:cover;border-radius:6px;border:1px solid var(--line-2)}
   .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
   .tile{padding:10px;border-radius:12px;background:var(--surface-2);border:1px solid var(--line);font-size:11.5px;min-height:76px;line-height:1.45}
   .tile.here{border-color:var(--gold);box-shadow:0 0 0 2px rgba(255,209,102,.20)}
@@ -443,7 +474,8 @@ let es = null
 const $ = (id) => document.getElementById(id)
 const esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 const COLOR_NAME = { red:'Merah', yellow:'Kuning', green:'Hijau', blue:'Biru', purple:'Ungu', pink:'Pink', orange:'Oranye', teal:'Toska', wild:'Wild' }
-const PIONS = ['🔴', '🔵', '🟢', '🟣', '🟠', '🟡', '🟤', '⚪', '⚫', '🟩', '🟨', '🟦']
+const PIONS = Array.from({ length: 12 }, (_, i) => '<img class="pwn" src="/assets/pieces/pawn/pawn-' + (i + 1) + '.png" alt="pion ' + (i + 1) + '">')
+  const PIONS_BIG = Array.from({ length: 12 }, (_, i) => '<img class="pwn lg" src="/assets/pieces/pawn/pawn-' + (i + 1) + '.png" alt="pion ' + (i + 1) + '">')
 
 function toast(msg, kind) {
   const box = $('toasts')
@@ -790,6 +822,11 @@ if (isRoom) {
     if (s.game === 'werewolf') return renderWerewolf(A, s)
   }
 
+  /* Label pendek di wajah kartu (biar mirip kartu UNO asli) */
+  const UNO_SHORT = { skip:'⊘', skipAll:'⊘⊘', rev:'⇄', flip:'⟲', '+2':'+2', '+4':'+4', '+5':'+5', wild:'WILD' }
+  const UNO_FULL = { skip:'Skip — lawan kehilangan giliran', skipAll:'Skip semua lawan', rev:'Reverse — arah putar balik',
+    flip:'Flip — ganti sisi terang/gelap', '+2':'Tambah 2 kartu', '+4':'Wild +4', '+5':'Tambah 5 kartu',
+    wild:'Wild — pilih warna' }
   function renderUno(A, s) {
     const st = s.state
     const over = st.winner !== null && st.winner !== undefined
@@ -802,7 +839,7 @@ if (isRoom) {
     if (over) html += '<div class="notice good">🏆 <b>' + esc(s.seats[st.winner] ? s.seats[st.winner].name : 'Pemain') + '</b> menang — kartunya habis!</div>'
     else html += '<p class="sub">Giliran <b>' + esc(s.seats[st.turn] ? s.seats[st.turn].name : '—') + '</b> · warna aktif <b>' + (COLOR_NAME[st.color] || st.color || '—') + '</b> · sisa deck ' + st.deckCount + '</p>'
     html += '<div class="topcard-wrap"><div><div class="tiny" style="margin-bottom:4px">Kartu atas</div>'
-      + (top ? '<span class="unocard topcard c-' + topC[0] + '">' + esc(topC[1]) + '<small>' + (COLOR_NAME[topC[0]] || '') + '</small></span>' : '<span class="tiny">—</span>')
+      + (top ? '<span class="unocard topcard c-' + topC[0] + '" title="' + esc(UNO_FULL[topC[1]] || topC[1]) + '"><b class="lab' + ((UNO_SHORT[topC[1]] || topC[1]).length > 2 ? ' sm' : '') + '">' + esc(UNO_SHORT[topC[1]] || topC[1]) + '</b><small>' + (COLOR_NAME[topC[0]] || '') + '</small></span>' : '<span class="tiny">—</span>')
       + '</div></div>'
     if (s.viewer >= 0) {
       html += '<h3>Kartumu (' + st.hand.length + ')</h3>'
@@ -817,7 +854,8 @@ if (isRoom) {
       }
       html += '<div class="handwrap">' + (st.hand.length ? st.hand.map((card, i) => {
         const cd = sideKey ? card.d : card.l
-        return '<button class="unocard c-' + cd[0] + (myTurn ? '' : ' no') + '" data-card="' + i + '" type="button">' + esc(cd[1]) + '<small>' + (COLOR_NAME[cd[0]] || '') + '</small></button>'
+        const lab = UNO_SHORT[cd[1]] || cd[1]
+        return '<button class="unocard c-' + cd[0] + (myTurn ? '' : ' no') + '" data-card="' + i + '" type="button" title="' + esc(UNO_FULL[cd[1]] || cd[1]) + '"><b class="lab' + (lab.length > 2 ? ' sm' : '') + '">' + esc(lab) + '</b><small>' + (COLOR_NAME[cd[0]] || '') + '</small></button>'
       }).join('') : '<span class="tiny">Kartumu habis.</span>') + '</div>'
       if (myTurn) html += '<div class="row" style="margin-top:14px"><button class="btn" id="drawBtn" type="button">🃏 Ambil kartu &amp; lewati</button></div>'
     } else html += '<p class="sub">Kamu penonton. Duduk di meja untuk ikut main.</p>'
@@ -833,7 +871,7 @@ if (isRoom) {
     const d = $('drawBtn'); if (d) d.onclick = () => act({ type:'draw' })
   }
 
-  const CH = { k:'♚', q:'♛', r:'♜', b:'♝', n:'♞', p:'♟' }
+  const CH = { k:'king', q:'queen', r:'rook', b:'bishop', n:'knight', p:'pawn' }  // berkas bidak PNG di /assets/pieces/chess
   function renderChess(A, s) {
     const st = s.state
     const myColor = s.viewer === 0 ? 'w' : s.viewer === 1 ? 'b' : null
@@ -853,7 +891,7 @@ if (isRoom) {
       const p = st.board[i]
       const last = st.lastMove && (st.lastMove[0] === i || st.lastMove[1] === i)
       html += '<div class="sq ' + ((x + y) % 2 ? 'dk' : 'lt') + (chessSel === i ? ' sel' : '') + (hints[i] ? ' hint' : '') + (last ? ' last' : '') + '" data-sq="' + i + '">'
-        + (p ? '<span class="' + (p.c === 'w' ? 'pw' : 'pb') + '">' + CH[p.t] + '</span>' : '') + '</div>'
+        + (p ? '<span class="' + (p.c === 'w' ? 'pw' : 'pb') + '"><img class="pc" src="/assets/pieces/chess/' + p.t + '-' + p.c + '.png" alt="' + (p.c === 'w' ? 'putih ' : 'hitam ') + CH[p.t] + '" draggable="false"></span>' : '') + '</div>'
     }
     html += '</div>'
     html += '<h3>Riwayat langkah</h3><div class="log" style="max-height:130px">'
@@ -883,12 +921,15 @@ if (isRoom) {
       const icon = st.ladders[cell] ? '🪜' : st.snakes[cell] ? '🐍' : ''
       html += '<div class="cell ' + cls + '"><span>' + cell + ' ' + icon + '</span><span class="pawn">' + pawns.map(i => PIONS[i] || '⚪').join('') + '</span></div>'
     }
-    html += '</div><p class="tiny">' + s.seats.map((seat, i) => PIONS[i] + ' ' + esc(seat.name) + ' = ' + st.pos[i]).join(' · ') + '</p>'
-    if (myTurn) html += '<button class="btn btn-pri" id="rollBtn" type="button">🎲 Lempar dadu</button>'
+    html += '</div><p class="tiny">' + s.seats.map((seat, i) => PIONS_BIG[i] + ' ' + esc(seat.name) + ' = ' + st.pos[i]).join(' · ') + '</p>'
+    if (myTurn) html += '<button class="btn btn-pri" id="rollBtn" type="button"><img class="dice-ic" src="/assets/pieces/dice/dice-5.png" alt="">Lempar dadu</button>'
     A.innerHTML = html
     const r = $('rollBtn'); if (r) r.onclick = () => act({ type:'roll' })
   }
 
+  /* Ikon petak monopoli (rumah = properti, kereta = start, ?=kesempatan, lampu = pajak) */
+  const TILE_ICON = { prop:'/assets/pieces/ikon/rumah.png', go:'/assets/pieces/ikon/kereta.png',
+    chance:'/assets/pieces/ikon/kesempatan.png', tax:'/assets/pieces/ikon/listrik.png' }
   function renderMonopoly(A, s) {
     const st = s.state
     const over = st.winner !== null && st.winner !== undefined
@@ -901,17 +942,18 @@ if (isRoom) {
     html += '<div class="tiles">' + st.tiles.map((tile, i) => {
       const here = st.pos.map((p, pi) => p === i && st.solvent[pi] ? pi : -1).filter(x => x >= 0)
       const owner = st.owners[i]
-      return '<div class="tile' + (here.length ? ' here' : '') + '"><b>' + (i + 1) + '. ' + esc(tile.name) + '</b><br>'
+      const tic = TILE_ICON[tile.type]
+      return '<div class="tile' + (here.length ? ' here' : '') + '"><b>' + (tic ? '<img class="tic" src="' + tic + '" alt="">' : '') + (i + 1) + '. ' + esc(tile.name) + '</b><br>'
         + (tile.type === 'prop'
           ? 'Rp' + tile.price + ' · sewa Rp' + tile.rent + (owner >= 0 ? '<br>👤 ' + esc(s.seats[owner] ? s.seats[owner].name : '') : '<br><i>belum ada pemilik</i>')
           : tile.type)
-        + (here.length ? '<br>' + here.map(pi => PIONS[pi]).join(' ') : '') + '</div>'
+        + (here.length ? '<br>' + here.map(pi => PIONS_BIG[pi]).join(' ') : '') + '</div>'
     }).join('') + '</div>'
     if (buying) {
       const tile = st.tiles[st.pos[s.viewer]]
       html += '<div class="notice warn">Kamu mendarat di <b>' + esc(tile.name) + '</b> (Rp' + tile.price + '). Beli?</div>'
         + '<div class="row" style="margin-top:12px"><button class="btn btn-lime" id="buyBtn" type="button">🏠 Beli</button><button class="btn" id="passBtn" type="button">Lewati</button></div>'
-    } else if (myTurn) html += '<button class="btn btn-pri" id="rollBtn" type="button">🎲 Lempar dadu</button>'
+    } else if (myTurn) html += '<button class="btn btn-pri" id="rollBtn" type="button"><img class="dice-ic" src="/assets/pieces/dice/dice-5.png" alt="">Lempar dadu</button>'
     A.innerHTML = html
     const r = $('rollBtn'); if (r) r.onclick = () => act({ type:'roll' })
     const b = $('buyBtn'); if (b) b.onclick = () => act({ type:'buy' })
@@ -919,12 +961,19 @@ if (isRoom) {
   }
 
   const ROLE_ID = { werewolf:'🐺 Werewolf', seer:'🔮 Peramal', doctor:'💉 Dokter', villager:'🧑‍🌾 Warga' }
+  const ROLE_IMG = { werewolf:'/assets/pieces/ww/werewolf.jpg', seer:'/assets/pieces/ww/seer.jpg',
+    doctor:'/assets/pieces/ww/dokter.jpg', villager:'/assets/pieces/ww/warga.jpg' }
+  function roleCard(role) {
+    return '<div class="rolecard"><img src="' + ROLE_IMG[role] + '" alt="kartu ' + esc(ROLE_ID[role] || role) + '">'
+      + '<b>' + esc(ROLE_ID[role] || role) + '</b></div>'
+  }
   function renderWerewolf(A, s) {
     const st = s.state
     let html = '<h2>🐺 Werewolf — hari ' + st.day + ' · ' + (st.phase === 'night' ? '🌙 malam' : '☀️ siang') + '</h2>'
     if (st.winner) html += '<div class="notice good">🏆 ' + (st.winner === 'werewolf' ? 'WEREWOLF menang!' : 'WARGA menang!') + '</div>'
-    if (st.myRole) html += '<div class="notice">Peran rahasiamu: <b>' + ROLE_ID[st.myRole] + '</b>' + (s.viewer >= 0 && st.alive[s.viewer] ? '' : ' — kamu sudah mati, hanya bisa menonton &amp; chat.') + '</div>'
+    if (st.myRole) html += '<div class="notice">Peran rahasiamu' + (s.viewer >= 0 && st.alive[s.viewer] ? '' : ' — kamu sudah mati, hanya bisa menonton &amp; chat.') + '</div>' + roleCard(st.myRole)
     if (st.peeked) html += '<div class="notice warn">🔮 Terawanganmu: <b>' + esc(s.seats[st.peeked.target] ? s.seats[st.peeked.target].name : '') + '</b> adalah <b>' + ROLE_ID[st.peeked.role] + '</b>.</div>'
+      + '<div style="margin:2px 0 8px">' + roleCard(st.peeked.role) + '</div>'
     html += '<p class="sub">' + esc(st.lastNews || '') + '</p>'
     const iAmAlive = s.viewer >= 0 && st.alive[s.viewer]
     const needNight = st.phase === 'night' && iAmAlive && ['werewolf','seer','doctor'].indexOf(st.myRole) >= 0 && !st.winner
@@ -939,7 +988,8 @@ if (isRoom) {
       }).join('') + '</div>'
     }
     if (st.phase === 'night' && iAmAlive && st.myRole === 'villager') html += '<p class="sub">😴 Kamu warga biasa — tidur nyenyak, tunggu pagi.</p>'
-    if (st.roles) html += '<h3>Peran semua pemain</h3><p class="tiny">' + s.seats.map((seat, i) => esc(seat.name) + ' = ' + ROLE_ID[st.roles[i]]).join('<br>') + '</p>'
+    if (st.roles) html += '<h3>Peran semua pemain</h3><div class="tiny">' + s.seats.map((seat, i) =>
+      '<span class="rolemini"><img src="' + ROLE_IMG[st.roles[i]] + '" alt="">' + esc(seat.name) + ' = ' + ROLE_ID[st.roles[i]] + '</span>').join('') + '</div>'
     A.innerHTML = html
     A.querySelectorAll('[data-target]').forEach(b => b.onclick = () => act({ type: st.phase === 'night' ? 'night' : 'vote', target:Number(b.dataset.target) }))
   }

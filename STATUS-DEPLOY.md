@@ -684,6 +684,53 @@ yang diunduh dari internet, lalu dipotong & dikompres untuk web.
   untuk ketujuh berkas (sempat terbaca versi lama karena edge cache, setelah diulang cocok).
 - Pratinjau offline baru: `/home/user/preview-umi-games.html` (1,09 MB, gambar base64).
 
+## Task 25 — Aset di dalam meja game: bidak catur, kartu UNO, pion, dadu, ikon, kartu Werewolf (2026-10-17 18.10 WITA)
+
+**Koreksi owner:** yang dimaksud "assets game" bukan foto suasana, tapi **isi mejanya** —
+pion, papan, bidak catur (raja/ratu/kuda/…), dan Werewolf. Foto suasana dari Task 24 tetap dipakai
+sebagai banner.
+
+**Aset baru di `db-mirror/assets/pieces/`:**
+
+| Folder | Isi | Asal |
+|---|---|---|
+| `chess/` | 12 PNG bidak **k, q, r, b, n, p** versi putih & hitam (160px) | set **cburnett** Wikimedia, CC BY-SA 3.0 |
+| `kayu-terang.jpg`, `kayu-gelap.jpg` | tekstur papan catur | render sendiri |
+| `pawn/` | `pawn-1..12.png` — pion 12 warna | render sendiri, diwarnai ulang |
+| `dice/dice-5.png` | dadu | render sendiri |
+| `ikon/` | rumah, kereta, kesempatan (?), listrik | render sendiri |
+| `ww/` | kartu peran Werewolf, Peramal, Dokter, Warga | Werewolf & Peramal render sendiri; Dokter = lukisan Gerard Dou (PD), Warga = Bruegel *The Peasant Dance* (PD) |
+
+**Perubahan `db-mirror/game.html`:**
+- **Catur**: papan sekarang tekstur kayu (petak gelap/terang) dan bidaknya PNG —
+  raja, ratu, benteng, uskup, kuda, pion, putih & hitam. CSS papan diperbaiki jadi
+  `grid-template-rows: repeat(8,1fr)` + `aspect-ratio:1` (sebelumnya petak baris 1 & 8 lebih tinggi
+  dan bidak bisa terpotong); bidak `position:absolute` supaya selalu pas di tengah petak.
+- **UNO**: kartu digambar seperti kartu asli — bingkai putih, badan warna, oval putih miring,
+  label besar (`7`, `+2`, `⊘` untuk skip, `⇄` reverse, `WILD`), nama warna kecil di bawah.
+  Kartu wild pakai 4 warna sudut + oval gelap.
+- **Pion**: emoji 🔴🔵🟢 diganti gambar pion 3D (12 warna) — dipakai di ular tangga & monopoli,
+  ukuran besar di ringkasan posisi.
+- **Dadu**: tombol "Lempar dadu" pakai gambar dadu.
+- **Monopoli**: tiap petak diberi ikon (rumah = properti, kereta = MULAI, ? = kesempatan,
+  lampu = pajak).
+- **Werewolf**: peran rahasia, hasil terawangan, dan daftar peran semua pemain kini memakai
+  **kartu bergambar** (`.rolecard`).
+
+**Perubahan `db-mirror/game.js`:**
+- Route aset sekarang menerima subfolder: `/assets/pieces/chess/k-w.png` (dulu hanya 1 tingkat).
+
+**Perubahan `tools/deploy-game.mjs`:**
+- Unggah `assets/` jadi **rekursif** — subfolder `pieces/...` otomatis dibuat & diisi.
+
+**Hasil uji (Playwright headless ke situs publik):**
+- `chess`: 64 petak, **32 bidak**, semuanya `naturalWidth > 0`, papan 520×520 petak 65×65 rata.
+- `uno`: 8 kartu dirender, `pwn/dice/tic/rolecard` muncul di masing-masing meja.
+- Uji langsung buat room tiap game → semua 200, tanpa error konsol.
+- Aset `pieces/*` di server → **200** dengan MIME benar (png/jpeg).
+- Backup sebelum deploy: `/backup/task25-game.js` (108.638 B), `/backup/task25-game.html` (57.692 B).
+- Pratinjau offline: `/home/user/preview-umi-assets.game.html` (2,06 MB, gambar base64).
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
