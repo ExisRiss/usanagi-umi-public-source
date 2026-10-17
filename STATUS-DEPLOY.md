@@ -1413,6 +1413,47 @@ Laporan: `.bratvid2` gagal dengan
   `Successfully Loaded 2052 Plugins`, 0 error.
 - Dependensi server dicek ada: `file-type`, `fluent-ffmpeg`, `node-webpmux`.
 
+## Task 38 — Auto-AI tetap pintar tapi ngobrolnya kayak manusia (2026-10-18 01.10 WITA)
+
+Permintaan: Auto-AI tetap bisa menjalankan perintah, tapi balasannya dibuat natural supaya
+terasa seperti manusia (bukan laporan sistem).
+
+### Yang diubah
+- `lib/auto-ai-prompt.js` ditulis ulang dengan bagian **GAYA BICARA**:
+  - ngobrol santai, balasan 1–2 baris, huruf kecil, emoji maksimal satu;
+  - dilarang membuka dengan "Tentu/Baik, saya akan/Berhasil" atau menutup "Semoga membantu";
+  - tidak menyebut AI, model, tool, katalog, antrean, plugin, endpoint;
+  - setelah menjalankan perintah, cukup bilang apa yang dilakukan ("udah tak tutup, 5 detik
+    lagi tak buka ya"), tanpa daftar perintah;
+  - aturan tool/argumen/izin tetap sama seperti sebelumnya.
+- `lib/auto-ai.js`:
+  - fungsi baru `humanizeReply()`: membuang awalan "Auto-AI:", "Berhasil masuk antrean
+    command …", mengubah `**tebal**` → `*tebal*` (format WhatsApp), menghapus heading dan
+    backtick, serta menukar kata mesin (command→perintah, antrean→rencana, plugin→fitur);
+  - semua jawaban AI dan pesan galat kini memakai kalimat manusia:
+    "aduh ai-ku lagi kena limit groq, coba lagi sebentar ya 😅", "sabar ya, yang tadi masih
+    kupikirkan dulu 🙏", "ini cuma buat admin grup ya".
+- `handler.js`:
+  - helper `sendAutoAIReply()`: kirim status **composing** (sedang menulis), jeda sesuai
+    panjang teks (320–2.600 ms), kirim balasan, lalu `paused` — hilang efek "balas instan";
+  - template `⏱️ JADWAL AUTO-AI` dihapus. Untuk rangkaian berjadwal, pengguna hanya menerima
+    kalimat natural dari AI (atau kalimat buatan `naturalScheduleNote()` kalau AI diam).
+
+### Verifikasi
+- Uji perencana dengan model tiruan: "tutup grup terus buka 5 detik kemudian" → langkah
+  `tutup` (0 ms) + `buka` (5.000 ms) dengan balasan "udah tak tutup, 5 detik lagi tak buka ya".
+- Uji dengan **Groq asli** (4 skenario):
+  - jadwal → `umi-group-close` 0 ms + `umi-group-open` 5.000 ms, balasan
+    "siap, udah tak tutup. 5 detik lagi tak buka balik ya." (1.088 ms);
+  - brat → `bratvid2` args `ayam` (807 ms, tanpa balasan template);
+  - sapaan → "halo juga, lagi nunggu pesan nih. ada yang mau dibantu?" (241 ms);
+  - saat kena limit → "aduh ai-ku lagi kena limit groq, coba lagi sebentar ya 😅"
+    (tidak lagi memakai awalan "Auto-AI:").
+- Deploy `/lib/auto-ai.js` 17.355 B `993f989b…`, `/lib/auto-ai-prompt.js` 4.416 B
+  `c25206b2…`, `/handler.js` 51.618 B `e0573f2a…` (ketiganya SAMA dengan repo).
+- Restart `204` → `Successfully Loaded 2052 Plugins`, 0 error di konsol.
+- `grep` memastikan tidak ada lagi teks "JADWAL AUTO-AI" di `handler.js`.
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix

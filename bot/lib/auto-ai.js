@@ -3,6 +3,26 @@ import { AUTO_AI_SYSTEM_PROMPT } from './auto-ai-prompt.js'
 
 const cooldowns = new Map(), locks = new Set(), seen = new Map()
 const DANGEROUS = /(?:^|[-_])(?:eval|exec|shell|bash|terminal|restartall|logout|delsession|clearsession|deleteall|resetdb|cleardb|addowner|delowner|setowner|setkey|setapikey|gettoken|apikey|credentials|secret|dumpsession|kickall|removeall|buy|pay|buypanel|orderpanel|buyvps|buydomain|topup|purchase|transfer|spam\w*|bomb|crash|rvo|viewonce|fakepay)(?:$|[-_])/i
+// Sapu bersih bahasa "mesin" supaya balasan Auto-AI terasa seperti orang chat:
+// tidak menyebut antrean/tool/katalog, memakai format WhatsApp (satu bintang),
+// dan membuang pembuka kaku khas model.
+export function humanizeReply(input) {
+  let text = String(input || '').trim()
+  if (!text) return ''
+  text = text.replace(/^(?:auto-?ai|umi|bot)\s*[:\-]\s*/i, '')
+  text = text.replace(/^(?:\*{0,2})(?:berhasil|sukses)(?:\*{0,2})[\s,:!-]+/i, '')
+  text = text.replace(/^(?:sudah\s+)?(?:masuk|tercatat|tersimpan)\s+(?:antrean|rencana|daftar)[^:\n]{0,40}:\s*/i, '')
+  text = text.replace(/\*\*([^*]+)\*\*/g, '*$1*')
+  text = text.replace(/^#{1,6}\s*/gm, '')
+  text = text.replace(/`([^`]+)`/g, '$1')
+  text = text.replace(/\b(?:command|cmd)\b/gi, 'perintah')
+  text = text.replace(/\b(?:antrean|queue)\b/gi, 'rencana')
+  text = text.replace(/\b(?:katalog|tool call|tool_calls)\b/gi, 'fitur')
+  text = text.replace(/\b(?:plugin)\b/gi, 'fitur')
+  text = text.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n')
+  return text.trim().slice(0, 1200)
+}
+
 const STOPWORDS = new Set('tolong tolonglah bot umi saya aku kamu ini itu yang untuk dong dan ke dari nya please the a an video'.split(' '))
 function jidId(value) { return String(value || '').replace(/:\d+(?=@)/, '').split('@')[0] }
 export function botIdentities(conn, bot = {}) {
@@ -113,16 +133,16 @@ export async function planAutoAI(context, options = {}) {
   const messageId = m.key?.id || m.id
   const seenKey = messageId && `${botConfig.scope || conn?.user?.id}:${m.chat}:${messageId}`
   if (seenKey && seen.has(seenKey)) return { kind:'skip' }
-  if (locks.has(key)) return { kind:'answer', answer:'Permintaan sebelumnya masih diproses. Tunggu sebentar.' }
+  if (locks.has(key)) return { kind:'answer', answer:'sabar ya, yang tadi masih kupikirkan dulu 🙏' }
   const cooldownMs = Number(global.umiAutoAI?.cooldownMs) || 5000
-  if (!options.ignoreCooldown && (cooldowns.get(key) || 0) > Date.now() - cooldownMs) return { kind:'answer', answer:'Tunggu beberapa detik sebelum mention/reply lagi.' }
+  if (!options.ignoreCooldown && (cooldowns.get(key) || 0) > Date.now() - cooldownMs) return { kind:'answer', answer:'eh pelan-pelan, baru juga aku jawab yang tadi 😅' }
   if (cooldowns.size > 5000) for (const [k,t] of cooldowns) if (t < Date.now()-600_000) cooldowns.delete(k)
   for (const [k,t] of seen) if (t < Date.now()-180_000) seen.delete(k)
   cooldowns.set(key,Date.now()); locks.add(key); if (seenKey) seen.set(seenKey,Date.now())
   try {
     if (context.chatData?.isBanned || context.userData?.banned) return { kind:'skip' }
-    if (context.chatData?.adminOnly && !context.isAdmin && !context.isOwner) return { kind:'answer',answer:'Fitur hanya untuk admin grup.' }
-    if (botConfig.registrationRequired !== false && !context.userData?.registered && !context.isOwner) return {kind:'answer',answer:`Daftar terlebih dahulu: ${activePrefix}daftar Nama,Umur`}
+    if (context.chatData?.adminOnly && !context.isAdmin && !context.isOwner) return { kind:'answer',answer:'ini cuma buat admin grup ya' }
+    if (botConfig.registrationRequired !== false && !context.userData?.registered && !context.isOwner) return {kind:'answer',answer:`kenalan dulu yuk, ketik ${activePrefix}daftar Nama,Umur`}
     if (!getGroqSettings().enabled) return { kind:'skip' }
     const catalog = buildCommandCatalog(context.plugins || global.plugins, context)
     const input = redactProviderSecrets(cleanInput(m,botIdentities(conn,context.bot)))
@@ -184,12 +204,18 @@ export async function planAutoAI(context, options = {}) {
         .sort((a,b) => a.delayMs - b.delayMs || a.order - b.order)
         .slice(0, 6)
         .map(({ dedupeKey, order, ...rest }) => rest)
-      const base = { originalText:m.text, botMentionIds:botIdentities(conn,context.bot), note: closingAnswer.slice(0,600) }
+      const base = { originalText:m.text, botMentionIds:botIdentities(conn,context.bot), note: humanizeReply(closingAnswer).slice(0,600) }
       if (normalized.length === 1 && normalized[0].delayMs === 0) return { kind:'command', ...normalized[0], ...base }
       return { kind:'steps', steps: normalized, ...base }
     }
-    return {kind:'answer',answer: closingAnswer.slice(0,3500) || 'Permintaan terlalu kompleks. Sebutkan satu fitur dan argumennya.'}
+    return {kind:'answer',answer: humanizeReply(closingAnswer) || 'hmm maksudnya gimana? coba jelasin dikit lagi'}
   } catch(error) {
-    return {kind:'answer',answer:`Auto-AI: ${String(error?.message||'Tidak dapat merespons.').slice(0,220)}`}
+    const detail = String(error?.message || '')
+    const pesan = /batas|limit|429/i.test(detail)
+      ? 'aduh ai-ku lagi kena limit groq, coba lagi sebentar ya 😅'
+      : /koneksi|jaringan|timeout|batas waktu/i.test(detail)
+        ? 'ai-ku lagi susah konek, coba lagi ya 🙏'
+        : 'aduh ada kendala di ai-ku, coba lagi nanti ya'
+    return {kind:'answer',answer:pesan}
   } finally {locks.delete(key)}
 }

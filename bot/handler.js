@@ -32,6 +32,37 @@ import {
 const isNumber = (x) => typeof x === 'number' && !isNaN(x);
 const registrationCommands = new Set(['daftar', 'verify', 'reg', 'register']);
 
+// Balasan Auto-AI dibuat terasa seperti orang mengetik: status "sedang menulis",
+// jeda sesuai panjang teks, lalu kirim. Tidak ada template teknis ke pengguna.
+async function sendAutoAIReply(conn, m, text) {
+    const body = String(text || '').trim();
+    if (!body) return;
+    try {
+        if (typeof conn.sendPresenceUpdate === 'function') await conn.sendPresenceUpdate('composing', m.chat);
+    } catch { }
+    const delay = Math.min(2600, Math.max(320, body.length * 16));
+    await new Promise(resolve => setTimeout(resolve, delay));
+    try {
+        await m.reply(body);
+    } catch {
+        try { await conn.sendMessage(m.chat, { text: body }, {}); } catch { }
+    }
+    try {
+        if (typeof conn.sendPresenceUpdate === 'function') await conn.sendPresenceUpdate('paused', m.chat);
+    } catch { }
+}
+
+// Kalimat manusia untuk rencana berjadwal, dipakai kalau model tidak memberi kalimat.
+function naturalScheduleNote(steps, prefix) {
+    const label = step => `${prefix}${step.command}${step.args ? ' ' + step.args : ''}`;
+    if (!steps.length) return '';
+    const first = steps[0];
+    const rest = steps.slice(1);
+    const head = first.delayMs ? `nanti ${formatDelay(first.delayMs)} lagi tak ${first.command}` : `udah tak ${first.command}`;
+    if (!rest.length) return `${head} ya`;
+    return `${head}, terus ${rest.map(step => `${formatDelay(step.delayMs)} lagi tak ${step.command}`).join(', ')} ya`;
+}
+
 // Jarak waktu untuk konfirmasi jadwal Auto-AI ("dalam 5 detik", "dalam 2 menit").
 function formatDelay(ms) {
     const total = Math.max(0, Math.round(Number(ms || 0) / 1000));
@@ -402,9 +433,8 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
             if (immediateIndex >= 0) aiDispatchPlan = aiSteps[immediateIndex];
             const scheduledSteps = aiSteps.filter((step, index) => index !== immediateIndex);
             if (scheduledSteps.length) {
-                const lines = [`⏱️ *JADWAL AUTO-AI*`, ''];
+                const gagal = [];
                 for (const step of scheduledSteps) {
-                    const label = `${activePrefix}${step.command}${step.args ? ' ' + step.args : ''}`;
                     try {
                         schedulePluginCommand({
                             conn: this,
@@ -423,13 +453,15 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
                             botConfig,
                             bot,
                         });
-                        lines.push(`• ${label} — ${step.delayMs ? `dalam ${formatDelay(step.delayMs)}` : 'segera'}`);
                     } catch (error) {
-                        lines.push(`• ${label} — gagal dijadwalkan: ${String(error?.message || error).slice(0, 120)}`);
+                        gagal.push(`${activePrefix}${step.command}`);
                     }
                 }
-                lines.push('', 'Perintah dijalankan dengan hak aksesmu saat waktu tiba.');
-                try { await m.reply(lines.join('\n')); } catch { }
+                // Balasan dibuat seperti obrolan biasa, bukan laporan sistem.
+                const note = (aiPlan.note || '').trim() || naturalScheduleNote(scheduledSteps, activePrefix);
+                m.__autoAIAnswer = gagal.length && !note
+                    ? `yang tadi gagal tak jadwalin (${gagal.join(', ')}), coba lagi ya`
+                    : note;
             }
         }
         const aiDispatchText = aiDispatchPlan ? `${activePrefix}${aiDispatchPlan.command}${aiDispatchPlan.args ? ' ' + aiDispatchPlan.args : ''}` : m.text;
@@ -872,7 +904,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 				break;
 			}
 		}
-        if (m.__autoAIAnswer) await m.reply(m.__autoAIAnswer);
+        if (m.__autoAIAnswer) await sendAutoAIReply(this, m, m.__autoAIAnswer);
 	} catch (e) {
 		console.error(e);
 	} finally {
