@@ -1380,6 +1380,39 @@ Laporan: mention bot dibalas `Auto-AI: Batas penggunaan Groq tercapai. Tunggu se
 - Kalau pemakaian makin ramai, opsi berikutnya: naikkan tier Groq atau tambahkan key kedua
   (rotasi key belum dilakukan; semua key tetap seperti sekarang).
 
+## Task 37 — Fix `sock.sendVideoAsSticker is not a function` (bratvid2 & stiker lain) (2026-10-18 00.20 WITA)
+
+Laporan: `.bratvid2` gagal dengan
+`❌ Gagal membuat stiker bratvid2. Alasan: sock.sendVideoAsSticker is not a function`.
+
+### Akar masalah
+- `lib/imported-compat.js` membungkus socket dengan `Proxy` + objek `fallback`. Fallback hanya
+  menyediakan `sendMedia`, `sendText`, `sendTextWithMentions`, `sendPreview`, `sendImage`,
+  `sendVideo`, `sendAudio`; metode lain diteruskan ke socket Baileys.
+- Socket Baileys (dan `lib/simple.js`) **tidak punya** `sendVideoAsSticker` /
+  `sendImageAsSticker`, padahal plugin impor Usanagi banyak memakainya:
+  `bratvid2`, `swm`, `linesticker`, `attp2`, `autosticker`, `stikerwa`, `bratextra`, `smeme`,
+  dan lain-lain (5 pemakaian `sendVideoAsSticker`, 14 `sendImageAsSticker`).
+- Jadi bukan cuma bratvid2: semua perintah stiker impor yang lewat jalur itu ikut gagal.
+
+### Perbaikan (`lib/imported-compat.js`)
+- Adapter sekarang punya pembuat stiker sendiri memakai `lib/exif.js` → `writeExif`:
+  gambar/video dikonversi ke WebP 320px (video: 15 fps, maks 5 detik, animasi) lalu diberi
+  EXIF packname/author.
+- Metode baru di `fallback`: `sendVideoAsSticker`, `sendImageAsSticker`,
+  `sendStickerAsSticker`, dan `sendStickerPack` (mengirim tiap stiker satu per satu).
+- Pesan gagal dibuat jelas (“Pastikan ffmpeg terpasang di server”) bila konversi gagal.
+
+### Verifikasi
+- Uji nyata dengan ffmpeg lokal: video uji 2 detik (11.262 B) → stiker **117.912 B** dengan
+  header `RIFF/WEBP`; PNG 1×1 → 686 B WebP.
+- Uji lewat `runImportedFeature` (jalur asli bot): `sock.sendVideoAsSticker` terpanggil dan
+  `sendMessage` menerima payload `{ sticker, isAnimated: true }` lalu plugin membalas
+  “stiker terkirim” — **tidak ada** lagi error “is not a function”.
+- Deploy `/lib/imported-compat.js` 13.991 B `fdcc314f…` = repo; restart `204`,
+  `Successfully Loaded 2052 Plugins`, 0 error.
+- Dependensi server dicek ada: `file-type`, `fluent-ffmpeg`, `node-webpmux`.
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix

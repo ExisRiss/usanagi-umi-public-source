@@ -76,8 +76,40 @@ function sockAdapter(conn) {
     const payload={ [type]:data,...(caption?{caption:String(caption)}:{}),...(type==='audio'?{mimetype:options.mimetype||'audio/mpeg',ptt:Boolean(options.ptt)}:{}),...(options.fileName?{fileName:options.fileName}:{}),...(options.contextInfo?{contextInfo:options.contextInfo}:{}),...(options.mentions?{mentions:options.mentions}:{}) }
     return conn.sendMessage(jid,payload,{quoted:quoted||undefined})
   }
+  // Pembuat stiker dari gambar/video. Plugin impor Usanagi banyak yang
+  // memanggil sock.sendVideoAsSticker / sendImageAsSticker, metode yang tidak
+  // disediakan socket Baileys maupun lib/simple.js — dulu berujung
+  // "sock.sendVideoAsSticker is not a function".
+  const buatStiker = async(mediaInput,options={})=>{
+    const [{writeExif},{fileTypeFromBuffer}]=await Promise.all([import('./exif.js'),import('file-type')])
+    const data=Buffer.isBuffer(mediaInput)?mediaInput:Buffer.from(mediaInput)
+    if(!data.length)throw new Error('Media stiker kosong.')
+    const type=await fileTypeFromBuffer(data).catch(()=>null)
+    const mimetype=type?.mime||'image/png'
+    const buffer=await writeExif({mimetype,data,ext:type?.ext},{
+      packName:String(options.packname||options.packName||'Umi Usanagi'),
+      packPublish:String(options.author||options.packPublish||options.publisher||'Umi')
+    })
+    if(!buffer||!Buffer.isBuffer(buffer))throw new Error('Gagal membuat stiker. Pastikan ffmpeg terpasang di server.')
+    return buffer
+  }
+  const kirimStiker=async(jid,mediaInput,quoted,options={})=>{
+    const stickerBuffer=await buatStiker(mediaInput,options)
+    const payload={sticker:stickerBuffer}
+    if(options.isAnimated)payload.isAnimated=true
+    return conn.sendMessage(jid,payload,{quoted:quoted||undefined})
+  }
   const fallback={
     sendMedia:media,
+    sendImageAsSticker:(jid,image,quoted,options={})=>kirimStiker(jid,image,quoted,options),
+    sendVideoAsSticker:(jid,video,quoted,options={})=>kirimStiker(jid,video,quoted,{...options,isAnimated:true}),
+    sendStickerAsSticker:(jid,stickerInput,quoted,options={})=>kirimStiker(jid,stickerInput,quoted,options),
+    sendStickerPack:async(jid,buffers,quoted,options={})=>{
+      const list=(Array.isArray(buffers)?buffers:[]).filter(Boolean).slice(0,30)
+      const hasil=[]
+      for(const item of list)hasil.push(await kirimStiker(jid,item,quoted,options))
+      return hasil
+    },
     sendText:(jid,text,quoted,opts={})=>conn.sendMessage(jid,{text:String(text),...opts},{quoted}),
     sendTextWithMentions:(jid,text,quoted,opts={})=>conn.sendMessage(jid,{text:String(text),mentions:[...String(text).matchAll(/@(\d{6,16})/g)].map(m=>m[1]+'@s.whatsapp.net'),...opts},{quoted}),
     sendPreview:(jid,opts,options={})=>conn.sendMessage(jid,{text:String(opts.caption||opts.description||opts.title||''),...(opts.jpegThumbnail?{contextInfo:{externalAdReply:{title:opts.title||'',body:opts.description||'',thumbnail:opts.jpegThumbnail,sourceUrl:opts.url||'',mediaType:1}}}:{})},options),
