@@ -1,3 +1,4 @@
+import { withRealmGate } from './realms/gate.js'
 /* By AlzRiss - Usanagi Umi AI
  *
  * Penjadwal perintah Auto-AI.
@@ -223,7 +224,9 @@ async function runJob(job) {
       chatUpdate: {},
       __autoAIScheduled: true,
     }
-    await registered.call(conn, message, extra)
+    if (job.pluginName.startsWith('rpg/') || (Array.isArray(registered.tags) && registered.tags.includes('rpg'))) {
+      await withRealmGate(() => registered.call(conn, message, extra))
+    } else await registered.call(conn, message, extra)
   } catch (error) {
     const reason = String(error?.message || error || 'kesalahan tidak diketahui').slice(0, 200)
     console.error('[AUTO-AI-JADWAL]', job.command, reason)

@@ -1,0 +1,85 @@
+{
+  "baseCommit": "41fd8cb",
+  "files": [
+    {
+      "source": "bot/lib/realms/catalog.js",
+      "remote": "/lib/realms/catalog.js",
+      "beforeSha256": null
+    },
+    {
+      "source": "bot/lib/realms/service.js",
+      "remote": "/lib/realms/service.js",
+      "beforeSha256": null
+    },
+    {
+      "source": "bot/lib/realms/gate.js",
+      "remote": "/lib/realms/gate.js",
+      "beforeSha256": null
+    },
+    {
+      "source": "bot/lib/realms/runtime.js",
+      "remote": "/lib/realms/runtime.js",
+      "beforeSha256": null
+    },
+    {
+      "source": "bot/lib/realms/http.js",
+      "remote": "/lib/realms/http.js",
+      "beforeSha256": null
+    },
+    {
+      "source": "bot/public/realms/index.html",
+      "remote": "/public/realms/index.html",
+      "beforeSha256": null
+    },
+    {
+      "source": "bot/public/realms/app.js",
+      "remote": "/public/realms/app.js",
+      "beforeSha256": null
+    },
+    {
+      "source": "bot/public/realms/style.css",
+      "remote": "/public/realms/style.css",
+      "beforeSha256": null
+    },
+    {
+      "source": "bot/public/realms/world.webp",
+      "remote": "/public/realms/world.webp",
+      "beforeSha256": null
+    },
+    {
+      "source": "bot/plugins/rpg/realms.js",
+      "remote": "/plugins/rpg/realms.js",
+      "beforeSha256": null
+    },
+    {
+      "source": "bot/lib/auto-ai-scheduler.js",
+      "remote": "/lib/auto-ai-scheduler.js",
+      "beforeSha256": "c988fd083c8dacef9d18548c95193d4adecad148ca9ff275711100c7e3310b33",
+      "baseline": "41fd8cb; must match live before deployment"
+    },
+    {
+      "source": "bot/plugins/rpg/usanagi-shop.js",
+      "remote": "/plugins/rpg/usanagi-shop.js",
+      "beforeSha256": "4426c1a3eeaf089140cb36797f94789b886c21d855e7aff042f844921d662908",
+      "baseline": "41fd8cb; must match live before deployment"
+    },
+    {
+      "source": "bot/handler.js",
+      "remote": "/handler.js",
+      "beforeSha256": "92f199750fac4a0363acc2c59348857895349a31d95dadbad82a306ac0b95812",
+      "baseline": "live downloaded"
+    },
+    {
+      "source": "bot/lib/jadibot-platform-api.js",
+      "remote": "/lib/jadibot-platform-api.js",
+      "beforeSha256": "4a4ba58738cd58db785b6b68b7b9e737745d8335e0f78e1a233ce71a9f48c8bc",
+      "baseline": "live downloaded"
+    },
+    {
+      "source": "db-mirror/game.js",
+      "remote": "/game/game.js",
+      "beforeSha256": "c77eec6e6836db89709f46c7b9a0aed43104abb220891d54a81563c80489535d",
+      "baseline": "live downloaded"
+    }
+  ]
+}

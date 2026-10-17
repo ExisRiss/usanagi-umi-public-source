@@ -1035,6 +1035,17 @@ function page() {
 
 /** Handler HTTP murni — bisa dipakai langsung atau via startGameServer. */
 export async function gameHandler(req, res) {
+        // Dedicated same-origin bridge; RPG remains in the BOT process and SQLite.
+        if (/^\/realms(?:\/|\?|$)/.test(req.url || '')) {
+            const upstream = http.request({ hostname: '127.0.0.1', port: Number(process.env.UMI_REALMS_BOT_PORT || 3366), path: req.url, method: req.method, headers: req.headers }, reply => {
+                res.writeHead(reply.statusCode, reply.headers);
+                reply.pipe(res);
+            });
+            upstream.on('error', () => { if (res.destroyed || res.writableEnded) return; if (!res.headersSent) res.writeHead(503, {'Content-Type':'application/json'}); res.end(JSON.stringify({error:'Layanan RPG sedang memulai ulang.'})); });
+            res.on('close', () => upstream.destroy());
+            req.pipe(upstream);
+            return;
+        }
         const url = new URL(req.url || '/', 'http://localhost')
         const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
         try {
@@ -1594,7 +1605,9 @@ const accountTokenCache = new Map()
 async function verifyAccountToken(token) {
     const raw = String(token || '').trim()
     if (!raw) return { ok: false, status: 401, error: 'Token diperlukan. Masuk dulu.' }
-    if (tradingDB.sessions[raw]) return { ok: true, session: true }
+    // Hanya token sesi buatan bot (diawali "bot-") yang boleh lolos verifikasi.
+    // Entri sessions lama yang dibuat dari token sembarang tetap harus dicek ke platform.
+    if (raw.startsWith('bot-') && tradingDB.sessions[raw]) return { ok: true, session: true }
     const key = crypto.createHash('sha1').update(raw).digest('hex')
     const hit = accountTokenCache.get(key)
     if (hit && Date.now() - hit.at < 60000) return hit.value

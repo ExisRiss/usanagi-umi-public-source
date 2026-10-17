@@ -1,3 +1,4 @@
+import { withRealmGate } from './lib/realms/gate.js';
 import { withMessageResponses, bindResponseMessage, maySuggestCommand } from './lib/command-response.js';
 import { planAutoAI, shouldAutoAITrigger } from './lib/auto-ai.js';
 import { schedulePluginCommand } from './lib/auto-ai-scheduler.js';
@@ -829,7 +830,9 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
                             if(isUsanagiPlugin)Object.defineProperty(pluginMessage,'quotedMessage',{value:null,writable:true,configurable:true});
                         }
                     }
-                    const pluginResult = await plugin.call(this, pluginMessage, extra);
+                    const executePlugin = () => plugin.call(this, pluginMessage, extra);
+                    const isRpgMutation = name.startsWith('rpg/') || (Array.isArray(plugin.tags) && plugin.tags.includes('rpg'));
+                    const pluginResult = await (isRpgMutation ? withRealmGate(executePlugin) : executePlugin());
                     // Kirim audio setelah renderer menu selesai agar video/menu dan
                     // audio tampil berurutan pada pemanggilan yang sama.
                     if ((command === 'menu' || command === 'allmenu') && botConfig?.values?.brandingAssets?.menuAudioEnabled !== false) {

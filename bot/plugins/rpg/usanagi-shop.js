@@ -70,7 +70,10 @@ const handler = async (rawM, tools) => {
   }
 
   const itemKey = args[1]?.toLowerCase()
-  const amount = parseInt(args[2]) || 1
+  const amount = args[2] === undefined ? 1 : Number(args[2])
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > 1000) {
+    return m.reply('Jumlah harus bilangan bulat 1–1000.')
+  }
   const item = ITEMS[itemKey]
 
   if (!itemKey || !item) {

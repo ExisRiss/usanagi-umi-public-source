@@ -1726,3 +1726,46 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
   - `/plugins/_system/_didyoumen.js` 2.756 B `1192d57ea46376cc`
 - Restart melalui panel API: 204. Console sesudah restart: `Successfully Loaded 2052 Plugins`, tidak ditemukan error import/syntax/load plugin pada pemeriksaan startup.
 - Key/token, sessions dan backup, autoread, website, aset trading/game tidak diubah. Verifikasi pesan WhatsApp nyata pascadeploy masih perlu retry user; hasil tes bukan klaim sudah diuji dari HP user.
+
+## Task 46 — Eclipse Realms: shared RPG vertical slice (2026-10-18)
+
+### Status jujur
+**Implementasi lokal & QA selesai untuk vertical slice; DEPLOY TERBLOKIR API PANEL HTTP 500. Keseluruhan MMORPG belum selesai / belum production-ready.** Tidak ada file produksi Task46 yang ditulis, tidak ada restart produksi, dan `/realms` live masih 404. Bot/game lama `/api/health` dan `/health` tetap 200.
+
+### Audit & keputusan
+- Workspace kembali ke snapshot lama HEAD 0d76f6a. Simpan patch tracked di `deploy-check/task46/snapshot.patch`, fetch/reset ke remote terbaru **41fd8cb** sebelum membuat perubahan Task46. Tidak menghapus perubahan Task46.
+- Audit statis 313 file command RPG (inventaris lengkap `docs/REALMS-COMMAND-AUDIT.md`). Ditemukan RPG JSON (`money`/`balance`) dan Usanagi RPG SQLite (`rpg_users`, `koin`, inventory/pet/quest). Website memakai SQLite yang sama, bukan DB progres baru; JSON lama dipertahankan tanpa merge saldo/identitas sembarangan.
+- Stack dipertahankan: bot Node ES modules + better-sqlite3 WAL, API HTTP bot, game server HTTP/SSE dan companion/tunnel existing. Supabase/dashboard/store/auto order tidak diganti.
+- Download live baseline handler, platform API, RPG DB/lock dan game.js. Semua cocok kecuali game.js memiliki hardening token bot yang belum ada di HEAD; fix live tersebut dipertahankan. Panel lalu mulai gagal sebelum baseline scheduler/shop bisa diunduh; manifest wajib mencocokkan baseline 41fd8cb untuk dua file itu saat panel pulih.
+
+### Implementasi nyata
+- `lib/realms`: shared service, additive SQLite schema, secure code/session auth, gameplay transaction/idempotency receipts, privacy DTOs, chat/presence dan HTTP/SSE routes.
+- Login kode sekali pakai lewat private WhatsApp; 5 menit, hash tersimpan; sesi cookie HttpOnly/SameSite=Strict/Secure pada host publik, expiry/logout/revoke. Nomor tidak diminta sebagai bukti kepemilikan, tidak dikirim ke client, dan tidak menjadi public ID.
+- Desa & hutan playable, NPC, collision/pathfinding server-authoritative, empat class, combat turn-based, loot/EXP/level, quest tiga slime dengan klaim sekali, inventory/shop/equipment/potion/healer.
+- Pet summon: peluang server 40/30/20/8/2%, token gameplay, kompatibel tipe/field pet lama, active/collection/history, mengikuti karakter, membantu combat dan mendapat EXP/hunger.
+- SSE presence/movement, global/local chat, pagination, block/report, leaderboard dengan UUID/nama game. HTML chat berupa text node; nomor-like text disaring sebelum storage; chat tidak di-forward otomatis ke WA.
+- Original generated artwork dikompres ke WebP **244.598 B**; karakter/monster/pet digambar Canvas sendiri, bukan pemain palsu/statistik mock. Kontrol HP/desktop, minimap, audio opsional, reduced motion.
+- Plugin `realms` memakai service yang sama untuk login/status/movement/quest/combat/shop/summon/revoke; semua instruksi bot memakai prefix aktif.
+- Shared reentrant gate pada native dispatcher dan Auto-AI scheduler mencegah stale legacy read→await→overwrite menimpa aksi web. Perbaiki quantity negatif pada Usanagi shop. Bukan klaim audit tuntas semua command ekonomi lama.
+- Backup konsisten SQLite `VACUUM INTO pre-realms-v1.sqlite` chmod 600 sebelum migrasi pertama; migrasi hanya menambah tabel. Backup/session/key produksi tidak disentuh dalam task ini karena belum deploy.
+
+### QA dijalankan
+- **31/31** tes Realms memakai SQLite nyata dan adapter RPG lama: auth/replay/expiry/revoke, data bersama, actual legacy shop handler, quest/EXP, currency concurrency, rollback, schema/prototype input, combat/skill, pets, privacy/chat scopes, real HTTP/SSE, serta backup+migration preserves legacy bytes.
+- **112/112** regresi existing lulus: Auto-AI, intent, native dispatcher, rich info dan similarity Task45.
+- **14** pemeriksaan browser lulus dengan dua akun/konteks terpisah: login/karakter, genuine multiplayer presence/chat, XSS text & phone redaction, movement, UI attack, 3 pertarungan, quest reward, summon, shop, reload/reconnect, 320/390/768/1440px, touch D-pad, panel HP. 0 page errors/HTTP5xx dalam run final.
+- Tes awal terlalu cepat membuka encounter baru: server cooldown benar-benar menolak. Perbaiki pacing tes, tidak melonggarkan rule.
+- Targeted `node --check` dan `git diff --check` lulus. Tidak mengklaim full repo lint, load test, pengujian semua plugin, atau tes HP WhatsApp nyata.
+- Artefak: `deploy-check/task46/{realms-tests.tap,regression-tests.tap,browser-result.json,browser-test.log,*-desktop.png,game-mobile.png,live-health.json}`. Data dan kode QA bersifat sintetis; kode hanya di `.secrets` chmod600.
+
+### Deploy — belum berhasil
+- `tools/deploy-realms.mjs` + manifest 15 file: preflight sumber live, verifikasi path baru, hash readback, upload helper/aset lebih dulu, rollback file kode saat partial failure, restart via panel hanya setelah semua file terverifikasi.
+- Jalankan preflight read-only dan percobaan auto-deploy nyata: keduanya berhenti pada **Panel resources HTTP 500; no production writes performed**.
+- `/api/client`, resources, listing dan contents juga HTTP500 `UnexpectedValueException`; kedua credential existing untuk host panel yang sama dicoba, tidak dirotasi. Jangan bypass policy shell owner untuk menulis file.
+- Endpoint bot/game lama tetap HTTP200; `/realms` HTTP404. Tidak mematikan bot yang sehat saat API pengelolaan sedang gagal.
+- Tindak lanjut: saat panel pulih jalankan guarded deploy (jangan overwrite snapshot lama), verify byte/restart/startup/HTTP, lalu tes private WA login → aksi web → realms status dari akun user.
+
+### Batasan dan pekerjaan selanjutnya
+- Belum live, belum real-phone acceptance. PN/LID atau saldo RPG JSON tidak otomatis digabung ke SQLite.
+- Royal Capital/kerajaan lanjutan, party manusia, dungeon co-op terisolasi, guild/roles/chat, whisper/friends, player trading/crafting, full tutorial/quest campaign, skill trees/element, advanced pet UI dan owner admin moderation belum selesai.
+- Gate masih single-process; load/distributed tests, audit ekonomi legacy menyeluruh, retention ledger dan admin review workflow belum selesai.
+- Laporan teknis/setup/env/deploy/rollback: `docs/ECLIPSE-REALMS.md`. Ini vertical slice berfungsi, bukan klaim memenuhi seluruh master prompt.
