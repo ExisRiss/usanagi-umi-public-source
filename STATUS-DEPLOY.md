@@ -1126,6 +1126,62 @@ folder plugin terpisah per sesi dan tidak perlu deploy ulang per nomor.
 - Restart panel `HTTP 204`; `/api/health` bot v1.4.0 hidup; konsol 28 detik tanpa error plugin.
 - 20 berkas Task 29 dicek ulang: **20/20 sha256 SAMA** — tidak ada regresi.
 
+## Task 31 — Empire benar-benar aktif + login token trading (2026-10-17 19.37 WITA)
+
+Permintaan: *"Fitur empire belum ada di bot, apply ke bot utama dan bot jadibot untuk semua
+pembaruan. Benerin juga command trading itu buat login seperti /trading (token akun) kalo token
+ga valid atau token gaada kasih tutorial nya login pake token."*
+
+### 1. Kenapa `.empire` masih belum ada
+- Deploy Task 30 sempat **tertimpa**: isi `/plugins/game/game-webmultiplayer.js` di server
+  berubah lagi menjadi 8.454 B dengan **6 meja** (tanpa empire). Penyebabnya unggahan dari
+  salinan lokal yang sudah kembali ke versi lama (snapshot workspace sering revert), bukan kode
+  repo.
+- Bukti langsung dari konsol runtime: `[WEBGAME] plugin aktif — 6 meja: uno, unoflip, caturweb,
+  utweb, monopoli, wwweb` setelah hot reload.
+- Setelah ditulis ulang dari commit yang benar (8.763 B), konsol menampilkan
+  `[WEBGAME] plugin aktif — 7 meja: uno, unoflip, caturweb, utweb, monopoli, empire, wwweb`.
+- Plugin dimuat oleh `handler.js` yang sama untuk bot utama dan seluruh sesi jadibot, jadi satu
+  berkas benar = semua bot dapat `.empire`.
+
+### 2. Trading: login pakai token akun
+- `.trading login` (tanpa token) → tutorial lengkap: buka
+  `https://jadibot-alzriss.gwenna.my.id/#profile` → bagian **Token Akun** → salin → kirim
+  `.trading login <token>`.
+- `.trading login <token>` maupun `.trading <token>` → token divalidasi ke server game; berhasil
+  = tautkan ke nomor WA + tampilkan kartu akun; gagal = tutorial + alasan yang jelas.
+- `.trading` tanpa tautan → kartu akun nomor WhatsApp + baris `🔑 Mau pakai akun website?
+  .trading login <token>`.
+- Token tersimpan yang sudah tidak berlaku → tautan dilepas otomatis + tutorial (bukan sekadar
+  pesan error).
+- `.belisaham` / `.jualsaham` / `.redeem` dengan token tidak valid juga membalas tutorial.
+
+### 3. Server trading menolak token ngawur
+- Sebelumnya `GET /api/trading/me?token=<apa saja>` **membuat akun baru** dengan saldo $AS 110 —
+  token ngawur pun dianggap akun sah. Sekarang token non-sesi diverifikasi ke platform
+  (`/api/platform/verify-token`, cache 60 detik): invalid → **HTTP 401** “Token tidak dikenali.
+  Buat token baru di halaman Profil.”
+- Token sesi bot (`bot-…`, hasil `/api/trading/code-login`) tetap lolos tanpa verifikasi.
+- Aturan yang sama dipakai `POST /api/trading/trade`, `POST /api/trading/redeem`,
+  `POST /api/trading/link`, dan `GET /api/trading/market` (token invalid diabaikan, tidak
+  membuat akun baru).
+- Uji langsung: token ngawur → 401 di `me` dan `trade`; alur sesi bot
+  (`bot/login-code` → `code-login` → `me?token=bot-…`) → 200.
+
+### 4. Verifikasi berkas live
+- `/plugins/game/game-webmultiplayer.js` **8.763 B**, sha256 `4292a7440830c493…` = repo.
+- `/plugins/game/trading-umi.js`, sha256 `5bb52b8be965bcd5…` = repo.
+- `/game/game.js` **123.943 B**, sha256 `c77eec6e6836db89…` = repo; `/health` game v2.2.0.
+- Boot bot: `Successfully Loaded 2047 Plugins`, **0** error plugin; konsol menampilkan 7 meja.
+
+### 5. Catatan bot utama
+- `/api/owner-console/status` → `registered:true, connected:false, connection:"close"`, log
+  berulang `Koneksi terputus: Connection Failure` + `Sesi telah logout. … pairing ulang
+  diperlukan.`
+- Artinya nomor bot utama `6287813709432` perlu **pairing ulang** dari halaman Bot Utama
+  (sesi WhatsApp-nya sudah logout), bukan masalah plugin. Begitu tersambung, `.empire` dan
+  perintah lain langsung tersedia karena memakai runtime & plugin yang sama.
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix

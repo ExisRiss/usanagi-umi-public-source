@@ -37,6 +37,7 @@ const GAMES = {
   wwweb: { id: 'werewolf', label: 'Werewolf Web', emoji: '🐺' },
 }
 const COMMANDS = Object.keys(GAMES)
+console.log(`[WEBGAME] plugin aktif — ${COMMANDS.length} meja: ${COMMANDS.join(', ')}`)
 
 let configCache = { at: 0, value: null }
 function loadConfig() {
