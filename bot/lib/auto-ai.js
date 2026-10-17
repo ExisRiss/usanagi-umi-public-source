@@ -80,8 +80,10 @@ export function buildCommandCatalog(plugins, context) {
     const aliases = commandAliases(plugin)
     if (!aliases.length) continue
     const isUsanagi = name.split('/').pop().startsWith('usanagi-')
-    const commands = isUsanagi ? aliases.map(a => 'usanagi-' + a) : aliases
-    const safe = commands.filter(a => !DANGEROUS.test(a) && !context.isCommandDisabled?.(name, a))
+    // Plugin usanagi menerima dua bentuk (menu dan usanagi-menu). Katalog dulu hanya
+    // menampilkan yang ber-prefix, sehingga model yang menjawab "menu" tidak ketemu entri.
+    const commands = isUsanagi ? [...new Set([...aliases, ...aliases.map(a => 'usanagi-' + a)])] : aliases
+    const safe = commands.filter(a => !DANGEROUS.test(a) && !context.isCommandDisabled?.(name, a) && !context.isCommandDisabled?.(name, a.replace(/^usanagi-/, '')))
     if (!safe.length) continue
     const importCfg = plugin.importConfig && typeof plugin.importConfig === 'object' ? plugin.importConfig : null
     const usage = []
@@ -98,22 +100,32 @@ export function buildCommandCatalog(plugins, context) {
   return entries
 }
 function words(text) {
-  let value = String(text || '').toLowerCase().replace(/https?:\/\/\S+/g, ' ')
-  value = value.replace(/tutup/g, 'tutup close closegc').replace(/buka/g, 'buka open opengc').replace(/grup/g, 'grup group gc').replace(/unduh|download|donlot/g, 'download downloader').replace(/stiker|sticker/g, 'sticker stiker')
-  value = value.replace(/brat\s*vid(eo)?/g, 'bratvid2 bratv2 bratvideo').replace(/\bbrat\b/g, 'brat bratvid2 bratv2').replace(/ular tangga/g, 'ulartangga ularpapan ular').replace(/main game|game/g, 'game main')
-  return [...new Set(value.split(/[^a-z0-9_-]+/).filter(v => v.length > 1 && !STOPWORDS.has(v)))].slice(0, 30)
+  let value = String(text || '').toLowerCase().replace(/https?:\/\/\S+/g, ' ').replace(/\bmenunya\b/g, 'menu')
+  // Object first. "buka menu" must not add group/RPG aliases.
+  if (/\b(grup|group|gc)\b/.test(value)) {
+    value = value.replace(/\btutup\b/g, 'tutup closegroup').replace(/\bbuka\b/g, 'buka opengroup')
+  }
+  value = value.replace(/\b(grup|group)\b/g, 'grup group').replace(/\b(unduh|download|donlot)\b/g, 'download downloader')
+    .replace(/\b(stiker|sticker)\b/g, 'sticker stiker').replace(/\bular tangga\b/g, 'ular tangga ularpapan')
+  return [...new Set(value.split(/[^a-z0-9_-]+/).filter(v => v.length > 1 && !STOPWORDS.has(v)))].slice(0, 40)
 }
 export function searchCatalog(catalog, query, limit = 12) {
   const terms = words(query)
+  const group = /\b(grup|group|gc)\b/i.test(query)
+  const menu = menuIntent(query)
   return catalog.map(entry => {
-    const body = [entry.name, ...entry.aliases, ...entry.usage, entry.category, entry.description].join(' ').toLowerCase()
-    let score = terms.reduce((sum, term) => sum + (entry.aliases.some(a => a === term || a.endsWith('-' + term)) ? 12 : body.includes(term) ? 3 : 0), 0)
-    if (/tutup|close/.test(query) && entry.aliases.some(a => /^(close|tutup|closegroup|tutupgroup|closegc|tutupgrup|grupclose|gctutup)$/.test(a))) score += 30
-    if (/buka|open/.test(query) && entry.aliases.some(a => /^(open|buka|opengroup|bukagroup|opengc|bukagrup)$/.test(a))) score += 30
-    if (/tiktok/.test(query) && entry.aliases.some(a => /^(tiktok|tt|tiktokdl)$/.test(a))) score += 35
-    if (/ular\s*tangga|ular/.test(query) && entry.aliases.some(a => /^(ular|ularpapan|ularrich|ularwa)$/.test(a))) score += 28
-    return { entry, score }
-  }).filter(row => row.score > 0).sort((a,b) => b.score-a.score || Number(Boolean(a.entry.denied))-Number(Boolean(b.entry.denied))).slice(0, limit).map(({ entry }) => ({ plugin: entry.name, command: entry.command, aliases: entry.aliases.slice(0, 10), usage: entry.usage.slice(0, 3), description: entry.description.slice(0, 160), category: entry.category.slice(0, 60), allowed: !entry.denied, reason: entry.denied || undefined }))
+    const body = [...entry.usage, entry.category, entry.description].join(' ').toLowerCase()
+    let score = terms.reduce((n, t) => n + (entry.aliases.includes(t) ? 22 : body.includes(t) ? 2 : 0), 0)
+    if (menu && entry.aliases.includes(menu)) score += 100
+    if (group && /\b(buka|open)\b/i.test(query) && entry.aliases.some(a => /^(umi-group-open|opengroup|opengc|gcopen)$/.test(a))) score += 70
+    if (group && /\b(tutup|close)\b/i.test(query) && entry.aliases.some(a => /^(umi-group-close|closegroup|closegc|gcclose)$/.test(a))) score += 70
+    if ((group || menu) && /\/rpg\//.test('/' + entry.name)) score -= 100
+    if (/\bular\s+tangga\b/i.test(query) && entry.aliases.includes('ularpapan')) score += 45
+    return {entry, score}
+  }).filter(r => r.score > 0).sort((a,b) => b.score-a.score || Number(Boolean(a.entry.denied))-Number(Boolean(b.entry.denied)))
+    .slice(0, limit).map(({entry}) => ({ plugin:entry.name, command:entry.command, aliases:entry.aliases,
+      usage:entry.usage.slice(0,3), description:entry.description.slice(0,160), category:entry.category.slice(0,60),
+      allowed:!entry.denied, reason:entry.denied || undefined }))
 }
 function cleanInput(m, identities) {
   let text = String(m.text || '')
@@ -121,78 +133,96 @@ function cleanInput(m, identities) {
   return text.trim().slice(0, 6000)
 }
 
-// Satu baris ringkas per fitur; makin pendek prompt, makin kecil token terpakai.
-function compactCandidate(entry, focus = '') {
-  // Alias WAJIB ditampilkan semua: dulu hanya 4 pertama, sehingga command seperti
-  // `empire` (alias ke-7 di plugin webgame) tidak pernah terlihat oleh model dan
-  // dia akhirnya memilih fitur lain (mis. quote).
-  const aliases = entry.aliases.slice(0, 12).map(name => (name === focus ? name + '*' : name))
-  const usage = entry.usage && entry.usage[0] ? ` ${String(entry.usage[0]).slice(0, 60)}` : ''
-  return [aliases.join(','), entry.plugin.replace(/^.*\//, '').replace(/\.js$/, ''), entry.description.slice(0, 70) + usage]
-    .filter(Boolean).join('|')
+// Only aliases from loaded plugins are valid; no suffix/fuzzy execution.
+function resolveCommand(catalog, command, pluginName) {
+  const matches = catalog.filter(e => e.aliases.includes(command) && (!pluginName || e.name === pluginName))
+  if (!matches.length) return null
+  if (matches.length > 1) {
+    const preferred = matches.find(e => command === 'allmenu' && e.name.endsWith('/_allmenu.js'))
+      || matches.find(e => command === 'menu' && e.name.endsWith('/usanagi-menu.js'))
+    if (preferred) return preferred
+    return null
+  }
+  return matches[0]
 }
-
-// Fokus = kata kunci pengguna yang paling cocok dengan alias, supaya model tahu
-// perintah mana yang harus dipakai di dalam satu plugin (mis. empire vs uno).
+function compactCandidate(entry, focus = '') {
+  const aliases = [...new Set([focus, ...entry.aliases])].filter(Boolean).slice(0,24)
+  const contract = entry.plugin.endsWith('/game-webmultiplayer.js')
+    ? 'game: args kosong=buat room; join ID=gabung; ID=verifikasi. webgame=bantuan.'
+    : ''
+  return JSON.stringify({id:entry.plugin, aliases, usage:entry.usage.join('; ').slice(0,260),
+    info:(contract || entry.description).slice(0,200), allowed:entry.allowed, reason:entry.reason})
+}
 function focusAlias(entry, query) {
   const terms = words(query)
-  return entry.aliases.find(name => terms.includes(name))
-    || entry.aliases.find(name => terms.some(term => term.length > 3 && name.startsWith(term.slice(0, 4))))
-    || entry.command
+  return entry.aliases.find(name => terms.includes(name)) || entry.command
 }
-
-// Router lokal untuk permintaan yang jelas-jelas spesifik. Menjalankan tanpa
-// memanggil model: lebih cepat, hemat token, dan tidak mungkin salah fitur.
+function menuIntent(text) {
+  const raw = String(text || '').trim().toLowerCase().replace(/[.!?,]+$/g, '').trim()
+  // Anchored to a request, not to an arbitrary occurrence inside quote/sticker text.
+  const pattern = /^(?:(?:tolong|coba|dong|umi|bot|aku|saya|mau|ingin|pengen|boleh|bisa|minta|tampilin|tampilkan|tampikan|tampil|lihat|liat|buka|bukain|open|show|kirim|kirimin|kasih|tunjukin|tunjukkan|tunjukan|jalanin|jalankan|command|perintah)\s+)*[./!]?(allmenu|all menu|semua menu|semua fitur|menu (?:yang )?lengkap|menu semua|(?:daftar|list) (?:semua )?(?:fitur|perintah|command)|(?:pilihan )?(?:menu|menunya)|kategori|listmenu)(?:\s+(?:dong|ya|nih|nya|bot|umi|tolong|please|pls|aja|sekarang|lengkap))*$/i
+  const m = raw.match(pattern)
+  if (!m) return ''
+  if (/all|semua|lengkap|daftar|list (?:fitur|perintah|command)/.test(m[1]) || /lengkap$/.test(raw)) return 'allmenu'
+  return /kategori|listmenu/.test(m[1]) ? 'kategori' : 'menu'
+}
 const GAME_NAMES = [
-  [/empire|property\s*empire/i, 'empire'],
-  [/uno\s*flip|unoflip/i, 'unoflip'],
-  [/\buno\b/i, 'uno'],
-  [/catur|chess/i, 'caturweb'],
-  [/werewolf|wwweb/i, 'wwweb'],
-  [/monopoli|monopoly/i, 'monopoli'],
+  [/\b(?:empire|property\s+empire)\b/i,'empire'], [/\b(?:uno\s*flip)\b/i,'unoflip'],
+  [/\buno\b/i,'uno'], [/\b(?:catur|chess)\b/i,'caturweb'],
+  [/\b(?:werewolf|wwweb)\b/i,'wwweb'], [/\b(?:monopoli|monopoly)\b/i,'monopoli'],
+  [/\b(?:ular tangga|utweb)\b/i,'utweb'],
 ]
+function directSequence(text, catalog) {
+  if (/\b(jangan|bukan|kenapa|bagaimana|teks|text|quote|brat\w*|args)\b/i.test(text)) return null
+  const clauses=String(text).split(/\s+(?:lalu|terus|kemudian)\s+/i)
+  if(clauses.length<2 || clauses.length>6) return null
+  const steps=[]
+  let delayMs=0, group=false
+  for(let clause of clauses) {
+    const timing=clause.match(/\b(?:dalam\s+)?(\d+(?:[.,]\d+)?)\s*(detik|menit|jam)(?:\s+(?:lagi|kemudian))?/i)
+    if(timing) {
+      delayMs+=Number(timing[1].replace(',','.'))*({detik:1000,menit:60000,jam:3600000}[timing[2].toLowerCase()])
+      clause=clause.replace(timing[0],'').trim()
+    }
+    if(group && /^(buka|open|tutup|close)(?:\s+lagi)?$/i.test(clause)) clause=clause.replace(/\s+lagi$/i,'')+' grup'
+    const intent=directIntent(clause,catalog)
+    if(!intent || intent.answer) return null
+    steps.push({...intent,delayMs:Math.min(604800000,Math.round(delayMs))})
+    group=/\b(grup|group|gc)\b/i.test(clause)
+  }
+  return steps
+}
 function directIntent(text, catalog) {
-  const raw = String(text || '')
-  const has = command => catalog.some(entry => entry.aliases.includes(command))
-  const pick = commands => commands.find(has)
-
-  // "jalanin/eksekusi/pakai command empire" → jalankan apa adanya
-  const explicit = raw.match(/(?:jalanin|jalankan|eksekusi|pakai|panggil|run|execute)\s+(?:command|perintah|cmd)?\s*[.:]?\s*([a-z0-9_-]{2,40})([^\n]{0,200})/i)
+  const raw = String(text || '').trim()
+  const has = c => Boolean(resolveCommand(catalog,c))
+  // Let the semantic planner handle multi-step requests, questions, and negation.
+  if (/\b(?:jangan|ga|nggak|gak|tidak|bukan|kenapa|mengapa|apa itu|gimana|bagaimana|cara|terus|lalu|kemudian|setelah|detik|menit|jam)\b/i.test(raw)) return null
+  const menu = menuIntent(raw)
+  if (menu) return has(menu) ? {command:menu,args:''} : {answer:'menu itu belum tersedia di bot ini.'}
+  // Literal invocation only; preserve parameters, not partial multi-step matches.
+  const explicit = raw.match(/^(?:(?:tolong|coba|bot|umi)\s+)*(?:jalanin|jalankan|eksekusi|panggil|run|execute)\s+(?:(?:command|perintah|cmd)\s+)?[./!]?([a-z0-9_-]+)(?:\s+([\s\S]*))?$/i)
   if (explicit) {
     const command = explicit[1].toLowerCase()
-    if (has(command)) {
-      const args = String(explicit[2] || '').replace(/^\s*(?:dengan|pakai|args?)\s*[:=]?\s*/i, '').trim()
-      return { command, args: args.slice(0, 400) }
-    }
+    if (!has(command)) return {answer:'nama perintah itu belum jelas atau belum tersedia. mau pakai fitur yang mana?'}
+    const args = /^(?:dong|ya|please|pls)$/i.test(explicit[2] || '') ? '' : (explicit[2] || '')
+    return {command,args}
   }
-
-  // "bikin/buat/buka room|meja <game>" → command game tanpa argumen
-  if (/\b(?:bikin|buat|bikinlah|buka|open|create|start)\b[^\n]{0,20}\b(?:room|meja|lobi|table)\b/i.test(raw)) {
-    for (const [pattern, command] of GAME_NAMES) {
-      if (pattern.test(raw) && has(command)) return { command, args: '' }
-    }
-    // tanpa nama game jelas: pakai game yang disebut sebagai alias apa pun
-    const called = catalog.find(entry => entry.aliases.some(alias => new RegExp('\\b' + alias + '\\b', 'i').test(raw)))
-    if (called) return { command: focusAlias(called, raw), args: '' }
+  // Strict game action grammar. Never create a room for "join room" or quoted text.
+  const game = raw.match(/^(?:(?:tolong|coba|aku|saya|mau|pengen|ingin|bot|umi)\s+)*(?:(?:bikin|buat|buka|bukain|open|create|main|maen|mulai|start)\s+)(?:(?:room|meja|lobi|game)\s+)?(empire|property empire|monopoli|monopoly|uno flip|unoflip|uno|catur|chess|werewolf|wwweb|ular tangga|utweb)(?:\s+(?:dong|ya|baru|sekarang|di chat|langsung di chat|sama temen|bareng temen))*$/i)
+  if (game) {
+    const pair=GAME_NAMES.find(([re]) => re.test(game[1]))
+    let command=pair && pair[1]
+    if(command==='utweb' && !/\b(room|meja|lobi)\b/i.test(raw)) command='ular'
+    if(command && has(command)) return {command,args:''}
   }
-
-  // "main ular tangga (di chat)" → papan rich HTML, bukan command room
-  if (/ular\s*tangga|\but\b|snakeladder/i.test(raw) && !/\broom\b|\bmeja\b/i.test(raw) && has('ular')) {
-    return { command: 'ular', args: '' }
+  if (/^(?:(?:tolong|coba|bot|umi)\s+)*(?:bikin|buat|buka|create|open)\s+(?:room|meja|lobi)(?:\s+(?:dong|ya|baru))*$/i.test(raw)) {
+    return {answer:'mau bikin room game apa? misalnya Empire, UNO, atau Monopoli.'}
   }
-
-  // "main <game>" / "mau main <game>" pada plugin game
-  const play = pick(['empire', 'monopoli', 'uno', 'unoflip', 'caturweb', 'wwweb'])
-  if (play && /\b(?:main|maen|mulai|start)\b/i.test(raw) && new RegExp('\\b' + play + '\\b', 'i').test(raw)) {
-    return { command: play, args: '' }
-  }
-
-  // "bikin room" tanpa nama game → tanya singkat, tanpa memakai token Groq
-  if (/\b(?:bikin|buat|buka|open|create)\b[^\n]{0,20}\b(?:room|meja|lobi|table)\b/i.test(raw)) {
-    const roomGames = ['uno', 'unoflip', 'caturweb', 'utweb', 'monopoli', 'empire', 'wwweb'].filter(has)
-    if (roomGames.length) {
-      return { answer: `mau main apa? ada ${roomGames.join(', ')} — contoh "bikin room ${roomGames.includes('empire') ? 'empire' : roomGames[0]}"` }
-    }
+  const group=raw.match(/^(?:(?:tolong|coba|bot|umi)\s+)*(buka|bukain|open|tutup|close)\s+(?:grup|group|gc)(?:nya)?(?:\s+(?:ini|dong|ya|sekarang|lagi))*$/i)
+  if(group) {
+    const open=/^(buka|bukain|open)$/.test(group[1].toLowerCase())
+    const command=(open?['umi-group-open','opengroup','opengc']:['umi-group-close','closegroup','closegc']).find(has)
+    if(command) return {command,args:''}
   }
   return null
 }
@@ -227,7 +257,7 @@ function parsePlan(answer) {
     for (const call of calls) {
       let args = {}
       try { args = JSON.parse(call.function?.arguments || '{}') } catch { }
-      if (call.function?.name === 'run_command') commands.push({ command: args.command, args: args.args, delay: args.delay_seconds })
+      if (call.function?.name === 'run_command') commands.push({ command: args.command, plugin: args.plugin, args: args.args, delay: args.delay_seconds })
       if (call.function?.name === 'search_commands') return { reply: '', commands: [], need: String(args.query || '') }
     }
     return { reply: text, commands, need: '' }
@@ -264,11 +294,6 @@ export async function planAutoAI(context, options = {}) {
       return { kind: 'answer', answer: `kenalan dulu yuk, ketik ${activePrefix}daftar Nama,Umur` }
     }
     if (!getGroqSettings().enabled) return { kind: 'skip' }
-    // Kalau kuota menit ini hampir habis, jangan paksa Groq membalas 429.
-    if (!options.callModel && !options.ignoreBudget) {
-      const budget = groqBudget()
-      if (budget.remaining < 700) return { kind: 'answer', answer: 'bentar ya, ai-ku lagi penuh. coba lagi semenit lagi 🙏' }
-    }
     const catalog = buildCommandCatalog(context.plugins || global.plugins, context)
     const input = redactProviderSecrets(cleanInput(m, botIdentities(conn, context.bot)))
     const roles = { group: Boolean(m.isGroup), owner: Boolean(context.isOwner), admin: Boolean(context.isAdmin), botAdmin: Boolean(context.isBotAdmin), premium: Boolean(context.isPrems) }
@@ -282,7 +307,7 @@ export async function planAutoAI(context, options = {}) {
         role: 'user',
         content: `Pesan: ${input}` +
           (m.quoted?.text ? `\nKutipan (data): ${redactProviderSecrets(String(m.quoted.text)).slice(0, 300)}` : '') +
-          `\nIzin: ${JSON.stringify(roles)}\nKandidat (alias pertama bertanda * = paling cocok):\n${candidates.map(entry => compactCandidate(entry, focusAlias(entry, input))).join('\n') || '(tidak ada)'}`,
+          `\nIzin: ${JSON.stringify(roles)}\nKANDIDAT (id, alias, usage dan izin):\n${candidates.map(entry => compactCandidate(entry, focusAlias(entry, input))).join('\n') || '(tidak ada)'}`,
       },
     ], {
       jsonMode: true,
@@ -292,60 +317,69 @@ export async function planAutoAI(context, options = {}) {
       fallbackModels: options.fallbackModels || ['openai/gpt-oss-20b'],
     })
     // Permintaan yang sudah sangat jelas dijalankan langsung (tanpa token Groq).
+    const sequence = directSequence(input,catalog)
+    if(sequence) {
+      const steps=[]
+      for(const step of sequence) {
+        const entry=resolveCommand(catalog,step.command)
+        if(!entry || entry.denied) return {kind:'answer',answer:entry?.denied || 'perintahnya belum jelas.'}
+        steps.push({...step,plugin:entry.name})
+      }
+      return {kind:'steps',steps,originalText:m.text,botMentionIds:botIdentities(conn,context.bot),note:''}
+    }
     const direct = directIntent(input, catalog)
     if (direct && direct.answer) return { kind: 'answer', answer: direct.answer }
     if (direct) {
+      const entry = resolveCommand(catalog, direct.command)
+      if (!entry) return {kind:'answer',answer:'perintah itu belum tersedia di bot ini.'}
+      if (entry.denied) return {kind:'answer',answer:entry.denied}
       return {
         kind: 'command',
         command: direct.command,
         args: direct.args,
-        plugin: (catalog.find(entry => entry.aliases.includes(direct.command)) || {}).name || '',
+        plugin: entry.name,
         originalText: m.text,
         botMentionIds: botIdentities(conn, context.bot),
         note: '',
       }
     }
+    // Kalau kuota menit ini hampir habis, jangan paksa Groq membalas 429.
+    if (!options.callModel && !options.ignoreBudget) {
+      const budget = groqBudget()
+      if (budget.remaining < 700) return { kind: 'answer', answer: 'bentar ya, ai-ku lagi penuh. coba lagi semenit lagi 🙏' }
+    }
     let candidates = searchCatalog(catalog, input, 8)
     let plan = parsePlan(await ask(candidates))
     if (plan.need && !plan.commands.length) {
       const wider = searchCatalog(catalog, plan.need, 8)
-      if (wider.length) plan = parsePlan(await ask(wider))
+      if (wider.length) { candidates = wider; plan = parsePlan(await ask(wider)) }
     }
     const steps = []
     const notes = []
-    // Kalau pengguna jelas minta "room/meja", buang argumen karangan model: membuat
-    // meja cukup memanggil command game tanpa argumen (dulu malah jadi "room tidak
-    // ditemukan" karena model mengirim id room hasil karangan).
-    const wantsRoom = /\b(?:room|meja|lobi|table)\b/i.test(input)
-    for (const item of (plan.commands || []).slice(0, 4)) {
+    for (const item of (plan.commands || []).slice(0, 6)) {
       const command = String(item.command || '').toLowerCase().trim().replace(/^[./!]/, '')
-      const args = String(item.args ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/^(?:args?|teks|text)\s*[:=]\s*/i, '').replace(/^["'`]+|["'`]+$/g, '').trim().slice(0, 4000)
-      if (!command || DANGEROUS.test(command)) continue
-      const entry = catalog.find(e => e.aliases.includes(command))
-        || catalog.find(e => e.plugin === item.plugin)
-        || catalog.find(e => searchCatalog(catalog, command, 3).some(hit => hit.plugin === e.name && hit.aliases.includes(command)))
-      if (!entry) continue
+      if (!command || DANGEROUS.test(command)) { notes.push('perintah itu tidak bisa dijalankan.'); continue }
+      // Require an exact alias from a shown candidate. No fuzzy fallback, no made-up feature.
+      const candidate = candidates.find(e => e.aliases.includes(command) && (!item.plugin || e.plugin === item.plugin))
+      const entry = candidate && resolveCommand(catalog,command,item.plugin || undefined)
+      if (!entry) { notes.push('aku belum yakin perintah yang dimaksud. sebut nama fitur atau perintahnya ya.'); continue }
       if (entry.denied) { notes.push(entry.denied); continue }
-      const resolved = entry.aliases.includes(command) ? command : entry.command
-      const roomCommand = wantsRoom && /room|meja|lobi|table|webgame/i.test(entry.name + ' ' + entry.category)
-      steps.push({ command: resolved, args: roomCommand ? '' : args, plugin: entry.name, delayMs: clampDelay(item.delay ?? item.delay_seconds) })
+      // "open" belongs to RPG. Group operations must target their real group handler.
+      if (/\b(grup|group|gc)\b/i.test(input) && /\/rpg\//.test('/'+entry.name) && /^(open|buka)$/.test(command)) {
+        notes.push('maksudmu buka grup atau buka peti?'); continue
+      }
+      const args = String(item.args ?? '').replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,4000)
+      steps.push({command,args:/^(?:usanagi-)?(?:menu|allmenu)$/.test(command)?'':args,plugin:entry.name,delayMs:clampDelay(item.delay ?? item.delay_seconds)})
     }
     let reply = humanizeReply(plan.reply)
-    // Kalau ada lebih dari satu langkah (atau ada jeda), pastikan balasannya
-    // menyebut kelanjutannya — jangan cuma "grup ditutup" padahal nanti dibuka.
-    const needsTail = steps.length && (steps.length > 1 || steps.some(step => step.delayMs > 0))
-    if (needsTail && !/detik|menit|jam|nanti|lalu|terus|abis/i.test(reply)) {
-      const tail = naturalFallbackNote(steps, activePrefix)
-      reply = reply ? `${reply.replace(/[.\s]+$/, '')}, ${tail.replace(/^(?:udah|\d+ detik lagi)\s*/i, '')}` : tail
-    }
-    if (!reply && steps.length) reply = naturalFallbackNote(steps, activePrefix)
+    if (steps.length) reply = '' // Handler/plugin reports actual outcomes; planning is not execution.
     const base = { originalText: m.text, botMentionIds: botIdentities(conn, context.bot), note: reply.slice(0, 600) }
     if (steps.length) {
       const ordered = steps.sort((a, b) => a.delayMs - b.delayMs)
       if (ordered.length === 1 && ordered[0].delayMs === 0) return { kind: 'command', ...ordered[0], ...base }
       return { kind: 'steps', steps: ordered, ...base }
     }
-    return { kind: 'answer', answer: reply || (notes[0] ? String(notes[0]).toLowerCase() : 'hmm maksudnya gimana? coba jelasin dikit lagi') }
+    return { kind: 'answer', answer: notes[0] || reply || 'maksudmu fitur yang mana? sebut nama perintahnya ya.' }
   } catch (error) {
     const detail = String(error?.message || '')
     const pesan = /batas|limit|429/i.test(detail)
@@ -357,11 +391,3 @@ export async function planAutoAI(context, options = {}) {
   } finally { locks.delete(key) }
 }
 
-// Kalimat cadangan kalau model mengantrekan perintah tapi tidak menulis balasan.
-function naturalFallbackNote(steps, prefix) {
-  const first = steps[0]
-  const label = step => step.command
-  const head = first.delayMs ? `${Math.round(first.delayMs / 1000)} detik lagi tak ${label(first)}` : `udah tak ${label(first)}`
-  const rest = steps.slice(1).map(step => `${Math.round(step.delayMs / 1000)} detik lagi tak ${label(step)}`)
-  return rest.length ? `${head}, terus ${rest.join(', ')} ya` : `${head} ya`
-}

@@ -495,7 +495,7 @@ Ada error atau mau upgrade premium? Hubungi owner ya~ 🥜
             )
                 .filter(
                     plugin =>
-                        plugin &&
+                        typeof plugin === 'function' &&
                         !plugin.disabled
                 )
                 .map(plugin => ({

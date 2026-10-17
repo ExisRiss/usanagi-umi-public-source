@@ -1566,3 +1566,37 @@ Laporan: disuruh bikin room malah bilang room tidak ditemukan; disuruh jalanin c
   lebih longgar, setel env `JADIBOT_SESSION_TTL_MS` (mis. 3600000 = 1 jam)
 - Auto-backup WA masih gagal kirim (`Connection Closed`) → putuskan: matikan fitur ini (backup
   sudah rutin lewat Vercel) atau batasi hanya kalau ada koneksi WhatsApp yang sehat
+## Task 41 — Perbaiki routing menu/command dan crash allmenu (2026-10-18)
+
+### Laporan dan bukti akar masalah
+- User: "tampilin allmenu" dibalas menu error; "buka menu" menjadi open create.
+- Log produksi menunjukkan crash asli `[allmenu] TypeError: Cannot use 'in' operator to search for 'customPrefix' in <!DOCTYPE html>`, di `_system/_allmenu.js:522`. Registry berisi template HTML game selain function plugin. Filter lama menerima string HTML lalu memakai operator `in` pada string.
+- Search AI memberi boost pada `buka/open` tanpa memeriksa objek menu/grup/peti. RPG `open` bisa menang. Katalog Usanagi hanya mengekspos nama namespace, bukan alias polos yang juga diterima handler.
+- Prompt lama menyuruh memilih fitur terdekat saat ragu dan mengklaim hasil sebelum eksekusi. Jalur lokal melewati pemeriksaan izin per-plugin dan terblokir budget Groq meski tanpa panggilan API.
+
+### Perubahan
+- `_system/_allmenu.js`: hanya function plugin aktif masuk renderer; HTML/string/null/angka di registry diabaikan. Template dan tampilan menu tetap dipertahankan.
+- `auto-ai.js`: alias polos + namespace yang valid, target plugin pasti, pencarian berdasarkan objek dan usage. `buka menu` tidak diberi boost grup/RPG.
+- Menu/allmenu dan room yang jelas dirutekan lokal, argumen kosong sesuai kontrak. Permintaan ambigu ditanyakan; quote bertuliskan "buka menu" bukan permintaan membuka menu.
+- Pemilihan hasil model harus exact alias + id plugin dari kandidat. Fallback fuzzy/suffix untuk eksekusi dihapus. Tidak boleh membuat command baru atau menukar fitur diam-diam.
+- Izin/nonaktif dicek pada jalur lokal maupun model. Router lokal berjalan sebelum guard kuota, sehingga menu tidak tergantung sisa token Groq.
+- Penghapusan semua args bila pesan menyebut room dihapus: `empire join ABC123` tetap membawa ID asli, bukan membuat room baru.
+- Rangkaian yang jelas (`tutup grup lalu buka 5 detik kemudian`) direncanakan lokal, dua langkah tetap ada. Perencana tidak mengaku sukses sebelum plugin dijalankan.
+- Prompt dipadatkan dan menjelaskan tujuan/objek, perbedaan perintah vs pertanyaan/negasi/isi teks, usage, izin, serta kewajiban bertanya saat ambigu. Gaya santai tetap ada.
+
+### Pengujian
+- `node --test bot/tests/auto-ai.test.mjs bot/tests/intent-routing.test.mjs`: **47/47 lulus**.
+- Suite baru memakai metadata plugin nyata termasuk menu, allmenu, RPG open, grup, Empire dan bratvid2. Kasus negatif: unknown alias, plugin mismatch, menu nonaktif, non-admin, pertanyaan, negasi, isi quote, dan budget habis.
+- Handler allmenu aktual dieksekusi dengan transport WhatsApp/media tiruan, registry berisi HTML/string/null/angka: berhasil menghasilkan caption menu dengan prefix `!`, tanpa exception. Ini bukan bukti penerimaan pesan oleh HP.
+- Probe Groq nyata dengan metadata aktual: permintaan menu lengkap memilih allmenu; quote teks "buka menu" memilih quote dan mempertahankan teks. Probe juga menemukan model bisa menghilangkan langkah buka pada rangkaian; setelah router rangkaian ditambahkan, tutup@0 + buka@5000 memakai 0 panggilan model.
+- Frasa "bisa tampilkan pilihan menunya?" sempat hanya dibalas teks oleh model; dimasukkan ke routing menu lokal dan tes regresi, sekarang menu dengan 0 panggilan.
+- Suite native-dispatch lama belum dapat dijalankan di sandbox ini: dependency better-sqlite3 tidak terpasang. Tidak mengklaim e2e pengiriman WhatsApp; tetap perlu user mencoba di grup nyata.
+
+### Deploy
+- Unduh dan bandingkan file produksi dengan HEAD sebelum perubahan/deploy: sama. Hanya tiga file runtime diubah; session, key, aset, website, dan pengaturan autoread tidak disentuh.
+- Upload 204: `/lib/auto-ai.js` **24.868 B**, SHA-256 awal `06da43c272bc037c`;
+  `/lib/auto-ai-prompt.js` **2.449 B**, `55317e4d244fcbca`;
+  `/plugins/_system/_allmenu.js` **21.649 B**, `f756a20f8d49d569`.
+- Ketiga file diunduh kembali: byte identik. Restart panel API 204.
+
+- Log setelah restart: `Successfully Loaded 2052 Plugins`; 0 baris error pada log startup yang diperiksa. Konfirmasi tampilan menu di WhatsApp masih menunggu uji user.
