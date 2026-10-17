@@ -449,6 +449,7 @@ repo memakai `https://apiii-xrina.my.id`. Itu sebab pesan `❌ Gagal membuat bra
 **3. Trading bisa dimainkan langsung di WhatsApp (rich HTML).**
 - `bot/plugins/game/trading-wa-html.js` — game HTML **mandiri** (tanpa aset/internet, 10 emiten,
   tick 3 detik, beli/jual, portofolio, avg & P/L, reset, localStorage `umi-wa-trade-v1`).
+  `confirm()` tidak dipakai (tidak selalu ada di penampil rich) → reset pakai ketuk dua kali.
 - `bot/lib/awang-rich-forward.js` — `kirimForwardSigned()` dipisah dari `game-sonic.js` supaya bisa
   dipakai bersama (payload `GenAIUnifiedResponse` + `richResponseMessage` + SIG/CERT1/CERT2).
 - `bot/plugins/game/trading-wa.js` — perintah `tradingwa`, `tradewa`, `mainas`, `sahamwa`.
@@ -456,8 +457,10 @@ repo memakai `https://apiii-xrina.my.id`. Itu sebab pesan `❌ Gagal membuat bra
   * `.tradingoffline` **sekarang membuka game di chat** (rich HTML, jalur sama dengan `game-sonic`).
   * `.tradingoffline file` tetap mengirim berkas `UMI-TRADE-OFFLINE.html`.
   * Kartu akun & daftar pasar tidak lagi menampilkan "boost sesi", teks caption bebas boost.
-- Uji di server: `.tradingoffline` → `relayMessage` payload 19.004 char; `.tradingoffline file` →
-  dokumen 34.857 byte.
+- Teks bantuan di kartu akun/pasar memakai prefix aktif (`accountCard(..., prefix)`).
+- Uji di server: `.tradingoffline` → `relayMessage` payload 19.296 char; `.tradingoffline file` →
+  dokumen 34.857 byte. Uji DOM (jsdom): beli 3 lot → kas 995,95 & aset tetap 1.000,00; jual balik →
+  kas 1.000,00; reset dua ketuk berfungsi; **0 galat JS**.
 
 **4. Lain-lain**
 - `bot/lib/prefix-rewrite.js`: `rewriteOutgoingContent()` hanya menyentuh plain object —

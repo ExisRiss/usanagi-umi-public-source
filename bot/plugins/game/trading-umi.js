@@ -152,7 +152,7 @@ async function sessionFor(number, name, force) {
 }
 
 /* ── tampilan ── */
-function accountCard(summary, session, extra) {
+function accountCard(summary, session, extra, prefix = '.') {
   const rows = []
   rows.push('╭─〔 💹 UMI TRADE 〕')
   rows.push(`│ 👤 ${summary.username || '-'}${summary.number ? ` · wa.me/${summary.number}` : ''}`)
@@ -180,7 +180,7 @@ function accountCard(summary, session, extra) {
   }
   if (extra) rows.push(`├─ ${extra}`)
   rows.push('╰────────────────')
-  rows.push('Tips: .pasar · .belisaham UMI 5 · .jualsaham UMI 5 · .tradingkaya · .tradingoffline')
+  rows.push(`Tips: ${usedPrefix}pasar · ${usedPrefix}belisaham UMI 5 · ${usedPrefix}jualsaham UMI 5 · ${usedPrefix}tradingkaya · ${usedPrefix}tradingoffline (main di chat)`)
   return rows.join('\n')
 }
 
@@ -329,7 +329,7 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
         balance: login.balance, equity: login.equity, netWorth: login.netWorth,
         unrealized: numOr(login.unrealized), realized: login.realized,
         rank: null, total: null, positions: login.positions || [],
-      }, login.session),
+      }, login.session, null, usedPrefix),
       '',
       'Status akun ini otomatis tampil setiap kamu ketik .trading.',
     ].join('\n'))
@@ -387,16 +387,16 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
         username: (me.account && me.account.username) || 'Trader', number: '',
         balance: me.balance, equity: me.equity, netWorth: me.netWorth,
         unrealized: numOr(me.unrealized), realized: me.realized, rank: null, total: null, positions: me.positions || [],
-      }, me.session, `via login token · ${usedPrefix}trading off untuk lepas`))
+      }, me.session, `via login token · ${usedPrefix}trading off untuk lepas`, usedPrefix))
     } catch (error) {
       setLink(number, '')
-      return m.reply(`⚠️ Token tersimpan sudah tidak valid (${error.message}). Menampilkan akun nomor WhatsApp kamu...\n\n${await statusWa(config, number, m)}`)
+      return m.reply(`⚠️ Token tersimpan sudah tidak valid (${error.message}). Menampilkan akun nomor WhatsApp kamu...\n\n${await statusWa(config, number, m, usedPrefix)}`)
     }
   }
-  return m.reply(await statusWa(config, number, m))
+  return m.reply(await statusWa(config, number, m, usedPrefix))
 }
 
-async function statusWa(config, number, m) {
+async function statusWa(config, number, m, prefix = '.') {
   const name = (() => {
     const user = global.db && global.db.data && global.db.data.users ? global.db.data.users[m.sender] : null
     return String((user && user.name) || m.pushName || '').trim().slice(0, 40)
@@ -407,7 +407,7 @@ async function statusWa(config, number, m) {
     try { const s = await callGame(config, '/api/trading/session'); return s } catch { return null }
   })()
   if (data.created) summary._new = true
-  return accountCard(summary, session, data.created ? '🎉 Akun trading baru dibuat — username = nomor WA kamu' : `Sesi bot · ${'-'}`)
+  return accountCard(summary, session, data.created ? '🎉 Akun trading baru dibuat — username = nomor WA kamu' : `Sesi bot · ${'-'}`, prefix)
 }
 
 async function tradeToken(number, m) {

@@ -280,10 +280,13 @@ Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(t){
     if(tab==='pf'){renderHolds();renderCards()}
   });
 });
+var resetArmed=false;
 $('reset').addEventListener('click',function(){
-  if(!confirm('Reset akun ke $AS 1.000 dan hapus semua posisi?'))return;
+  // confirm() tidak selalu tersedia di penampil rich WhatsApp → pakai ketuk dua kali.
+  if(!resetArmed){resetArmed=true;toast('Ketuk RESET sekali lagi untuk menghapus akun.');setTimeout(function(){resetArmed=false},3000);return}
+  resetArmed=false;
   state={cash:1000,holds:{},trades:0,started:Date.now()};
-  save();refresh('Akun direset.');
+  save();refresh('Akun direset ke $AS 1.000.');
 });
 
 /* ── tick 3 detik ── */
