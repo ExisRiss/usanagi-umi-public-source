@@ -151,7 +151,9 @@ export default function (m, conn) {
 
 		const defaultSettings = {
 			public: true,
-			autoread: true,
+			// Auto-read dimatikan secara default (permintaan owner). Bisa dinyalakan
+			// per sesi lewat /api/owner-console/autoread atau .enable autoread.
+			autoread: false,
 			anticall: true,
 		}
 

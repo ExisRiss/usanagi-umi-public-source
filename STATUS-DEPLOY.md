@@ -1270,6 +1270,72 @@ Laporan: `.open` / `.buka` menjawab
     WEBGAME 7 meja.
 - Commit: `c9eeaf3` (push ke `main`).
 
+## Task 35 — Auto-AI bisa menjadwalkan rangkaian perintah + paham argumen + game Ular Tangga rich HTML (2026-10-17 22.40 WITA)
+
+Permintaan: (1) Auto-AI boleh menjalankan perintah pada waktu tertentu tanpa mentok — contoh
+"tutup grup lalu buka 5 detik kemudian" gagal; (2) Auto-AI harus paham semua fitur, karena
+"bikin bratvid teks ayam" malah mengirim bratvid berisi link; (3) game ular tangga yang bisa
+dimainkan di WhatsApp lewat rich HTML seperti trading offline.
+
+### 1. Auto-AI multi-perintah + jeda waktu
+- `lib/auto-ai.js`
+  - tool `run_command` kini punya `delay_seconds` (0 = sekarang) dan **boleh dipanggil beberapa
+    kali dalam satu jawaban**; hasilnya `{kind:'steps', steps:[…]}` yang diurutkan berdasarkan
+    jeda. Batas: 6 langkah per permintaan, 7 hari per langkah.
+  - `delay_seconds` menerima angka atau teks ("5 detik", "10 menit", "1 jam").
+  - args dibersihkan dari label `args:` / tanda kutip pembungkus.
+  - tool baru `list_features(category)` supaya model bisa melihat isi satu kategori.
+- `lib/auto-ai-scheduler.js` (baru) — penjadwal di proses bot:
+  - tugas disimpan di memori, dijalankan `setTimeout` tanpa menahan handler;
+  - plugin diambil ulang dari `global.plugins`, metadata grup + status admin pengguna/bot
+    dihitung ULANG saat waktu tiba (tidak ada pembekuan izin);
+  - pesan dikirim tanpa kutipan karena key lama bisa kedaluwarsa;
+  - batas praktis: 200 tugas menunggu, 7 hari per tugas.
+- `handler.js` — satu langkah tanpa jeda tetap dijalankan dispatcher asli (perilaku lama),
+  langkah lain masuk penjadwal, dan pengguna menerima pesan konfirmasi
+  `⏱️ JADWAL AUTO-AI` berisi perintah + "dalam X detik/menit".
+
+### 2. Auto-AI lebih paham fitur & argumen
+- Katalog kini memakai `handler.importConfig.usage`, `example`, `category`, dan `description`
+  dari plugin impor Usanagi (sebelumnya hanya `handler.help`, sehingga bentuk argumen tidak
+  terlihat). Sinonim kata kunci ditambah (brat/bratvid, ular tangga, game).
+- Prompt (`lib/auto-ai-prompt.js`) diberi aturan tegas:
+  - args hanya parameter, tanpa kalimat permintaan dan **tanpa URL** kecuali fitur memang
+    butuh URL; contoh "bratvid2 teks ayam" → args `ayam`;
+  - nama fitur mirip harus dibedakan (ular vs ulartangga, brat vs bratvid2);
+  - command tutup/buka grup wajib diambil persis dari hasil pencarian (tidak boleh mengarang
+    alias seperti `closegc` yang tidak ada).
+- Skor pencarian diberi boost untuk close/tutup dan open/buka.
+
+### 3. Game Ular Tangga rich HTML di WhatsApp
+- `plugins/game/ular-tangga-wa-html.js` — HTML mandiri 16.945 B: papan 10×10, 7 ular + 8 tangga
+  (garis SVG), dadu beranimasi, pion berjalan petak demi petak, suara WebAudio, konfeti,
+  progres di localStorage, mode **lawan bot** atau **2 pemain** bergantian.
+- `plugins/game/game-ular-tangga-wa.js` — perintah `.ular` (+ `ularpapan`, `ularrich`,
+  `ularwa`, `ularboard`, `utwa`) mengirim rich message lewat `kirimForwardSigned`
+  (jalur yang sama dengan trading offline/game-sonic). `.ular file` mengirim berkas HTML;
+  kalau rich message ditolak, otomatis jatuh ke mode berkas.
+- Diuji di jsdom: 100 sel, 7 ular/8 tangga, token bergerak, giliran bot jalan, reset aman,
+  0 error JavaScript.
+
+### 4. Verifikasi live
+- Deploy 7 berkas ke server, semuanya **SAMA** dengan repo:
+  `/lib/auto-ai.js` 15.942 B `99c91ef8…`, `/lib/auto-ai-prompt.js` 4.887 B `92d374fc…`,
+  `/lib/auto-ai-scheduler.js` 8.496 B `4412caab…`, `/lib/database.js` 3.486 B `b005a0ff…`,
+  `/handler.js` 50.276 B `73b14b08…`, `/plugins/game/game-ular-tangga-wa.js` 2.826 B
+  `ceaa721d…`, `/plugins/game/ular-tangga-wa-html.js` 16.945 B `fc6afe6a…`.
+- Restart `204` → `Successfully Loaded 2051 Plugins` (bertambah 2 berkas ular), 0 error,
+  WEBGAME 7 meja.
+- Uji perencanaan dengan Groq asli:
+  - "tutup grup terus buka 5 detik kemudian" → `umi-group-close` delay 0 + `umi-group-open`
+    delay 5000 (command nyata dari katalog);
+  - "bikin bratvid2 teksnya ayam" → `bratvid2` args `ayam` (bukan URL);
+  - "main ular tangga langsung di chat" → `ular` (bukan `ulartangga` room).
+- `database.js`: default `autoread` diubah ke `false`; Auto Read 14 sesi tetap `false` setelah
+  restart.
+- Catatan: tugas jadwal disimpan di memori, jadi restart container membatalkan tugas yang
+  belum jatuh tempo (pemberitahuan dikirim hanya untuk tugas yang sempat berjalan).
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix

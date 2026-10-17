@@ -1,4 +1,5 @@
 import { planAutoAI, shouldAutoAITrigger } from './lib/auto-ai.js';
+import { schedulePluginCommand } from './lib/auto-ai-scheduler.js';
 import { runWithBotConnection } from './lib/bot-connection-context.js';
 import { smsg } from './lib/simple.js';
 import { generateWAMessageFromContent, proto } from '@rexxhayanasi/elaina-baileys'
@@ -30,6 +31,17 @@ import {
 
 const isNumber = (x) => typeof x === 'number' && !isNaN(x);
 const registrationCommands = new Set(['daftar', 'verify', 'reg', 'register']);
+
+// Jarak waktu untuk konfirmasi jadwal Auto-AI ("dalam 5 detik", "dalam 2 menit").
+function formatDelay(ms) {
+    const total = Math.max(0, Math.round(Number(ms || 0) / 1000));
+    if (total < 60) return `${total} detik`;
+    const minutes = Math.floor(total / 60);
+    if (minutes < 60) return total % 60 ? `${minutes} menit ${total % 60} detik` : `${minutes} menit`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest ? `${hours} jam ${rest} menit` : `${hours} jam`;
+}
 
 function registrationRequiredMessage(usedPrefix) {
     const prefix = String(usedPrefix || '.');
@@ -377,11 +389,53 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
             userData: _user, chatData: chat,
             isCommandDisabled: (name, command) => isPluginDisabled(botConfig, name, command)
         });
-        const aiDispatchText = aiPlan.kind === 'command' ? `${activePrefix}${aiPlan.command}${aiPlan.args ? ' ' + aiPlan.args : ''}` : m.text;
-        if (aiPlan.kind === 'answer') { m.__autoAIHandled = true; m.__autoAIAnswer = aiPlan.answer; }
-        if (aiPlan.kind === 'command') {
+        // Auto-AI bisa mengantrekan beberapa perintah sekaligus (mis. tutup grup
+        // lalu buka 5 detik kemudian). Satu perintah tanpa jeda dijalankan oleh
+        // dispatcher di bawah; sisanya diserahkan ke penjadwal.
+        const aiSteps = Array.isArray(aiPlan.steps)
+            ? aiPlan.steps
+            : (aiPlan.kind === 'command' ? [{ command: aiPlan.command, args: aiPlan.args, plugin: aiPlan.plugin, delayMs: 0 }] : []);
+        let aiDispatchPlan = null;
+        if (aiSteps.length) {
             m.__autoAIHandled = true;
-            m.__autoAITargetPlugin = aiPlan.plugin;
+            const immediateIndex = aiSteps.findIndex(step => !step.delayMs);
+            if (immediateIndex >= 0) aiDispatchPlan = aiSteps[immediateIndex];
+            const scheduledSteps = aiSteps.filter((step, index) => index !== immediateIndex);
+            if (scheduledSteps.length) {
+                const lines = [`⏱️ *JADWAL AUTO-AI*`, ''];
+                for (const step of scheduledSteps) {
+                    const label = `${activePrefix}${step.command}${step.args ? ' ' + step.args : ''}`;
+                    try {
+                        schedulePluginCommand({
+                            conn: this,
+                            scope: botConfig.scope,
+                            chat: m.chat,
+                            sender: m.sender,
+                            pushName: m.pushName,
+                            isGroup: Boolean(m.isGroup),
+                            prefix: activePrefix,
+                            command: step.command,
+                            args: step.args,
+                            pluginName: step.plugin,
+                            delayMs: step.delayMs,
+                            isOwner,
+                            isPrems,
+                            botConfig,
+                            bot,
+                        });
+                        lines.push(`• ${label} — ${step.delayMs ? `dalam ${formatDelay(step.delayMs)}` : 'segera'}`);
+                    } catch (error) {
+                        lines.push(`• ${label} — gagal dijadwalkan: ${String(error?.message || error).slice(0, 120)}`);
+                    }
+                }
+                lines.push('', 'Perintah dijalankan dengan hak aksesmu saat waktu tiba.');
+                try { await m.reply(lines.join('\n')); } catch { }
+            }
+        }
+        const aiDispatchText = aiDispatchPlan ? `${activePrefix}${aiDispatchPlan.command}${aiDispatchPlan.args ? ' ' + aiDispatchPlan.args : ''}` : m.text;
+        if (aiPlan.kind === 'answer') { m.__autoAIHandled = true; m.__autoAIAnswer = aiPlan.answer; }
+        if (aiDispatchPlan) {
+            m.__autoAITargetPlugin = aiDispatchPlan.plugin;
         }
 
 		// ============================================================
@@ -720,7 +774,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 				try {
                     
                     
-                    if (aiPlan.kind === 'command') {
+                    if (aiDispatchPlan) {
                         m.text = aiDispatchText;
                         // WebMessageInfo mendefinisikan `mentionedJid` sebagai getter
                         // (hanya baca), sehingga assignment biasa melempar
@@ -731,7 +785,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
                         try {
                             Object.defineProperty(m, 'mentionedJid', { value: aiMentions, writable: true, configurable: true, enumerable: true });
                         } catch { }
-                        const targetCommand=plugin.importAliasMap?.[aiPlan.command]||aiPlan.command.replace(/^(?:umi|ourin|usanagi)-/,'');
+                        const targetCommand=plugin.importAliasMap?.[aiDispatchPlan.command]||aiDispatchPlan.command.replace(/^(?:umi|ourin|usanagi)-/,'');
                         if (/^(?:kick|add|promote|demote|warn|ban|unban|block|unblock|blacklist)$/i.test(targetCommand) && m.quoted && (m.quoted.fromMe || aiPlan.botMentionIds.includes(String(m.quoted.sender || '').replace(/:\d+(?=@)/, '').split('@')[0]))) {
                             try { Object.defineProperty(m, 'quoted', { value: null, writable: true, configurable: true, enumerable: true }); } catch { }
                             if(isUsanagiPlugin)Object.defineProperty(pluginMessage,'quotedMessage',{value:null,writable:true,configurable:true});
