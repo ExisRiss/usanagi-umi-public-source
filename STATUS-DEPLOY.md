@@ -348,6 +348,12 @@ Sebelumnya setiap percobaan menulis ratusan MB lalu gagal "Connection Closed". D
 koneksi tertutup → dilewati, koneksi terbuka → jalan (1 bagian). Setelah deploy tidak ada lagi
 `[AUTO-BACKUP] Error: Connection Closed`.
 
+**Bukti sapuan otomatis (tanpa intervensi) pada 04:43 UTC.** Tiga sesi yang tetap tidak tersambung
+sejak 04:28 dihapus sendiri setelah 16 menit:
+`6281774172084` (session), `6281935568221` (session + backup), `6283878775317` (session + backup).
+Hasil akhir: **2 sesi jadibot tersisa** (keduanya online), **0 folder backup**, disk tetap 31 GB lega,
+state hanya berisi 2 sesi online. Nomor-nomor itu perlu pairing ulang kalau masih dipakai.
+
 **Catatan.** Saat pemeriksaan, `.main-bot.env` berisi `MAIN_BOT_ENABLED=true` +
 `MAIN_BOT_PAIRING_NUMBER=<nomor>` — diisi lewat halaman Bot Utama (bukan dari sisi kami), jadi
 dibiarkan apa adanya. Tiga sesi lain (`…2084`, `…8221`, `…5317`) masih offline dan akan ikut
