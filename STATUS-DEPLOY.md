@@ -1340,6 +1340,46 @@ dimainkan di WhatsApp lewat rich HTML seperti trading offline.
 - Catatan: tugas jadwal disimpan di memori, jadi restart container membatalkan tugas yang
   belum jatuh tempo (pemberitahuan dikirim hanya untuk tugas yang sempat berjalan).
 
+## Task 36 — Kenapa Auto-AI bilang "Batas penggunaan Groq tercapai" (2026-10-17 23.35 WITA)
+
+Laporan: mention bot dibalas `Auto-AI: Batas penggunaan Groq tercapai. Tunggu sebentar lalu coba lagi.`
+
+### Penyebab
+- Itu **HTTP 429 dari Groq**, bukan key mati. Cek langsung ke API: status 200, limit
+  `x-ratelimit-limit-tokens: 8.000` token/menit (per model), `x-ratelimit-limit-requests: 1.000`,
+  sisa token saat sepi 7.923.
+- Satu permintaan Auto-AI memakai 2–4 panggilan model (cari fitur → pilih command → jawab).
+  Dengan prompt + katalog + tools, satu panggilan ≈ 1,7–1,9 rb token input; tiga panggilan
+  ≈ 5,4 rb token. Dua permintaan berdekatan (atau dua orang chat bersamaan) langsung
+  menembus 8 rb/menit → 429.
+- Kode lama membuang alasan asli dan tidak punya cadangan, jadi pengguna hanya melihat pesan
+  generik berulang.
+
+### Perbaikan
+- `lib/groq-client.js`
+  - membaca `retry-after` / `x-ratelimit-reset-tokens` / `x-ratelimit-reset-requests`
+    (format `577ms`, `7.66s`, `1m2.3s`, `1h40m48s`) dan menampilkan sisa waktu di pesan:
+    “Batas Groq tercapai (8.000 token/menit). Coba lagi dalam 42 detik.”;
+  - retry otomatis sekali bila reset ≤ 3 detik;
+  - **fallback model** ke `openai/gpt-oss-20b` (kuota terpisah) bila model utama 429;
+  - memilih model dengan sisa kuota terbanyak berdasarkan header tiap respons.
+- `lib/auto-ai.js` — payload dipangkas supaya lebih hemat:
+  kandidat awal 6 entri, deskripsi 160 karakter, usage 3 baris, `maxTokens` 700 (dari 1.800),
+  maksimal 4 ronde (dari 5), budget 30 detik.
+- Hasil ukur ulang: satu permintaan “tutup grup lalu buka 5 detik kemudian” = 3 panggilan
+  ≈ 5,4 rb token dan tetap menghasilkan `umi-group-close` delay 0 + `umi-group-open` delay 5000.
+
+### Verifikasi
+- `node --check` lolos; uji unit 429: fallback model, retry 900 ms, dan pesan “coba lagi dalam
+  42 detik” semuanya benar.
+- Deploy `/lib/groq-client.js` 8.844 B `b026eb86…` dan `/lib/auto-ai.js` 16.046 B `fe2804a6…`
+  (keduanya SAMA dengan repo), restart `204`, boot `Successfully Loaded 2052 Plugins`, 0 error.
+- Uji dengan Groq asli setelah deploy: rencana 2 langkah tetap benar.
+
+### Catatan
+- Kalau pemakaian makin ramai, opsi berikutnya: naikkan tier Groq atau tambahkan key kedua
+  (rotasi key belum dilakukan; semua key tetap seperti sekarang).
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix

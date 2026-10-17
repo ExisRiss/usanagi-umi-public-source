@@ -30,33 +30,136 @@ export function redactProviderSecrets(value) {
   return String(value ?? '').replace(/(?:gsk_|vcp_|ptl[ac]_|gh[pousr]_)[A-Za-z0-9_-]{16,}|sk-or-v1-[A-Za-z0-9_-]{16,}|github_pat_[A-Za-z0-9_]{16,}/g, '<redacted-key>')
     .replace(/Bearer\s+[^\s"']+/gi, 'Bearer <redacted>')
 }
-export async function chatGroq(messages, options = {}) {
-  const settings = getGroqSettings()
-  const apiKey = options.apiKey || settings.apiKey
-  const model = options.model || settings.model
-  if (!apiKey) throw Object.assign(new Error('Groq belum dikonfigurasi oleh owner.'), { status: 503 })
-  const timeout = Math.max(1, Math.min(Number(options.timeoutMs) || 20_000, 40_000))
-  const body = { model, messages, max_completion_tokens: options.maxTokens || 1600, temperature: 0.25 }
-  if (model.startsWith('openai/gpt-oss-')) body.reasoning_effort = 'low'
-  if (options.tools?.length) Object.assign(body, { tools: options.tools, tool_choice: options.toolChoice || 'auto', parallel_tool_calls: false })
+function parseDurationMs(raw) {
+  const text = String(raw === null || raw === undefined ? '' : raw).trim().toLowerCase()
+  if (!text) return 0
+  if (/^[\d.]+ms$/.test(text)) return Math.round(Number(text.slice(0, -2)))
+  let total = 0
+  let matched = false
+  const pattern = /(\d+(?:\.\d+)?)(h|m(?!s)|s)/g
+  let part
+  while ((part = pattern.exec(text))) {
+    matched = true
+    const value = Number(part[1])
+    const unit = part[2]
+    total += unit === 'h' ? value * 3_600_000 : unit === 'm' ? value * 60_000 : value * 1000
+  }
+  if (matched) return Math.round(total)
+  const plain = Number(text)
+  // Header `retry-after` tanpa satuan berarti detik.
+  return Number.isFinite(plain) ? Math.round(plain * 1000) : 0
+}
+function rateLimitDelay(response, payload) {
+  const headers = response && response.headers
+  const header = name => (!headers ? '' : typeof headers.get === 'function' ? headers.get(name) : headers[name])
+  const retryAfter = parseDurationMs(header('retry-after'))
+  if (retryAfter) return retryAfter
+  const reset = parseDurationMs(header('x-ratelimit-reset-tokens')) || parseDurationMs(header('x-ratelimit-reset-requests'))
+  if (reset) return reset
+  const message = String(payload?.error?.message || '')
+  const match = message.match(/try again in\s+([\d.]+)\s*(ms|s|m)?/i)
+  if (match) {
+    const value = Number(match[1])
+    const unit = (match[2] || 's').toLowerCase()
+    return unit === 'ms' ? value : unit === 'm' ? value * 60_000 : value * 1000
+  }
+  return 0
+}
+const sleep = ms => new Promise(resolve => setTimeout(resolve, Math.max(0, ms)))
+// Sisa kuota token tiap model dicatat dari header Groq supaya permintaan
+// berikutnya otomatis memakai model yang masih punya ruang (bukan selalu 120b).
+const modelLimits = new Map()
+function readLimitState(response) {
+  const headers = response && response.headers
+  if (!headers) return null
+  const get = name => (typeof headers.get === 'function' ? headers.get(name) : headers[name])
+  const remaining = get('x-ratelimit-remaining-tokens')
+  if (remaining === null || remaining === undefined || remaining === '') return null
+  return { remaining: Number(remaining) || 0, resetAt: Date.now() + (parseDurationMs(get('x-ratelimit-reset-tokens')) || 60_000) }
+}
+
+async function requestCompletion({ apiKey, model, body, timeout, options }) {
   const fetcher = options.fetchImpl || globalThis.fetch
   let response
   try {
-    response = await fetcher(URL, { method: 'POST', headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(timeout) })
+    response = await fetcher(URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeout),
+    })
   } catch (error) {
     const timedOut = ['TimeoutError', 'AbortError'].includes(error?.name)
     throw Object.assign(new Error(timedOut ? 'Groq melewati batas waktu. Coba lagi.' : 'Koneksi Groq tidak tersedia. Coba lagi.'), { status: timedOut ? 504 : 502 })
   }
+  const limitState = readLimitState(response)
+  if (limitState) modelLimits.set(model, limitState)
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {
-    const message = response.status === 429 ? 'Batas penggunaan Groq tercapai. Tunggu sebentar lalu coba lagi.'
-      : [401, 403].includes(response.status) ? 'Key Groq tidak valid atau akses model ditolak; hubungi owner.'
-      : response.status === 400 ? 'Permintaan/model Groq tidak didukung. Hubungi owner.' : 'Groq sedang tidak dapat merespons.'
+    if (response.status === 429) {
+      const waitMs = rateLimitDelay(response, payload)
+      modelLimits.set(model, { remaining: 0, resetAt: Date.now() + (waitMs || 60_000) })
+      const seconds = waitMs > 0 ? Math.max(1, Math.ceil(waitMs / 1000)) : 0
+      const message = seconds
+        ? `Batas Groq tercapai (8.000 token/menit). Coba lagi dalam ${seconds} detik.`
+        : 'Batas penggunaan Groq tercapai. Tunggu sebentar lalu coba lagi.'
+      throw Object.assign(new Error(message), { status: 429, retryAfterMs: waitMs })
+    }
+    const message = [401, 403].includes(response.status) ? 'Key Groq tidak valid atau akses model ditolak; hubungi owner.'
+      : response.status === 400 ? 'Permintaan/model Groq tidak didukung. Hubungi owner.'
+      : 'Groq sedang tidak dapat merespons.'
     throw Object.assign(new Error(message), { status: response.status >= 500 ? 502 : response.status })
   }
   const result = payload.choices?.[0]?.message
   if (!result || (!result.content && !result.tool_calls?.length)) throw Object.assign(new Error('Groq mengembalikan jawaban kosong. Coba lagi.'), { status: 502 })
   return { role: 'assistant', content: result.content || null, ...(result.tool_calls?.length ? { tool_calls: result.tool_calls } : {}) }
+}
+
+export async function chatGroq(messages, options = {}) {
+  const settings = getGroqSettings()
+  const apiKey = options.apiKey || settings.apiKey
+  if (!apiKey) throw Object.assign(new Error('Groq belum dikonfigurasi oleh owner.'), { status: 503 })
+  const timeout = Math.max(1, Math.min(Number(options.timeoutMs) || 20_000, 40_000))
+  const primary = String(options.model || settings.model)
+  // Batas Groq dihitung per model. Kalau model utama kena 429, model cadangan
+  // (gpt-oss-20b) punya kuota sendiri sehingga Auto-AI tetap bisa menjawab.
+  const ordered = [...new Set([primary, ...(options.fallbackModels || [])].filter(Boolean))]
+  const now = Date.now()
+  const models = ordered
+    .map((model, index) => {
+      const state = modelLimits.get(model)
+      const remaining = state && state.resetAt > now ? state.remaining : 1_000_000
+      return { model, index, remaining }
+    })
+    .sort((a, b) => b.remaining - a.remaining || a.index - b.index)
+    .map(row => row.model)
+  const bodyFor = model => {
+    const body = { model, messages, max_completion_tokens: options.maxTokens || 1600, temperature: 0.25 }
+    if (model.startsWith('openai/gpt-oss-')) body.reasoning_effort = 'low'
+    if (options.tools?.length) Object.assign(body, { tools: options.tools, tool_choice: options.toolChoice || 'auto', parallel_tool_calls: false })
+    return body
+  }
+  let lastError = null
+  for (let index = 0; index < models.length; index += 1) {
+    const model = models[index]
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        return await requestCompletion({ apiKey, model, body: bodyFor(model), timeout, options })
+      } catch (error) {
+        lastError = error
+        if (error.status !== 429) throw error
+        const waitMs = Number(error.retryAfterMs) || 0
+        // Tunggu sebentar (maks 3 detik) lalu ulangi model yang sama sekali,
+        // asalkan sisa waktu Auto-AI masih cukup.
+        if (attempt === 0 && waitMs > 0 && waitMs <= 3000 && timeout > waitMs + 4000) {
+          await sleep(waitMs + 250)
+          continue
+        }
+        break
+      }
+    }
+  }
+  throw lastError || Object.assign(new Error('Groq tidak dapat merespons.'), { status: 502 })
 }
 
 export function persistGroqRuntimeConfig({apiKey,model}) {
