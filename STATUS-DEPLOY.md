@@ -654,6 +654,36 @@ apple-touch-icon.png, og-umi-trade.png, manifest trading) — sesuai permintaan 
 - Pratinjau offline semua aset: `/home/user/preview-umi-games.html` (gambar ditanam base64).
 - Sumber resolusi penuh hasil generate: `/home/user/asset-src/` (PNG 1408×768 & 1024×1024).
 
+## Task 24 — Foto kartu & papan diganti foto asli dari internet (2026-10-17 17.05 WITA)
+
+**Permintaan owner:** "Buat foto kartu nya dan catur dll. Aku gamau simpel kalo bisa cari foto
+kartu uno di internet trus download habis pasang di website."
+
+Jadi semua gambar papan/kartu yang sebelumnya hasil render AI diganti **foto stok asli**
+yang diunduh dari internet, lalu dipotong & dikompres untuk web.
+
+| Berkas (di `db-mirror/assets/`) | Sumber | Lisensi | Ukuran |
+|---|---|---|---|
+| `kartu-uno.jpg` | Pexels #9068959 (kartu UNO dipegang 2 pemain) | Pexels License | 58.195 B |
+| `papan-catur.jpg` | Unsplash `JiBwGmtfKdc` (bidak catur hitam di papan) | Unsplash License | 24.111 B |
+| `papan-monopoli.jpg` | Pexels #776654 (papan properti + pion + dadu) | Pexels License | 47.697 B |
+| `papan-ular-tangga.jpg` | Wikimedia Commons oleh **Meghmollar2017** | **CC BY-SA 4.0** | 106.016 B |
+| `werewolf.jpg` | Pexels #8763161 (4 orang main kartu, lampu warna) | Pexels License | 50.828 B |
+| `hero-meja.jpg` (banner lobi) | Pexels #8111296 (3 orang main board game di meja) | Pexels License | 112.741 B |
+| `og-umi-games.jpg` | banner di atas + overlay judul | — | 71.398 B |
+
+- Semua dipotong ke **880×400** (kartu game) & **1400×764** (banner), JPEG q86 progressive.
+- Kredit & lisensi ditulis di `db-mirror/assets/KREDIT-FOTO.md` (wajib untuk yang CC BY-SA).
+- File sumber resolusi penuh disimpan di `/home/user/asset-src/stock/` (tidak di-deploy).
+- Logo emblem (render AI) **tidak diganti** karena itu logo brand, bukan foto.
+
+**Deploy & verifikasi:**
+- Backup foto versi AI: `/backup/task24-*.jpg` (7 berkas).
+- Upload 7 foto + `KREDIT-FOTO.md` → semua `OK`. Tanpa restart (statis).
+- Cek publik `https://game.gwenna.my.id/assets/...` → **200**, sha256 server ↔ repo **SAMA**
+  untuk ketujuh berkas (sempat terbaca versi lama karena edge cache, setelah diulang cocok).
+- Pratinjau offline baru: `/home/user/preview-umi-games.html` (1,09 MB, gambar base64).
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
