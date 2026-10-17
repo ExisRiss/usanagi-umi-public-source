@@ -1228,6 +1228,48 @@ getter` di `handler.js:725`.
   - restart `HTTP 204`, boot `Successfully Loaded 2047 Plugins`, **0** error plugin, WEBGAME
     7 meja (empire ikut termuat).
 
+## Task 34 — Fix "Gagal membuka grup" (`Cannot read properties of undefined (reading 'announce')`) (2026-10-17 21.15 WITA)
+
+Laporan: `.open` / `.buka` menjawab
+
+```
+❌ *ᴇʀʀᴏʀ*
+> Gagal membuka grup.
+> _Cannot read properties of undefined (reading 'announce')_
+```
+
+- Akar masalah (dua lapis):
+  1. Plugin impor Usanagi (`integrations/umi/plugins/group/open.js`) membaca
+     `m.groupMetadata.announce`. Padahal lapisan kompat `lib/imported-compat.js` membuat
+     `message = Object.create(m)` dan **hanya** menyalin `text, body, command, args, prefix,
+     isOwner, isAdmin, isBotAdmin, isPremium, pushName`. `groupMetadata` tidak ikut, jadi
+     nilainya `undefined` walau handler sudah menghitungnya di `extra.groupMetadata`.
+  2. Handler plugin memakai `sock.groupSettingUpdate(...)`. Kunci `sock` memang disuntikkan
+     loader (`handler(message, { ...extra, sock: sockAdapter(extra.conn) })`), tetapi plugin
+     tetap rapuh kalau `sock`/`groupMetadata` tidak lengkap.
+- Perbaikan:
+  - `bot/lib/imported-compat.js`: tambah `groupMetadata: extra.groupMetadata || m.groupMetadata || {}`
+    dan `groupMembers: extra.participants || m.groupMembers || []` ke daftar properti yang
+    disalin ke `pluginMessage`. Ini memperbaiki **semua** plugin grup impor sekaligus
+    (`close`, `mute`, `unmute`, `intro`, `cekonline`, `banchat`, `mutegc`, `unmutegc`).
+  - `bot/integrations/umi/plugins/group/open.js` & `close.js`: `groupMeta` diambil dari
+    `m.groupMetadata`; kalau kosong/tanpa `subject`, ambil ulang lewat
+    `sock.groupMetadata(m.chat)`. Jika tetap gagal, balas pesan jelas
+    "Tidak bisa membaca data grup…" (bukan TypeError mentah).
+- Bukti:
+  - uji langsung handler `open.js`: metadata ada → `groupSettingUpdate('not_announcement')`
+    terpanggil; metadata kosong → fetch metadata dulu lalu sukses; fetch gagal → pesan jelas;
+    grup sudah terbuka → pesan validasi "sudah terbuka" tetap muncul;
+  - uji end-to-end lewat `runImportedFeature('umi','plugins/group/open.js', …)` (jalur yang
+    dipakai bot): `{success:true}` + `SETTING …@g.us not_announcement` + `✅ @… telah membuka
+    grup ini`; `close.js` menghasilkan `announcement`;
+  - unggah ke server: `/lib/imported-compat.js` 12.067 B sha `fd88dd1b434c56b0`,
+    `/plugins/open.js` 3.774 B sha `352dfab4894b4fe9`, `/plugins/close.js` 3.736 B sha
+    `965745a4f6855749` — ketiganya **SAMA** dengan repo;
+  - restart `HTTP 204`, boot `Successfully Loaded 2049 Plugins`, 0 baris error di konsol,
+    WEBGAME 7 meja.
+- Commit: `c9eeaf3` (push ke `main`).
+
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
