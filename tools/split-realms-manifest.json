@@ -3,7 +3,7 @@
     "bot": "serverjadibotVip",
     "game": "servergameVip"
   },
-  "note": "Task49 split topology; actual deployed baseline. Runtime secrets, auth and data are excluded. Server IDs are discovered via authenticated list, never guessed.",
+  "note": "Task50: owner-only read-only RPG audit added; live currency/progress conversion remains disabled. Runtime data, credentials and sessions are excluded.",
   "files": [
     {
       "role": "game",
@@ -157,7 +157,7 @@
       "source": "bot/lib/jadibot-platform-api.js",
       "remote": "/lib/jadibot-platform-api.js",
       "beforeSha256": "6332f195a11a9192a8f366b71cfaa32117397cb9d483aee9f38a28346186291a",
-      "sourceSha256": "6332f195a11a9192a8f366b71cfaa32117397cb9d483aee9f38a28346186291a"
+      "sourceSha256": "59e687d05ffa946937610f76ffa44ff30ef274804a88c50b0e11e23677fc9808"
     },
     {
       "role": "game",
@@ -172,6 +172,13 @@
       "remote": "/game.html",
       "beforeSha256": "3967fb10954bb3486b9dd36a966249d08e772d33fc21d654a45a1755d704a451",
       "sourceSha256": "3967fb10954bb3486b9dd36a966249d08e772d33fc21d654a45a1755d704a451"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/rpg/legacy-migration-plan.js",
+      "remote": "/lib/rpg/legacy-migration-plan.js",
+      "beforeSha256": null,
+      "sourceSha256": "f510a76669882a24662d3bb1f121f680d080fec6deb2e09ac7d4983735d4a2a3"
     }
   ]
 }

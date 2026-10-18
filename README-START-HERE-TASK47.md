@@ -2,7 +2,7 @@
 
 **18 Oktober 2026 · Task47**
 
-> **Update Task49:** bot/game telah dipasang pada dua server panel baru dan RPG tersedia di https://game.gwenna.my.id/realms. Pemulihan data lama belum lengkap; lihat [panduan migrasi terbaru](docs/PANEL-MIGRATION-TASK49.md), khususnya pairing WA dan guard trading/dompet. Petunjuk preview di bawah tetap untuk pengujian terisolasi.
+> **Update Task50:** bot utama **OFF, tidak perlu pairing**; API/game dan jadibot tetap tersedia. Konversi currency RPG 1:1 sudah disetujui, tetapi baru audit/rehearsal—penyatuan live belum diaktifkan. Lihat [status dan backup terbaru](docs/RPG-UNIFICATION-TASK50.md). Topologi dua server dan guard trading/dompet tetap mengikuti [Task49](docs/PANEL-MIGRATION-TASK49.md). Petunjuk preview di bawah hanya untuk pengujian terisolasi.
 
 Paket source lengkap bot, website, game dan preview. Tidak berisi password, sesi WhatsApp, data pemain atau node_modules.
 
