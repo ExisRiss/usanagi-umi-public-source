@@ -2,24 +2,22 @@
 
 ## Task 64 — Top up $AS pakai koin RPG + Limit ON/OFF (2026-10-19)
 
-**Commit:** `5c92dbc` (kode + test) dan `a4ebe03` (website). Branch `main`.
+**Commit:** `5c92dbc` → `a4ebe03` → `ac9da69` → `66e60ff` (branch `main`).
 
 | Item | Status |
 |---|---|
-| Top up trading pakai koin RPG (tanpa DANA) | kode selesai + test; **bot & game menunggu deploy panel** |
+| Top up trading pakai koin RPG (tanpa DANA) | **SELESAI + TERDEPLOY** (bot `d178bf71`, game `186425d1`) |
 | Bug `default_limit -1` tetap kehabisan limit | **DIPERBAIKI** (akar: `userData.limit ??=`, akun lama menyimpan angka) |
-| Tombol Limit ON/OFF di website | **website live**; bot menyusul deploy |
-| Website Vercel | `dpl_HPTx69xbFc8tAJo6DA4BynC7bW2d` READY (toggle live, relay `/api/platform/rpg-topup` live) |
+| Tombol Limit ON/OFF di website | **SELESAI + LIVE** (`limit_enabled`, tersimpan per session) |
+| Website Vercel | `dpl_HPTx69xbFc8tAJo6DA4BynC7bW2d` READY |
+| Kunci trading Task63 | **DIBUKA** (`UMI_TRADING_RECOVERY_REQUIRED=false`, 0 akun & tidak ada data hilang) |
+| Kurs | **10 koin = $AS 1** (20–5.000/transaksi, 20.000/hari) |
 
-**Blocker:** `PTERO_CLIENT_API_KEY` di `/home/user/.secrets` sudah tidak valid (panel
-`ikyyxbeyy-panel.voltxyz.my.id` → 401). Perlu kunci baru sebelum bot/game bisa di-deploy.
+Bukti live: `/home/user/deploy-check/task64/verify.txt`. Detail: `/home/user/LAPORAN-TASK64.md`.
 
-Detail lengkap: `/home/user/LAPORAN-TASK64.md`.
+**Sisa langkah owner:** kirim `.trading login <token>` sekali dari WhatsApp agar nomor tertaut;
+sesudah itu tombol “TUKAR KOIN SEKARANG” di `https://game.gwenna.my.id/trading` berfungsi.
 
-
-**Log lengkap:** [repo `STATUS-DEPLOY.md`](./usanagi-umi-public-source/STATUS-DEPLOY.md)
-
-Terakhir diperbarui: **2026-10-19 (Task 64)**
 
 ## Done
 
