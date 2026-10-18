@@ -21,7 +21,7 @@ Sumber temuan: `LAPORAN-AUDIT-KEAMANAN-2026-10-18.md` (SEC-01…SEC-13). Ringkas
 | SEC-07 | ⏳ | Perlu setelan Cloudflare (Min TLS 1.2). Token CF yang ada tidak berizin Zone Settings (error 9109) → menunggu aksi manual. |
 | SEC-08 | ✅ | `/api/stats` bot wajib Bearer rahasia internal (401 untuk publik, diverifikasi live); website mengirim `BOT_BACKUP_EXPORT_SECRET`. |
 | SEC-09 | ✅ | `POST /api/rooms` dibatasi 12/menit/IP + batas `MAX_ROOMS` (default 300). |
-| SEC-10 | ✅ | `bot/lib/youtube.js` dihapus (tidak ada importer): kunci pihak ketiga + `rejectUnauthorized:false` hilang. |
+| SEC-10 | ✅ | `bot/lib/youtube.js` dihapus (tidak ada importer): kunci pihak ketiga + `rejectUnauthorized:false` hilang dari working tree (masih ada di riwayat git). |
 | SEC-11 | ✅ (keputusan) | `email_confirm:true` dipertahankan: Supabase Auth proyek ini `mailer_autoconfirm=true`, jadi validasi di lapisan platform (Gmail-only + password) yang berlaku; dicatat di laporan. |
 | SEC-12 | ✅ | Tiket owner mengikat `m` (method) + `p` (path) + `nonce` sekali-pakai; diverifikasi live (ticket valid 200, replay 401, path lain 401). Nama file panel divalidasi (`safeEntryName`). Tool internal (`console-logs`, `configure-panel2`, `set-panel-autoorder`, `recover-after-outage`) ikut memakai tiket terikat. |
 | SEC-13 | ✅ (uji) | Uji anon: `platform_profiles` 401/42501, INSERT `api_profiles`/`api_access_keys`/`api_settings` 42501, PATCH tanpa baris 0 dampak. Rekomendasi SQL (revoke UPDATE anon) dicatat untuk dijalankan manual. |
