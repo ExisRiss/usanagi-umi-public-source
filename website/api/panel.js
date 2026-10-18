@@ -70,6 +70,12 @@ function ownedServer(orders, identifier) {
   return order
 }
 
+function safeEntryName(value) {
+  const raw = clean(value, 200)
+  if (!raw || raw === '.' || raw === '..' || /[\/\\\u0000]/.test(raw)) throw httpError(400, 'Nama file tidak valid.')
+  return raw
+}
+
 function safeFilePath(value, { allowRoot = false } = {}) {
   const raw = clean(value || '/', 400)
   const normalized = '/' + raw.replace(/^\/+/, '').split('/').filter(part => part && part !== '.' && part !== '..').join('/')
@@ -176,35 +182,32 @@ export default async function handler(req, res) {
     }
     if (action === 'files_delete' && req.method === 'POST') {
       const root = safeFilePath(req.body?.root || '/', { allowRoot: true })
-      const files = (Array.isArray(req.body?.files) ? req.body.files : []).map(name => clean(name, 200)).filter(Boolean).slice(0, 30)
+      const files = (Array.isArray(req.body?.files) ? req.body.files : []).map(safeEntryName).slice(0, 30)
       if (!files.length) throw httpError(400, 'Tidak ada file yang dipilih.')
       await panelClient(req, serverPath('/files/delete'), { method: 'POST', body: { root, files } })
       return res.status(200).json({ ok: true })
     }
     if (action === 'files_rename' && req.method === 'POST') {
       const root = safeFilePath(req.body?.root || '/', { allowRoot: true })
-      const from = clean(req.body?.from, 200); const to = clean(req.body?.to, 200)
-      if (!from || !to || from.includes('/') || to.includes('/')) throw httpError(400, 'Nama file tidak valid.')
+      const from = safeEntryName(req.body?.from); const to = safeEntryName(req.body?.to)
       await panelClient(req, serverPath('/files/rename'), { method: 'PUT', body: { root, files: [{ from, to }] } })
       return res.status(200).json({ ok: true })
     }
     if (action === 'files_create_folder' && req.method === 'POST') {
       const root = safeFilePath(req.body?.root || '/', { allowRoot: true })
-      const name = clean(req.body?.name, 120)
-      if (!name || name.includes('/')) throw httpError(400, 'Nama folder tidak valid.')
+      const name = safeEntryName(req.body?.name)
       await panelClient(req, serverPath('/files/create-folder'), { method: 'POST', body: { root, name } })
       return res.status(200).json({ ok: true })
     }
     if (action === 'files_decompress' && req.method === 'POST') {
       const root = safeFilePath(req.body?.root || '/', { allowRoot: true })
-      const file = clean(req.body?.file, 200)
-      if (!file || file.includes('/')) throw httpError(400, 'Nama arsip tidak valid.')
+      const file = safeEntryName(req.body?.file)
       await panelClient(req, serverPath('/files/decompress'), { method: 'POST', body: { root, file } })
       return res.status(200).json({ ok: true })
     }
     if (action === 'files_compress' && req.method === 'POST') {
       const root = safeFilePath(req.body?.root || '/', { allowRoot: true })
-      const files = (Array.isArray(req.body?.files) ? req.body.files : []).map(name => clean(name, 200)).filter(Boolean).slice(0, 30)
+      const files = (Array.isArray(req.body?.files) ? req.body.files : []).map(safeEntryName).slice(0, 30)
       if (!files.length) throw httpError(400, 'Tidak ada file yang dipilih.')
       const data = await panelClient(req, serverPath('/files/compress'), { method: 'POST', body: { root, files } })
       return res.status(200).json({ ok: true, file: data?.attributes?.name || null })

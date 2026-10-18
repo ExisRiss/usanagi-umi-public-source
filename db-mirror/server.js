@@ -22,6 +22,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { startGameServer, gameHandler, startGameCleanup } from './game.js'
+import { SECURITY_HEADERS } from './security.js'
 
 const PORT = Number(process.env.SERVER_PORT || process.env.PORT || 2016)
 const ROOT = process.cwd()
@@ -76,7 +77,7 @@ function authorized(req) {
 }
 function sendJson(res, status, payload) {
     const body = JSON.stringify(payload)
-    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) })
+    res.writeHead(status, { ...SECURITY_HEADERS, 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) })
     res.end(body)
 }
 function listKind(kind) {

@@ -138,8 +138,11 @@ function consoleRelaySecret() {
   return secret
 }
 
-function ownerRelayTicket(user, audience) {
-  const body = Buffer.from(JSON.stringify({ v: 1, aud: audience, sub: user.id, exp: Date.now() + 75 * 1000, nonce: crypto.randomBytes(12).toString('base64url') })).toString('base64url')
+function ownerRelayTicket(user, audience, method, path) {
+  // SEC-12: ikat tiket ke method + pathname tujuan supaya tiket yang bocor
+  // (log/ekstensi) tidak bisa dipakai ke endpoint owner lain.
+  const boundPath = String(path || '').split('?')[0].replace(/^\/+/, '')
+  const body = Buffer.from(JSON.stringify({ v: 1, aud: audience, sub: user.id, exp: Date.now() + 75 * 1000, nonce: crypto.randomBytes(12).toString('base64url'), m: String(method || 'GET').toUpperCase(), p: boundPath })).toString('base64url')
   const signature = crypto.createHmac('sha256', consoleRelaySecret()).update(body).digest('base64url')
   return `${body}.${signature}`
 }
@@ -157,7 +160,7 @@ async function botOwnerRelayRequest(audience, path, user, { method = 'GET', body
     method,
     headers: {
       Accept: 'application/json',
-      [ticketHeader]: ownerRelayTicket(user, audience),
+      [ticketHeader]: ownerRelayTicket(user, audience, method, path),
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
@@ -365,7 +368,7 @@ export default async function handler(req, res) {
           headers: {
             Accept: 'application/json',
             'Content-Type': 'application/json',
-            'X-UMI-Panel-Ticket': ownerRelayTicket({ id: userId }, 'owner-panel'),
+            'X-UMI-Panel-Ticket': ownerRelayTicket({ id: userId }, 'owner-panel', 'POST', 'wallet-convert'),
           },
           body: JSON.stringify({
             token,
@@ -386,9 +389,30 @@ export default async function handler(req, res) {
       if (!user) return send(res, 401, { error: 'Unauthorized' })
       const oldPw = String(req.body?.old_password || '')
       const newPw = String(req.body?.new_password || '')
+      if (!oldPw) return send(res, 400, { error: 'Password lama wajib diisi.' })
       if (newPw.length < 8 || newPw.length > 128) return send(res, 400, { error: 'Password baru harus 8–128 karakter.' })
+      if (newPw === oldPw) return send(res, 400, { error: 'Password baru harus berbeda dari password lama.' })
+      // SEC-05: buktikan pemilik akun tahu password lama sebelum menggantinya.
+      // Tanpa ini, bearer token yang dicuri (XSS/ekstensi) bisa mengunci pemilik.
+      let verified = false
+      try {
+        const check = await fetch(`${AUTH_URL()}/auth/v1/token?grant_type=password`, {
+          method: 'POST',
+          headers: { apikey: AUTH_ANON(), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: user.email, password: oldPw }),
+          signal: AbortSignal.timeout(12000),
+        })
+        verified = check.ok
+      } catch { verified = false }
+      if (!verified) return send(res, 400, { error: 'Password lama tidak cocok.' })
       try {
         await authAdmin(`users/${user.id}`, { method: 'PUT', body: { password: newPw } })
+        // Cabut refresh token lain; sesi ini tetap boleh lanjut sampai expiry.
+        fetch(`${AUTH_URL()}/auth/v1/logout?scope=others`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${user.token}`, apikey: AUTH_ANON() },
+          signal: AbortSignal.timeout(8000),
+        }).catch(() => {})
         return send(res, 200, { ok: true, message: 'Password berhasil diubah.' })
       } catch (e) {
         return send(res, 500, { error: 'Gagal mengubah password.' })
@@ -402,7 +426,9 @@ export default async function handler(req, res) {
         let sessions = 0, online = 0
         try {
           const botCfg = await getBotApiConfig()
+          const secret = String(process.env.BOT_BACKUP_EXPORT_SECRET || process.env.UMI_ERROR_REPORT_SECRET || '').trim()
           const botRes = await fetch(`${botCfg.origin}/api/stats`, {
+            headers: secret ? { Authorization: `Bearer ${secret}` } : {},
             signal: AbortSignal.timeout(8000)
           })
           if (botRes.ok) {

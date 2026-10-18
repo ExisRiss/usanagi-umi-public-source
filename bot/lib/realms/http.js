@@ -18,7 +18,7 @@ export function createRealmHttp(getService,{preview=false,verifyPlatformToken=ve
  return async function realmHttp(req,res){
   try{
    const url=new URL(req.url,'http://localhost'),route=url.pathname.replace(/\/+$/,'')
-   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer')
+   res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Referrer-Policy','no-referrer');res.setHeader('Strict-Transport-Security','max-age=31536000; includeSubDomains');res.setHeader('X-Frame-Options','DENY')
    res.setHeader('Content-Security-Policy',"default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'")
    if(req.method==='GET'&&!route.startsWith('/realms/api/')){
     const name=route==='/realms'?'index.html':route.slice('/realms/'.length)

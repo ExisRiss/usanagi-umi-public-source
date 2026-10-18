@@ -5,9 +5,9 @@ import fs from 'node:fs'
 const readEnv = (p) => Object.fromEntries(fs.readFileSync(p, 'utf8').split('\n').filter(l => l.includes('=') && !l.trim().startsWith('#')).map(l => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()] }))
 const relay = readEnv('/home/user/.secrets/upload/.owner-console-relay.env').UMI_CONSOLE_RELAY_SECRET
 const b64 = (b) => Buffer.from(b).toString('base64url')
-function ticket() { const p = b64(JSON.stringify({ v: 1, aud: 'owner-panel', sub: 'cli-owner-0001', exp: Date.now() + 75000, nonce: crypto.randomBytes(8).toString('hex') })); return p + '.' + b64(crypto.createHmac('sha256', relay).update(p).digest()) }
+const ticket = (method = 'POST', target = '') => { const p = b64(JSON.stringify({ v: 1, aud: 'owner-panel', sub: 'cli-owner-0001', exp: Date.now() + 75000, nonce: crypto.randomBytes(8).toString('hex'), m: method, p: target })); return p + '.' + b64(crypto.createHmac('sha256', relay).update(p).digest()) }
 const post = async (path, body) => {
-  const res = await fetch('https://api.gwenna.my.id' + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-UMI-Panel-Ticket': ticket() }, body: JSON.stringify(body) })
+  const res = await fetch('https://api.gwenna.my.id' + path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-UMI-Panel-Ticket': ticket('POST', path.replace('/api/owner-panel/', '')) }, body: JSON.stringify(body) })
   const json = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(`${path} HTTP ${res.status}: ${json.error || ''}`)
   return json

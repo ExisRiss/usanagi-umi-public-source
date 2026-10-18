@@ -24,7 +24,8 @@
  *   POST /api/rooms            {game,name,number} -> room + kursi pending (web)
  *   POST /api/rooms/:id/claim  {name,number}      -> minta kursi (pending)
  *   POST /api/rooms/:id/enter  {entryCode}        -> tukarkan kode masuk -> token kursi
- *   GET  /api/rooms/:id/events?token=...          -> SSE status room (tersanitasi)
+ *   POST /api/rooms/:id/stream-ticket              -> tiket SSE sekali-pakai (header kursi)
+ *   GET  /api/rooms/:id/events?ticket=...          -> SSE status room (tersanitasi)
  *   POST /api/rooms/:id/action {token,action}     -> aksi game / host / chat
  */
 import http from 'node:http'
@@ -35,6 +36,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { fileURLToPath } from 'node:url'
+import { SECURITY_HEADERS, rateLimit, headerToken, hasQueryToken } from './security.js'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
 let GAME_TOKEN = ''
@@ -84,6 +86,8 @@ const GAMES = {
 const BOT_NAMES = ['Umi-Bot', 'Kiko-Bot', 'Rin-Bot', 'Sora-Bot', 'Mika-Bot', 'Yui-Bot', 'Ren-Bot', 'Aiko-Bot', 'Tama-Bot', 'Neko-Bot', 'Piko-Bot']
 
 const rooms = new Map()
+const streamTickets = new Map()
+const MAX_ROOMS = Math.max(20, Number(process.env.UMI_GAME_MAX_ROOMS) || 300)
 const idAlphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789'
 const newId = () => Array.from(crypto.randomBytes(10)).map(b => idAlphabet[b % idAlphabet.length]).join('')
 const newToken = () => crypto.randomBytes(18).toString('hex')
@@ -93,7 +97,7 @@ const pick = (arr) => arr[crypto.randomInt(arr.length)]
 
 function sendJson(res, status, payload) {
     const body = JSON.stringify(payload)
-    res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) })
+    res.writeHead(status, { ...SECURITY_HEADERS, 'Cache-Control': 'no-store', 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(body) })
     res.end(body)
 }
 function readBody(req) {
@@ -1052,7 +1056,7 @@ export async function gameHandler(req, res) {
                     const buf = fs.readFileSync(file)
                     const ext = path.extname(file).toLowerCase()
                     const mime = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon', '.woff2': 'font/woff2' }[ext] || 'application/octet-stream'
-                    res.writeHead(200, { 'Content-Type': mime, 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=86400' })
+                    res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': mime, 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=86400' })
                     return res.end(buf)
                 } catch {}
             }
@@ -1065,7 +1069,7 @@ export async function gameHandler(req, res) {
                         const buf = fs.readFileSync(path.join(HERE, 'assets', iconFile))
                         const ext = path.extname(iconFile).toLowerCase()
                         const mime = { '.png': 'image/png', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json', '.ico': 'image/x-icon' }[ext] || 'application/octet-stream'
-                        res.writeHead(200, { 'Content-Type': mime, 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=604800' })
+                        res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': mime, 'Content-Length': buf.length, 'Cache-Control': 'public, max-age=604800' })
                         return res.end(buf)
                     } catch { }
                 }
@@ -1075,7 +1079,7 @@ export async function gameHandler(req, res) {
             if (req.method === 'GET' && (url.pathname === '/empire' || url.pathname === '/empire/')) {
                 try {
                     const html = fs.readFileSync(path.join(HERE, 'empire.html'), 'utf8')
-                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(html), 'Cache-Control': 'no-cache' })
+                    res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(html), 'Cache-Control': 'no-cache' })
                     return res.end(html)
                 } catch (e) {
                     return sendJson(res, 500, { error: 'Halaman Property Empire belum tersedia' })
@@ -1086,7 +1090,7 @@ export async function gameHandler(req, res) {
                     const map = { '/empire/engine.js': 'empire.js', '/empire/ui.js': 'empire-ui.js' }
                     const file = path.join(HERE, map[url.pathname])
                     const js = fs.readFileSync(file, 'utf8')
-                    res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Content-Length': Buffer.byteLength(js), 'Cache-Control': 'no-cache' })
+                    res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/javascript; charset=utf-8', 'Content-Length': Buffer.byteLength(js), 'Cache-Control': 'no-cache' })
                     return res.end(js)
                 } catch (e) {
                     return sendJson(res, 404, { error: 'modul tidak ditemukan' })
@@ -1096,7 +1100,7 @@ export async function gameHandler(req, res) {
             if (req.method === 'GET' && (url.pathname === '/trading' || url.pathname === '/trading/')) {
                 try {
                     const tradingHtml = fs.readFileSync(path.join(HERE, 'trading.html'), 'utf8')
-                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(tradingHtml), 'Cache-Control': 'no-cache' })
+                    res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(tradingHtml), 'Cache-Control': 'no-cache' })
                     return res.end(tradingHtml)
                 } catch (e) {
                     return sendJson(res, 500, { error: 'Trading page not found' })
@@ -1108,7 +1112,7 @@ export async function gameHandler(req, res) {
             if (req.method === 'GET' && ['/trading-offline', '/trading-offline.html', '/offline'].includes(url.pathname)) {
                 try {
                     const offlineHtml = fs.readFileSync(path.join(HERE, 'trading-offline.html'), 'utf8')
-                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(offlineHtml), 'Cache-Control': 'no-cache' })
+                    res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(offlineHtml), 'Cache-Control': 'no-cache' })
                     return res.end(offlineHtml)
                 } catch (e) {
                     return sendJson(res, 500, { error: 'Halaman trading offline belum tersedia' })
@@ -1117,7 +1121,7 @@ export async function gameHandler(req, res) {
             if (req.method === 'GET' && ['/trading-offline.bot.html', '/trading-offline-bundle.html'].includes(url.pathname)) {
                 try {
                     const bundle = fs.readFileSync(path.join(HERE, 'assets', 'trading-offline.bot.html'))
-                    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': bundle.length, 'Cache-Control': 'public, max-age=3600' })
+                    res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': bundle.length, 'Cache-Control': 'public, max-age=3600' })
                     return res.end(bundle)
                 } catch (e) {
                     return sendJson(res, 404, { error: 'Bundel offline belum tersedia' })
@@ -1129,7 +1133,7 @@ export async function gameHandler(req, res) {
             }
             if (req.method === 'GET' && (parts.length === 0 || (parts.length === 2 && GAMES[parts[0]]))) {
                 const html = page()
-                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(html), 'Cache-Control': 'no-cache' })
+                res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/html; charset=utf-8', 'Content-Length': Buffer.byteLength(html), 'Cache-Control': 'no-cache' })
                 return res.end(html)
             }
             /* Bot memanen notifikasi room di sini (wajib token game) */
@@ -1142,9 +1146,15 @@ export async function gameHandler(req, res) {
             if (parts[0] !== 'api' || parts[1] !== 'rooms') return sendJson(res, 404, { error: 'not found' })
 
             if (req.method === 'POST' && parts.length === 2) {
+                const created = rateLimit(req, 'rooms:create', 12, 60_000)
+                if (created.limited) {
+                    res.setHeader('Retry-After', String(created.retryAfter))
+                    return sendJson(res, 429, { error: 'Terlalu banyak meja dibuat. Tunggu sebentar.' })
+                }
                 const body = await readBody(req)
                 const game = String(body.game || '')
                 if (!GAMES[game]) return sendJson(res, 400, { error: 'game tidak dikenal' })
+                if (rooms.size >= MAX_ROOMS) return sendJson(res, 503, { error: 'Server sedang penuh. Coba lagi beberapa saat.' })
                 const fromBot = botAuthorized(req)
                 // Room yang dibuat bot selalu pakai verifikasi normal; room dari
                 // website mengikuti setelan mode masuk bebas.
@@ -1180,6 +1190,11 @@ export async function gameHandler(req, res) {
             }
 
             if (req.method === 'POST' && parts[3] === 'claim' && parts.length === 4) {
+                const claimGate = rateLimit(req, 'rooms:claim', 20, 60_000)
+                if (claimGate.limited) {
+                    res.setHeader('Retry-After', String(claimGate.retryAfter))
+                    return sendJson(res, 429, { error: 'Terlalu banyak permintaan kursi. Tunggu sebentar.' })
+                }
                 const body = await readBody(req)
                 const number = cleanNumber(body.number)
                 if (!number) return sendJson(res, 400, { error: 'Nomor WhatsApp wajib diisi.' })
@@ -1201,6 +1216,11 @@ export async function gameHandler(req, res) {
             }
 
             if (req.method === 'POST' && parts[3] === 'enter' && parts.length === 4) {
+                const guess = rateLimit(req, 'rooms:enter', 12, 60_000)
+                if (guess.limited) {
+                    res.setHeader('Retry-After', String(guess.retryAfter))
+                    return sendJson(res, 429, { error: 'Terlalu banyak percobaan kode masuk. Tunggu sebentar.' })
+                }
                 const body = await readBody(req)
                 const code = String(body.entryCode || '').replace(/\D/g, '')
                 const seat = room.seats.find(s => s.kind === 'human' && s.entryCode === code && s.status === 'verified')
@@ -1209,13 +1229,36 @@ export async function gameHandler(req, res) {
             }
 
             if (req.method === 'GET' && parts[3] === 'state' && parts.length === 4) {
-                const idx = seatByToken(room, url.searchParams.get('token'))
+                const idx = seatByToken(room, headerToken(req, 'x-umi-seat-token'))
                 return sendJson(res, 200, publicState(room, idx))
             }
 
+            if (req.method === 'POST' && parts[3] === 'stream-ticket' && parts.length === 4) {
+                // Kursi ditukar dengan tiket sekali-pakai berumur pendek supaya
+                // EventSource (tanpa header) tidak membawa token kursi di URL.
+                const seatToken = headerToken(req, 'x-umi-seat-token')
+                const seatIdx = seatByToken(room, seatToken)
+                if (seatIdx < 0) return sendJson(res, 401, { error: 'Kursi tidak ditemukan. Ambil kursi dulu.' })
+                const grant = rateLimit(req, 'rooms:stream-ticket', 40, 60_000)
+                if (grant.limited) {
+                    res.setHeader('Retry-After', String(grant.retryAfter))
+                    return sendJson(res, 429, { error: 'Terlalu banyak permintaan stream. Tunggu sebentar.' })
+                }
+                const now = Date.now()
+                for (const [key, item] of streamTickets) if (!(item.expiresAt > now)) streamTickets.delete(key)
+                const ticket = crypto.randomBytes(18).toString('base64url')
+                const expiresAt = now + 120_000
+                streamTickets.set(ticket, { roomId: room.id, seatToken, expiresAt })
+                return sendJson(res, 200, { ok: true, ticket, expiresAt })
+            }
+
             if (req.method === 'GET' && parts[3] === 'events' && parts.length === 4) {
-                const idx = seatByToken(room, url.searchParams.get('token'))
-                res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
+                const grant = streamTickets.get(String(url.searchParams.get('ticket') || ''))
+                if (!grant || grant.roomId !== room.id || !(grant.expiresAt > Date.now())) {
+                    return sendJson(res, 401, { error: 'Tiket stream tidak valid atau kedaluwarsa.' })
+                }
+                const idx = seatByToken(room, grant.seatToken)
+                res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
                 const client = { res, viewer: idx }
                 room.clients.add(client)
                 res.write(`data: ${JSON.stringify(publicState(room, idx))}\n\n`)
@@ -1737,8 +1780,15 @@ function mapTraffic(ticks = 100) { return MARKETS.map((m) => { const q = quoteOf
 
 /* ── kode login & kode taut (dibuat bot, dipakai di website) ─────────────── */
 function createLoginCode(accountId, kind = 'login', minutes = 20) {
-    const code = String(crypto.randomInt(100000, 999999))
-    tradingDB.loginCodes[code] = { accountId, kind, expiresAt: Date.now() + minutes * 60000, createdAt: Date.now() }
+    // 8 digits + attempt counter: 6-digit codes are too easy to guess when the
+    // API is reachable without an account. The bot prints the code verbatim.
+    let code = ''
+    for (let i = 0; i < 20; i++) {
+        const candidate = String(crypto.randomInt(10000000, 99999999))
+        if (!tradingDB.loginCodes[candidate]) { code = candidate; break }
+    }
+    if (!code) throw new Error('Tidak bisa membuat kode unik.')
+    tradingDB.loginCodes[code] = { accountId, kind, expiresAt: Date.now() + minutes * 60000, createdAt: Date.now(), attempts: 0 }
     saveTradingDB()
     if (!codeTimers.has(code)) {
         const timer = setTimeout(() => { delete tradingDB.loginCodes[code]; codeTimers.delete(code); saveTradingDB() }, minutes * 60000)
@@ -1799,8 +1849,9 @@ async function verifyOwnerToken(token) {
 }
 
 async function ownerFromRequest(req, url) {
-    const header = String(req.headers['x-umi-owner-token'] || '').trim()
-    return verifyOwnerToken(header || url.searchParams.get('token') || '')
+    const header = headerToken(req, 'x-umi-owner-token')
+    if (!header && hasQueryToken(url)) return { ok: false, status: 400, error: 'Token owner tidak boleh dikirim lewat URL. Gunakan header X-UMI-Owner-Token.' }
+    return verifyOwnerToken(header)
 }
 
 async function handleTradingAPI(req, res, url, parts) {
@@ -1808,6 +1859,11 @@ async function handleTradingAPI(req, res, url, parts) {
         if (process.env.UMI_TRADING_RECOVERY_REQUIRED === 'true' && !(req.method === 'GET' && ['market','candles','session'].includes(parts[0]) && parts.length === 1)) return sendJson(res,503,{error:'Data akun trading lama sedang dipulihkan. Login, saldo dan transaksi dikunci sementara agar tidak membuat akun pengganti atau mengubah saldo.',recoveryRequired:true});
         /* ── Masuk dengan token akun website ── */
         if (req.method === 'POST' && parts[0] === 'login') {
+            const gate = rateLimit(req, 'trading:login', 10, 60_000)
+            if (gate.limited) {
+                res.setHeader('Retry-After', String(gate.retryAfter))
+                return sendJson(res, 429, { error: 'Terlalu banyak percobaan masuk. Coba lagi sebentar.' })
+            }
             const body = await readBody(req)
             const token = String(body.token || '')
             if (!token) return sendJson(res, 400, { error: 'Token diperlukan' })
@@ -1842,6 +1898,11 @@ async function handleTradingAPI(req, res, url, parts) {
 
         /* ── Masuk dengan kode dari bot ── */
         if (req.method === 'POST' && parts[0] === 'code-login') {
+            const gate = rateLimit(req, 'trading:code-login', 10, 60_000)
+            if (gate.limited) {
+                res.setHeader('Retry-After', String(gate.retryAfter))
+                return sendJson(res, 429, { error: 'Terlalu banyak percobaan kode. Coba lagi sebentar.' })
+            }
             const body = await readBody(req)
             const code = String(body.code || '').replace(/\D/g, '')
             const entry = tradingDB.loginCodes[code]
@@ -1867,6 +1928,11 @@ async function handleTradingAPI(req, res, url, parts) {
 
         /* ── Tautkan akun website ke akun WhatsApp ── */
         if (req.method === 'POST' && parts[0] === 'link') {
+            const gate = rateLimit(req, 'trading:link', 10, 60_000)
+            if (gate.limited) {
+                res.setHeader('Retry-After', String(gate.retryAfter))
+                return sendJson(res, 429, { error: 'Terlalu banyak percobaan tautan. Coba lagi sebentar.' })
+            }
             const body = await readBody(req)
             const token = String(body.token || '')
             const code = String(body.code || '').replace(/\D/g, '')
@@ -1885,8 +1951,8 @@ async function handleTradingAPI(req, res, url, parts) {
 
         /* ── Data akun ── */
         if (req.method === 'GET' && parts[0] === 'me') {
-            const token = url.searchParams.get('token')
-            if (!token) return sendJson(res, 400, { error: 'Token diperlukan' })
+            const token = headerToken(req)
+            if (!token) return sendJson(res, 400, { error: hasQueryToken(url) ? 'Token tidak boleh dikirim lewat URL. Gunakan header X-UMI-Token.' : 'Token diperlukan' })
             const resolved = await tokenAccount(token)
             if (resolved.error) return sendJson(res, resolved.error.status || 401, { error: resolved.error.error })
             const account = resolved.account; checkDailyBonus(account)
@@ -1904,7 +1970,7 @@ async function handleTradingAPI(req, res, url, parts) {
         if (req.method === 'GET' && parts[0] === 'leaderboard') {
             const rows = leaderboardRows()
             const withPhoto = rows.map((row) => ({
-                rank: row.rank, username: row.username, number: row.number, source: row.source,
+                rank: row.rank, username: row.username, source: row.source,
                 netWorth: row.netWorth, balance: row.balance, equity: row.equity, pl: row.pl, positions: row.positions,
             }))
             return sendJson(res, 200, { ok: true, total: withPhoto.length, richest: withPhoto.slice(0, 12), poorest: [...withPhoto].reverse().slice(0, 12), time: Date.now() })
@@ -1912,7 +1978,7 @@ async function handleTradingAPI(req, res, url, parts) {
 
         /* ── Pasar ── */
         if (req.method === 'GET' && parts[0] === 'market') {
-            const token = String(url.searchParams.get('token') || '')
+            const token = headerToken(req)
             let account = null
             if (token) {
                 const check = await verifyAccountToken(token)
@@ -1944,7 +2010,7 @@ async function handleTradingAPI(req, res, url, parts) {
 
         /* ── Stream real-time (SSE) ── */
         if (req.method === 'GET' && parts[0] === 'stream') {
-            res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
+            res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' })
             let last = 0
             const tick = async () => {
                 try {
@@ -2035,6 +2101,11 @@ async function handleTradingAPI(req, res, url, parts) {
 
         /* ── Top up $AS dari saldo UMI (Rp) ── */
         if (req.method === 'POST' && parts[0] === 'topup') {
+            const gate = rateLimit(req, 'trading:topup', 20, 60_000)
+            if (gate.limited) {
+                res.setHeader('Retry-After', String(gate.retryAfter))
+                return sendJson(res, 429, { ok: false, error: 'Terlalu banyak permintaan top up. Coba lagi sebentar.' })
+            }
             const body = await readBody(req)
             const token = String(body.token || '')
             if (!token) return sendJson(res, 401, { error: 'Token diperlukan. Masuk dulu.' })
@@ -2053,7 +2124,21 @@ async function handleTradingAPI(req, res, url, parts) {
             const account = accountForToken(token)
             account.deposits = account.deposits || []
             const done = account.deposits.find(d => d.reference === reference)
-            if (done) return sendJson(res, 200, { ok: true, duplicate: true, credited: done.credit, idr: done.idr, balance: round2(account.balance), walletBalance: done.walletBalance })
+            if (done) {
+                if (done.status === 'pending' && Date.now() - Date.parse(done.time || 0) < 5 * 60 * 1000) return sendJson(res, 409, { ok: false, pending: true, error: 'Transaksi dengan referensi ini sedang diproses.' })
+                if (done.status === 'pending') account.deposits = account.deposits.filter(d => d !== done)
+                return sendJson(res, 200, { ok: true, duplicate: true, credited: done.credit, idr: done.idr, balance: round2(account.balance), walletBalance: done.walletBalance })
+            }
+            // Reserve the reference synchronously before any await. Concurrent
+            // requests with the same reference now get 409 instead of both
+            // reaching the platform and crediting $AS twice.
+            const pending = { reference, idr: amountIdr, status: 'pending', time: new Date().toISOString() }
+            account.deposits.push(pending)
+            saveTradingDB()
+            const dropPending = () => {
+                account.deposits = account.deposits.filter(d => d !== pending)
+                saveTradingDB()
+            }
             let payload
             try {
                 const r = await fetch(TOPUP_URL, {
@@ -2062,11 +2147,20 @@ async function handleTradingAPI(req, res, url, parts) {
                     signal: AbortSignal.timeout(25000),
                 })
                 payload = await r.json().catch(() => ({}))
-                if (!r.ok || !payload.ok) return sendJson(res, r.status === 402 ? 402 : 400, { ok: false, error: payload.error || 'Top up gagal.' })
-            } catch (e) { return sendJson(res, 502, { ok: false, error: 'Tidak bisa menghubungi platform: ' + e.message }) }
+                if (!r.ok || !payload.ok) { dropPending(); return sendJson(res, r.status === 402 ? 402 : 400, { ok: false, error: payload.error || 'Top up gagal.' }) }
+            } catch (e) { dropPending(); return sendJson(res, 502, { ok: false, error: 'Tidak bisa menghubungi platform: ' + e.message }) }
+            if (payload.duplicate) {
+                // The platform already debited this reference. Never credit a
+                // second time; leave the completed record for reconciliation.
+                dropPending()
+                return sendJson(res, 200, { ok: true, duplicate: true, credited: Number(payload.credited) || 0, idr: amountIdr, balance: round2(account.balance), walletBalance: payload.walletBalance, reconciliation: true })
+            }
             const credit = round2(Number(payload.credited) || 0)
+            if (!(credit > 0)) { dropPending(); return sendJson(res, 502, { ok: false, error: 'Platform tidak mengembalikan jumlah kredit yang valid.' }) }
             account.balance = round2(account.balance + credit)
-            account.deposits.push({ reference, idr: amountIdr, credit, walletBalance: payload.walletBalance, time: new Date().toISOString() })
+            pending.status = 'completed'
+            pending.credit = credit
+            pending.walletBalance = payload.walletBalance
             account.history.push({ type: 'topup', amount: credit, idr: amountIdr, reference, time: new Date().toISOString() })
             saveTradingDB()
             return sendJson(res, 200, { ok: true, credited: credit, idr: amountIdr, balance: round2(account.balance), walletBalance: payload.walletBalance, rate: payload.rate })
@@ -2149,7 +2243,8 @@ async function handleTradingAPI(req, res, url, parts) {
          *   {token, account:'AlzRiss', amount:500, mode:'add'}    → +$AS 500 */
         if (parts[0] === 'owner' && parts[1] === 'balance' && req.method === 'POST') {
             const body = await readBody(req)
-            const who = await verifyOwnerToken(body.token || url.searchParams.get('token') || '')
+            if (hasQueryToken(url) && !headerToken(req, 'x-umi-owner-token')) return sendJson(res, 400, { error: 'Token owner tidak boleh dikirim lewat URL. Gunakan header X-UMI-Owner-Token.' })
+            const who = await verifyOwnerToken(headerToken(req, 'x-umi-owner-token') || body.token || '')
             if (!who.ok) return sendJson(res, who.status, { error: who.error })
             const account = findTradingAccount(body.account || body.username || body.number || body.id)
             if (!account) return sendJson(res, 404, { error: 'Akun trading tidak ditemukan.' })

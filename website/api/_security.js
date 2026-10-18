@@ -108,10 +108,16 @@ function isPrivateIpv4(hostname) {
 
 function isPrivateAddress(address) {
   let value = String(address || '').toLowerCase().split('%')[0]
-  if (value.startsWith('::ffff:')) value = value.slice(7)
+  if (value.startsWith('::ffff:') && net.isIP(value.slice(7)) === 4) value = value.slice(7)
   if (net.isIP(value) === 4) return isPrivateIpv4(value)
   if (net.isIP(value) !== 6) return true
-  return value === '::' || value === '::1' || value.startsWith('fc') || value.startsWith('fd') || value.startsWith('fe8') || value.startsWith('fe9') || value.startsWith('fea') || value.startsWith('feb')
+  // SEC-04: hex-encoded IPv4-mapped addresses (::ffff:ac10:1), NAT64, 6to4,
+  // and Teredo all embed an IPv4 target that must be treated as private.
+  if (value.startsWith('::ffff:')) return true
+  if (value.startsWith('64:ff9b:')) return true
+  if (value.startsWith('2002:')) return true
+  if (value.startsWith('2001:0')) return true
+  return value === '::' || value === '::1' || value.startsWith('fc') || value.startsWith('fd') || value.startsWith('fe8') || value.startsWith('fe9') || value.startsWith('fea') || value.startsWith('feb') || value.startsWith('ff')
 }
 
 export function publicHttpUrl(value, { maxLength = 2000 } = {}) {
@@ -121,7 +127,8 @@ export function publicHttpUrl(value, { maxLength = 2000 } = {}) {
   try { url = new URL(input) } catch { throw new HttpError(400, 'URL tidak valid.') }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new HttpError(400, 'URL tidak diizinkan.')
   const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '')
-  if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host === '0.0.0.0' || host === 'metadata.google.internal' || isPrivateIpv4(host) || host === '::1' || host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd')) {
+  const literalPrivate = net.isIP(host) ? isPrivateAddress(host) : isPrivateIpv4(host)
+  if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host === '0.0.0.0' || host === 'metadata.google.internal' || literalPrivate || host === '::1' || host.startsWith('fe80:') || host.startsWith('fc') || host.startsWith('fd')) {
     throw new HttpError(400, 'URL jaringan privat tidak diizinkan.')
   }
   if (url.port && !['80', '443'].includes(url.port)) throw new HttpError(400, 'Port URL tidak diizinkan.')

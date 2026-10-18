@@ -864,7 +864,9 @@ function toast(msg, kind) {
 function showErr(id, msg) { const el = $(id); if (!el) return; el.textContent = msg; el.style.display = msg ? 'block' : 'none' }
 
 async function api(path, body) {
-  const res = await fetch(path, body ? { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) } : {})
+  const headers = token ? { 'X-UMI-Seat-Token': token } : {}
+  if (body) headers['Content-Type'] = 'application/json'
+  const res = await fetch(path, body ? { method:'POST', headers, body:JSON.stringify(body) } : { headers })
   const json = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(json.error || ('HTTP ' + res.status))
   return json
@@ -1010,9 +1012,13 @@ if (isRoom) {
     }
   }
 
-  function connect() {
-    if (es) { try { es.close() } catch {} }
-    es = new EventSource('/api/rooms/' + roomId + '/events?token=' + encodeURIComponent(token))
+  let streamRetry = null
+  async function openStream() {
+    // EventSource tidak bisa mengirim header, jadi kursi ditukar dengan tiket
+    // stream berumur pendek lewat header; token kursi tidak pernah masuk URL.
+    const grant = await api('/api/rooms/' + roomId + '/stream-ticket', {})
+    if (!grant || !grant.ticket) throw new Error('Tidak bisa membuka stream.')
+    es = new EventSource('/api/rooms/' + roomId + '/events?ticket=' + encodeURIComponent(grant.ticket))
     es.onopen = () => setConn('on')
     es.onmessage = (ev) => {
       try { myState = JSON.parse(ev.data); render() } catch {}
@@ -1021,13 +1027,19 @@ if (isRoom) {
     es.onerror = async () => {
       setConn('off')
       try {
-        const s = await api('/api/rooms/' + roomId + '/state?token=' + encodeURIComponent(token))
+        const s = await api('/api/rooms/' + roomId + '/state')
         if (s && s.error) return fatalRoom(s.error)
         myState = s; render()
       } catch (e) {
-        if (/tidak ditemukan|not found/i.test(e.message)) fatalRoom(e.message)
+        if (/tidak ditemukan|not found/i.test(e.message)) return fatalRoom(e.message)
       }
+      clearTimeout(streamRetry)
+      streamRetry = setTimeout(() => { if (!document.hidden) connect() }, 4000)
     }
+  }
+  function connect() {
+    if (es) { try { es.close() } catch {} es = null }
+    openStream().catch(() => setConn('off'))
   }
   function fatalRoom(msg) {
     setConn('off')

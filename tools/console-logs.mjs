@@ -59,6 +59,8 @@ function ticket(secret) {
       sub: 'cli-owner-0001',
       exp: Date.now() + 75_000,
       nonce: crypto.randomBytes(8).toString('hex'),
+      m: 'GET',
+      p: 'logs',
     }),
   )
   const sig = b64(crypto.createHmac('sha256', secret).update(payload).digest())

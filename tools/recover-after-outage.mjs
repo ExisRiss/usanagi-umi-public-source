@@ -56,10 +56,10 @@ const stateOf = async (server) => {
   return json?.attributes?.current_state || 'unknown'
 }
 
-function ticket(secret) {
+function ticket(secret, method = 'GET', target = 'logs') {
   const b64 = (buf) => Buffer.from(buf).toString('base64url')
   const payload = b64(JSON.stringify({
-    v: 1, aud: 'owner-console', sub: 'cli-owner-0001', exp: Date.now() + 75000, nonce: crypto.randomBytes(8).toString('hex'),
+    v: 1, aud: 'owner-console', sub: 'cli-owner-0001', exp: Date.now() + 75000, nonce: crypto.randomBytes(8).toString('hex'), m: method, p: target,
   }))
   const sig = b64(crypto.createHmac('sha256', secret).update(payload).digest())
   return `${payload}.${sig}`
@@ -74,7 +74,7 @@ async function disableMainBotViaApi() {
   try {
     const r = await fetch(`${BOT_ORIGIN}/api/owner-console/main-bot`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-UMI-Console-Ticket': ticket(secret) },
+      headers: { 'Content-Type': 'application/json', 'X-UMI-Console-Ticket': ticket(secret, 'POST', 'main-bot') },
       body: JSON.stringify({ enabled: false }),
       signal: AbortSignal.timeout(20000),
     })

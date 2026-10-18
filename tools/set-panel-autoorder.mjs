@@ -9,13 +9,13 @@ const readEnv = (p) => Object.fromEntries(fs.readFileSync(p, 'utf8').split('\n')
 const keys = readEnv('/home/user/.secrets/panel2-credentials.env')
 const relay = readEnv('/home/user/.secrets/upload/.owner-console-relay.env').UMI_CONSOLE_RELAY_SECRET
 
-function ticket() {
+function ticket(method = 'GET', target = '') {
   const b64 = (b) => Buffer.from(b).toString('base64url')
-  const payload = b64(JSON.stringify({ v: 1, aud: 'owner-panel', sub: 'cli-owner-0001', exp: Date.now() + 75000, nonce: crypto.randomBytes(8).toString('hex') }))
+  const payload = b64(JSON.stringify({ v: 1, aud: 'owner-panel', sub: 'cli-owner-0001', exp: Date.now() + 75000, nonce: crypto.randomBytes(8).toString('hex'), m: method, p: target }))
   return payload + '.' + b64(crypto.createHmac('sha256', relay).update(payload).digest())
 }
 async function call(path, method, body) {
-  const res = await fetch(BASE + path, { method, headers: { 'Content-Type': 'application/json', 'X-UMI-Panel-Ticket': ticket() }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(45000) })
+  const res = await fetch(BASE + path, { method, headers: { 'Content-Type': 'application/json', 'X-UMI-Panel-Ticket': ticket(method, path.replace('/api/owner-panel/', '')) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(45000) })
   const json = await res.json().catch(() => ({}))
   return { status: res.status, json }
 }

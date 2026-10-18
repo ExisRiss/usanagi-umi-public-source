@@ -10,6 +10,7 @@ const realmHttp = createRealmHttp(realmService)
 /* By AlzRiss - Usanagi Umi AI */
 
 import http from 'node:http'
+import https from 'node:https'
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -101,7 +102,8 @@ function ownerConsoleRelayKey() {
   return ownerConsoleRelaySecret
 }
 
-function verifyOwnerRelayTicket(req, header, audience) {
+const ownerTicketNonces = new Map()
+function verifyOwnerRelayTicket(req, header, audience, pathname = '') {
   const token = String(req.headers[header] || '').trim()
   const [body, signature] = token.split('.')
   if (!body || !signature || token.split('.').length !== 2) throw Object.assign(new Error('Akses owner tidak sah.'), { status: 401 })
@@ -115,23 +117,40 @@ function verifyOwnerRelayTicket(req, header, audience) {
   // A brief console-only compatibility path lets the existing Website console
   // continue during a bot-first rollout. Owner-agent tickets always require
   // an explicit audience and can never be used as console tickets.
-  const audienceValid = payload?.aud === audience || (audience === 'owner-console' && payload?.aud === undefined)
+  const legacyConsole = audience === 'owner-console' && payload?.aud === undefined && payload?.m === undefined
+  const audienceValid = payload?.aud === audience || legacyConsole
   if (payload?.v !== 1 || !audienceValid || !/^[A-Za-z0-9_-]{8,128}$/.test(String(payload?.sub || '')) || !Number.isFinite(payload?.exp) || payload.exp <= now || payload.exp > now + 3 * 60 * 1000) {
     throw Object.assign(new Error('Tiket owner kedaluwarsa atau tidak valid.'), { status: 401 })
+  }
+  if (!legacyConsole) {
+    // SEC-12: tiket hanya sah untuk method + path yang ditandatangani.
+    const prefix = `/api/${audience}/`
+    const boundPath = pathname.startsWith(prefix) ? pathname.slice(prefix.length) : ''
+    if (String(payload.m || '').toUpperCase() !== String(req.method || '').toUpperCase() || String(payload.p || '') !== boundPath) {
+      throw Object.assign(new Error('Tiket owner tidak cocok dengan tujuan permintaan.'), { status: 401 })
+    }
+    const nonce = String(payload.nonce || '')
+    if (!/^[A-Za-z0-9_-]{8,64}$/.test(nonce)) throw Object.assign(new Error('Tiket owner tidak valid.'), { status: 401 })
+    const seenKey = `${payload.sub}:${nonce}`
+    if (ownerTicketNonces.has(seenKey)) throw Object.assign(new Error('Tiket owner sudah dipakai.'), { status: 401 })
+    ownerTicketNonces.set(seenKey, payload.exp)
+    if (ownerTicketNonces.size > 5000) {
+      for (const [key, exp] of ownerTicketNonces) if (!(exp > now)) ownerTicketNonces.delete(key)
+    }
   }
   return payload
 }
 
-function verifyOwnerConsoleTicket(req) {
-  return verifyOwnerRelayTicket(req, 'x-umi-console-ticket', 'owner-console')
+function verifyOwnerConsoleTicket(req, pathname) {
+  return verifyOwnerRelayTicket(req, 'x-umi-console-ticket', 'owner-console', pathname)
 }
 
-function verifyOwnerAgentTicket(req) {
-  return verifyOwnerRelayTicket(req, 'x-umi-agent-ticket', 'owner-agent')
+function verifyOwnerAgentTicket(req, pathname) {
+  return verifyOwnerRelayTicket(req, 'x-umi-agent-ticket', 'owner-agent', pathname)
 }
 
-function verifyOwnerPanelTicket(req) {
-  return verifyOwnerRelayTicket(req, 'x-umi-panel-ticket', 'owner-panel')
+function verifyOwnerPanelTicket(req, pathname) {
+  return verifyOwnerRelayTicket(req, 'x-umi-panel-ticket', 'owner-panel', pathname)
 }
 
 function ownerConsoleOutput(cursor = 0) {
@@ -143,7 +162,7 @@ function ownerConsoleOutput(cursor = 0) {
 }
 
 async function routeOwnerConsole(req, res, pathname) {
-  verifyOwnerConsoleTicket(req)
+  verifyOwnerConsoleTicket(req, pathname)
   const url = new URL(req.url, 'http://localhost')
   if (pathname === '/api/owner-console/rpg-backup' && req.method === 'POST') {
     if (limited('owner-rpg-backup', 2, 60000)) throw Object.assign(new Error('Tunggu sebelum membuat backup berikutnya.'), { status: 429 })
@@ -218,7 +237,7 @@ async function routeOwnerConsole(req, res, pathname) {
 // forwards this audience-bound ticket. Browser role claims never authorize
 // configuration, server tools, or a terminal at the bot runtime.
 async function routeOwnerAgent(req, res, pathname) {
-  const ticket = verifyOwnerAgentTicket(req)
+  const ticket = verifyOwnerAgentTicket(req, pathname)
   const actor = `owner:${ticket.sub}`
   if (pathname === '/api/owner-agent/status' && req.method === 'GET') return send(res, 200, agentStatus())
   if (pathname === '/api/owner-agent/chat' && req.method === 'POST') {
@@ -240,7 +259,7 @@ async function routeOwnerAgent(req, res, pathname) {
 // The panel-commerce relay is separate from the agent audience. It accepts
 // only short-lived tickets minted after Website owner-role verification.
 async function routeOwnerPanel(req, res, pathname) {
-  const ticket = verifyOwnerPanelTicket(req)
+  const ticket = verifyOwnerPanelTicket(req, pathname)
   const actor = `owner:${ticket.sub}`
   if (pathname === '/api/owner-panel/status' && req.method === 'GET') return send(res, 200, panelAutoOrderStatus())
   if (pathname === '/api/owner-panel/settings' && req.method === 'POST') {
@@ -330,16 +349,34 @@ async function routeGameWalletConvert(req, res) {
     return send(res, status === 409 ? 402 : status, { ok: false, error: error?.message || 'Konversi gagal.' })
   }
   if (result.duplicate) {
-    return send(res, 200, { ok: true, duplicate: true, credited, amountIdr, rate: gameAsRate(), walletBalance: result.balance, reference })
+    // SEC-01: referensi yang sudah pernah diproses tidak boleh mengkredit $AS
+    // lagi. Klien lama yang mempercayai `credited` akan mengkredit dua kali,
+    // jadi laporkan 0 dan biarkan riwayat wallet sebagai sumber kebenaran.
+    return send(res, 200, { ok: true, duplicate: true, credited: 0, amountIdr, rate: gameAsRate(), walletBalance: result.balance, reference, note: 'Referensi ini sudah pernah ditukar.' })
   }
-  try {
-    const game = await creditGameBalance(token, credited, reference)
+  let game = null
+  let lastError = null
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try { game = await creditGameBalance(token, credited, reference); lastError = null; break }
+    catch (error) {
+      lastError = error
+      if (Number(error?.status) && Number(error.status) < 500) break
+      await new Promise(resolve => setTimeout(resolve, 1200))
+    }
+  }
+  if (game) {
     return send(res, 200, { ok: true, credited, amountIdr, rate: gameAsRate(), walletBalance: result.balance, reference, gameBalance: game.balance })
-  } catch (error) {
-    /* Game gagal dikredit → kembalikan saldo Rp supaya tidak ada dana hilang. */
-    try { creditWalletForGame({ userId, amount: amountIdr, reference: `${reference}:refund`, type: 'REFUND', description: `Refund tukar $AS gagal (${reference})` }) } catch {}
-    return send(res, 502, { ok: false, error: `${error?.message || 'Game tidak bisa dikredit.'} Saldo Rp kamu sudah dikembalikan.` })
   }
+  const status = Number(lastError?.status) || 0
+  if (status >= 400 && status < 500) {
+    /* Game menolak secara pasti -> kembalikan saldo Rp. */ 
+    try { creditWalletForGame({ userId, amount: amountIdr, reference: `${reference}:refund`, type: 'REFUND', description: `Refund tukar $AS gagal (${reference})` }) } catch {}
+    return send(res, 502, { ok: false, error: `${lastError?.message || 'Game menolak kredit.'} Saldo Rp kamu sudah dikembalikan.` })
+  }
+  // Hasil tidak pasti (timeout/5xx): jangan refund otomatis, karena kredit di
+  // game mungkin sudah tersimpan. Referensi idempoten, jadi percobaan ulang
+  // dengan referensi yang sama aman dan tidak menghasilkan kredit ganda.
+  return send(res, 502, { ok: false, retryable: true, code: 'UNCERTAIN', error: 'Kredit $AS belum terkonfirmasi. Coba lagi dengan referensi yang sama; saldo tidak akan terpotong dua kali.' })
 }
 
 async function routeTripayCallback(req, res) {
@@ -377,6 +414,9 @@ function setCors(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff')
   res.setHeader('X-Frame-Options', 'DENY')
   res.setHeader('Referrer-Policy', 'no-referrer')
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+  res.setHeader('Content-Security-Policy', "frame-ancestors 'none'; object-src 'none'; base-uri 'self'")
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()')
 }
 
 async function bodyJson(req) {
@@ -844,43 +884,87 @@ function readSessionLogs(number, limit = 200) {
 
 function privateIp(address) {
   if (!net.isIP(address)) return true
-  if (address.includes(':')) {
-    const ip = address.toLowerCase()
-    return ip === '::1' || ip === '::' || ip.startsWith('fc') || ip.startsWith('fd') || ip.startsWith('fe8') || ip.startsWith('fe9') || ip.startsWith('fea') || ip.startsWith('feb') || ip.startsWith('::ffff:127.') || ip.startsWith('::ffff:10.') || ip.startsWith('::ffff:192.168.')
+  let value = String(address).toLowerCase().split('%')[0]
+  if (value.startsWith('::ffff:') && net.isIP(value.slice(7)) === 4) value = value.slice(7)
+  if (net.isIP(value) === 4) {
+    const p = value.split('.').map(Number)
+    return p[0] === 0 || p[0] === 10 || p[0] === 127 || (p[0] === 169 && p[1] === 254) ||
+      (p[0] === 172 && p[1] >= 16 && p[1] <= 31) || (p[0] === 192 && (p[1] === 0 || p[1] === 168)) ||
+      (p[0] === 100 && p[1] >= 64 && p[1] <= 127) || (p[0] === 198 && (p[1] === 18 || p[1] === 19)) ||
+      p[0] >= 224
   }
-  const p = address.split('.').map(Number)
-  return p[0] === 0 || p[0] === 10 || p[0] === 127 || (p[0] === 169 && p[1] === 254) || (p[0] === 172 && p[1] >= 16 && p[1] <= 31) || (p[0] === 192 && p[1] === 168) || p[0] >= 224
+  if (net.isIP(value) !== 6) return true
+  return value === '::' || value === '::1' || value.startsWith('fc') || value.startsWith('fd') ||
+    /^fe[89ab]/.test(value) || value.startsWith('ff') || value.startsWith('::ffff:') ||
+    value.startsWith('64:ff9b:') || value.startsWith('2002:') || value.startsWith('2001:0')
 }
 
 async function assertPublicUrl(value) {
-  const parsed = new URL(value)
+  let parsed
+  try { parsed = new URL(String(value || '').trim()) } catch { throw Object.assign(new Error('URL media tidak valid.'), { status: 400 }) }
   if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw Object.assign(new Error('URL media tidak valid.'), { status: 400 })
-  const records = await dns.lookup(parsed.hostname, { all: true, verbatim: true })
+  if (!parsed.hostname || parsed.hostname.startsWith('[')) throw Object.assign(new Error('Alamat IPv6 literal tidak diizinkan.'), { status: 400 })
+  let records
+  try { records = await dns.lookup(parsed.hostname, { all: true, verbatim: true }) } catch { throw Object.assign(new Error('Hostname media tidak dapat diverifikasi.'), { status: 400 }) }
   if (!records.length || records.some(record => privateIp(record.address))) throw Object.assign(new Error('Alamat media privat tidak diizinkan.'), { status: 400 })
-  return parsed
+  // Pin the verified address: fetch() would resolve DNS a second time and could
+  // be rebound to 127.0.0.1 / 169.254.169.254 between check and connect.
+  return { url: parsed, address: records[0] }
+}
+
+function pinnedGet(parsed, address, maxBytes) {
+  return new Promise((resolve, reject) => {
+    let settled = false
+    const fail = (error) => { if (!settled) { settled = true; reject(error) } }
+    const transport = parsed.protocol === 'https:' ? https : http
+    const port = parsed.port || (parsed.protocol === 'https:' ? 443 : 80)
+    const req = transport.request({
+      protocol: parsed.protocol,
+      hostname: parsed.hostname,
+      port,
+      path: `${parsed.pathname}${parsed.search}`,
+      method: 'GET',
+      servername: parsed.hostname,
+      headers: { Host: parsed.host, 'User-Agent': 'Usanagi-Umi-Media/1.0', Accept: '*/*' },
+      lookup: (hostname, options, callback) => callback(null, address.address, address.family),
+      timeout: 30000,
+    }, (res) => {
+      const status = Number(res.statusCode) || 0
+      if (status >= 300 && status < 400 && res.headers.location) {
+        res.resume(); settled = true; return resolve({ status, location: res.headers.location })
+      }
+      if (status < 200 || status >= 300) {
+        res.resume(); return fail(Object.assign(new Error(`Media gagal diunduh (HTTP ${status}).`), { status: 400 }))
+      }
+      const declared = Number(res.headers['content-length'] || 0)
+      if (declared > maxBytes) { res.destroy(); return fail(Object.assign(new Error('Ukuran media melebihi batas.'), { status: 413 })) }
+      const chunks = []; let size = 0
+      res.on('data', chunk => {
+        size += chunk.length
+        if (size > maxBytes) { req.destroy(); fail(Object.assign(new Error('Ukuran media melebihi batas.'), { status: 413 })) }
+        else chunks.push(chunk)
+      })
+      res.on('end', () => { if (!settled) { settled = true; resolve({ status, headers: res.headers, body: Buffer.concat(chunks), size }) } })
+      res.on('error', fail)
+    })
+    req.on('timeout', () => req.destroy(Object.assign(new Error('Unduhan media melewati batas waktu.'), { status: 400 })))
+    req.on('error', fail)
+    req.end()
+  })
 }
 
 async function downloadMedia(value, destination, maxBytes, redirects = 0) {
-  const parsed = await assertPublicUrl(value)
-  const response = await fetch(parsed, { redirect: 'manual', signal: AbortSignal.timeout(30000), headers: { 'User-Agent': 'Usanagi-Umi-Media/1.0' } })
-  if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
+  const { url, address } = await assertPublicUrl(value)
+  const response = await pinnedGet(url, address, maxBytes)
+  if (response.location) {
     if (redirects >= 3) throw Object.assign(new Error('Terlalu banyak redirect media.'), { status: 400 })
-    return downloadMedia(new URL(response.headers.get('location'), parsed).toString(), destination, maxBytes, redirects + 1)
-  }
-  if (!response.ok) throw Object.assign(new Error(`Media gagal diunduh (HTTP ${response.status}).`), { status: 400 })
-  const declared = Number(response.headers.get('content-length'))
-  if (declared > maxBytes) throw Object.assign(new Error('Ukuran media melebihi batas.'), { status: 413 })
-  const chunks = []; let size = 0
-  for await (const chunk of response.body) {
-    size += chunk.length
-    if (size > maxBytes) throw Object.assign(new Error('Ukuran media melebihi batas.'), { status: 413 })
-    chunks.push(chunk)
+    return downloadMedia(new URL(response.location, url).toString(), destination, maxBytes, redirects + 1)
   }
   fs.mkdirSync(path.dirname(destination), { recursive: true })
   const temp = `${destination}.${process.pid}.tmp`
-  fs.writeFileSync(temp, Buffer.concat(chunks), { mode: 0o600 })
+  fs.writeFileSync(temp, response.body, { mode: 0o600 })
   fs.renameSync(temp, destination)
-  return { size, contentType: response.headers.get('content-type') || '' }
+  return { size: response.size, contentType: String(response.headers['content-type'] || '') }
 }
 
 function verifyPluginSignature(req, body) {
@@ -890,6 +974,18 @@ function verifyPluginSignature(req, body) {
   const canonical = { session_id: body.session_id, filename: body.filename, code: body.code, catalog_id: body.catalog_id }
   const digest = crypto.createHash('sha256').update(JSON.stringify(canonical)).digest('hex')
   try { return crypto.verify(null, Buffer.from(`${timestamp}.${digest}`), config().pluginSigningPublicKey, Buffer.from(signature, 'base64')) } catch { return false }
+}
+
+function statsAuthorized(req) {
+  const supplied = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
+  if (!supplied) return false
+  const suppliedBuffer = Buffer.from(supplied)
+  const candidates = [process.env.UMI_BACKUP_EXPORT_SECRET, process.env.BOT_BACKUP_EXPORT_SECRET, process.env.UMI_ERROR_REPORT_SECRET]
+    .map(value => String(value || '').trim()).filter(value => value.length >= 16)
+  return candidates.some(value => {
+    const expectedBuffer = Buffer.from(value)
+    return expectedBuffer.length === suppliedBuffer.length && crypto.timingSafeEqual(expectedBuffer, suppliedBuffer)
+  })
 }
 
 function backupExporterAuthorized(req) {
@@ -946,6 +1042,8 @@ async function route(req, res) {
   const pathname = url.pathname.replace(/\/+$/, '') || '/'
 
   if (pathname === '/api/stats' && req.method === 'GET') {
+    // SEC-08: statistik sesi hanya untuk layanan internal (website), bukan publik.
+    if (!statsAuthorized(req)) return send(res, 401, { error: 'unauthorized' })
     const db = loadDb()
     const sessions = Object.values(db.sessions || {})
     const online = sessions.filter(s => s.status === 'connected' || s.status === 'online').length

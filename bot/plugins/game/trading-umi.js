@@ -420,7 +420,7 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
   const linked=linkFor(number)
   if(!linked?.token) return m.reply(tokenTutorial(usedPrefix))
   try {
-    const me=await callGame(config, '/api/trading/me?token='+encodeURIComponent(linked.token))
+    const me=await callGame(config, '/api/trading/me', { auth: linked.token })
     return sendRichInfo(conn,m,portfolioHtml(me,usedPrefix),'UMI · PORTOFOLIO',accountCard({...me,username:me.account?.username || 'Trader'},me.session,null,usedPrefix))
   } catch(error) {
     if(error.status===401 || error.status===403) {

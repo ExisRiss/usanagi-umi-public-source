@@ -550,7 +550,13 @@
     toast.timer = setTimeout(() => t.classList.add('hidden'), 4200)
   }
   async function api(path, options = {}) {
-    const res = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', ...(options.headers || {}) } })
+    // Token tidak lagi ditempel di URL (bisa bocor lewat log/proxy/Referer).
+    // Semua permintaan terautentikasi memakai header; EventSource tetap
+    // memakai query karena browser tidak bisa mengirim header di sana.
+    const tokenHeader = options.tokenHeader || 'X-UMI-Token'
+    const authHeaders = TOKEN ? { [tokenHeader]: TOKEN } : {}
+    if (options.tokenHeader) delete options.tokenHeader
+    const res = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', ...authHeaders, ...(options.headers || {}) } })
     let data = {}
     try { data = await res.json() } catch {}
     if (!res.ok || data.error) { const err = new Error(data.error || 'HTTP ' + res.status); err.payload = data; throw err }
@@ -798,8 +804,8 @@
     const top = rich[0], bottom = poor[0]
     $('boardStats').innerHTML = [
       ['TOTAL TRADER', String(total), ''],
-      ['TERKAYA', top ? `${truncate(top.username)} · $AS ${money(top.netWorth)}` : '—', 'up'],
-      ['TERMISKIN', bottom ? `${truncate(bottom.username)} · $AS ${money(bottom.netWorth)}` : '—', 'down'],
+      ['TERKAYA', top ? `${esc(truncate(top.username))} · $AS ${money(top.netWorth)}` : '—', 'up'],
+      ['TERMISKIN', bottom ? `${esc(truncate(bottom.username))} · $AS ${money(bottom.netWorth)}` : '—', 'down'],
       ['POSISIKU', state.account ? (boardSelf(rich, poor) || '—') : 'masuk dulu', ''],
     ].map(([k, v, c]) => `<div class="stat"><span>${k}</span><b class="num ${c}" style="font-size:15px">${v}</b></div>`).join('')
     const row = (r, medal) => `<tr>
@@ -926,7 +932,7 @@
   async function loadOwner() {
     const tbody = $('ownList')
     if (!tbody) return
-    const d = await api('/api/trading/owner/accounts?token=' + encodeURIComponent(TOKEN))
+    const d = await api('/api/trading/owner/accounts', { tokenHeader: 'X-UMI-Owner-Token' })
     state.ownerAccounts = d.accounts || []
     tbody.innerHTML = state.ownerAccounts.length ? state.ownerAccounts.map((a) => {
       const who = a.username || a.number || a.id
@@ -948,7 +954,7 @@
     if (!Number.isFinite(amount)) { toast('Jumlah $AS tidak valid.', 'error'); return }
     hint.textContent = 'Memproses…'
     try {
-      const d = await apiPost('/api/trading/owner/balance', { token: TOKEN, account, amount, mode })
+      const d = await api('/api/trading/owner/balance', { method: 'POST', tokenHeader: 'X-UMI-Owner-Token', body: JSON.stringify({ account, amount, mode }) })
       hint.innerHTML = `✅ <b>${esc((d.account && d.account.username) || account)}</b> · $AS ${money(d.before)} → <b>$AS ${money(d.balance)}</b>`
       toast('Saldo diperbarui: $AS ' + money(d.balance), 'ok')
       loadOwner().catch(() => {})
@@ -975,7 +981,7 @@
 
   /* ─────────── data ─────────── */
   async function loadMarket() {
-    const d = await api('/api/trading/market' + (TOKEN ? '?token=' + encodeURIComponent(TOKEN) : ''))
+    const d = await api('/api/trading/market')
     state.symbols = d.symbols || []
     state.holdings = d.holdings || []
     if (d.session) { state.session = d.session; renderSession() }
@@ -997,7 +1003,7 @@
   }
   async function loadAccount() {
     if (!TOKEN) return
-    const d = await api('/api/trading/me?token=' + encodeURIComponent(TOKEN))
+    const d = await api('/api/trading/me')
     if (d.account) state.account = d.account
     if (d.session) { state.session = d.session; renderSession() }
     state.balance = d.balance; state.equity = d.equity; state.netWorth = d.netWorth
