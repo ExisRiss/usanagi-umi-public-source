@@ -1,4 +1,6 @@
-let handler = async (m, { conn }) => {
+import { limitsEnabled } from '../../lib/limit-mode.js'
+
+let handler = async (m, { conn, botConfig }) => {
   let who = m.isGroup
     ? (m.mentionedJid[0] ? m.mentionedJid[0] : m.sender)
     : m.sender
@@ -13,8 +15,13 @@ let handler = async (m, { conn }) => {
     return who.includes(v)
   })
 
+  // Task64: kalau admin mematikan limit (tombol OFF / default -1) tampilkan
+  // keterangan gratis, bukan angka limit yang sudah tidak dipakai.
+  const limitMode = limitsEnabled(botConfig)
   let limit =
-    isDeveloper
+    !limitMode
+      ? '∞ Gratis (limit OFF)'
+      : isDeveloper
       ? '∞ Unlimited'
       : user.premiumTime >= 1
       ? '∞ Unlimited'

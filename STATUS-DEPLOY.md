@@ -1,34 +1,25 @@
 # STATUS DEPLOY
 
+## Task 64 — Top up $AS pakai koin RPG + Limit ON/OFF (2026-10-19)
+
+**Commit:** `5c92dbc` (kode + test) dan `a4ebe03` (website). Branch `main`.
+
+| Item | Status |
+|---|---|
+| Top up trading pakai koin RPG (tanpa DANA) | kode selesai + test; **bot & game menunggu deploy panel** |
+| Bug `default_limit -1` tetap kehabisan limit | **DIPERBAIKI** (akar: `userData.limit ??=`, akun lama menyimpan angka) |
+| Tombol Limit ON/OFF di website | **website live**; bot menyusul deploy |
+| Website Vercel | `dpl_HPTx69xbFc8tAJo6DA4BynC7bW2d` READY (toggle live, relay `/api/platform/rpg-topup` live) |
+
+**Blocker:** `PTERO_CLIENT_API_KEY` di `/home/user/.secrets` sudah tidak valid (panel
+`ikyyxbeyy-panel.voltxyz.my.id` → 401). Perlu kunci baru sebelum bot/game bisa di-deploy.
+
+Detail lengkap: `/home/user/LAPORAN-TASK64.md`.
+
+
 **Log lengkap:** [repo `STATUS-DEPLOY.md`](./usanagi-umi-public-source/STATUS-DEPLOY.md)
 
-Terakhir diperbarui: **2026-10-19 (Task63 — patch semua temuan audit SEC-01…SEC-13)**
-
-
-## Task63 — “Ubah semua”: semua temuan audit Task62 dipatch, dideploy, diverifikasi
-
-Sumber temuan: `LAPORAN-AUDIT-KEAMANAN-2026-10-18.md` (SEC-01…SEC-13). Ringkasan bukti ada di
-`LAPORAN-PERBAIKAN-TASK63.md`. Deploy: website Vercel + role bot/game via `tools/deploy-split-realms.mjs`.
-
-| ID | Status | Perubahan |
-|----|--------|-----------|
-| SEC-01 | ✅ | Top up $AS: referensi dikunci (`pending`) **sebelum** `await` ke platform, duplikat/konkuren → 409/duplikat tanpa kredit; bot `wallet-convert` tidak lagi mengirim `credited` pada duplikat, retry hanya untuk 5xx/timeout, refund hanya bila game menolak pasti (4xx). |
-| SEC-02 | ✅ | Kode login 8 digit (unik) + rate limit `code-login` 10/menit per IP; `login`/`link`/`topup` juga dibatasi. |
-| SEC-03 | ✅ | Token akun pindah ke `X-UMI-Token` / `Authorization: Bearer`; `?token=` ditolak di `/me`, `/market`, owner accounts/balance. Room: `state` pakai `X-UMI-Seat-Token`, SSE pakai tiket sekali-pakai `POST /api/rooms/:id/stream-ticket` (120 s) — `?token=` di `/events` sekarang 401. `game.html` + `trading.html` + plugin bot disesuaikan. |
-| SEC-04 | ✅ | SSRF: IPv4-mapped hex/NAT64/6to4/Teredo ditolak (`website/api/_security.js`, bot `privateIp`), hostname diverifikasi **dan** koneksi dipin ke IP hasil verifikasi (`pinnedGet`) → tidak ada DNS TOCTOU. |
-| SEC-05 | ✅ | `auth/change-password` wajib `old_password` yang benar (verifikasi grant_type=password) + `logout?scope=others`. |
-| SEC-06 | ✅ | Game server mengirim HSTS, nosniff, XFO DENY, Referrer-Policy, Permissions-Policy, CSP `frame-ancestors 'none'`, COOP pada **semua** respons (JSON/SSE/HTML/500); bot API + realms juga dapat HSTS/CSP. |
-| SEC-07 | ⏳ | Perlu setelan Cloudflare (Min TLS 1.2). Token CF yang ada tidak berizin Zone Settings (error 9109) → menunggu aksi manual. |
-| SEC-08 | ✅ | `/api/stats` bot wajib Bearer rahasia internal (401 untuk publik, diverifikasi live); website mengirim `BOT_BACKUP_EXPORT_SECRET`. |
-| SEC-09 | ✅ | `POST /api/rooms` dibatasi 12/menit/IP + batas `MAX_ROOMS` (default 300). |
-| SEC-10 | ✅ | `bot/lib/youtube.js` dihapus (tidak ada importer): kunci pihak ketiga + `rejectUnauthorized:false` hilang dari working tree (masih ada di riwayat git). |
-| SEC-11 | ✅ (keputusan) | `email_confirm:true` dipertahankan: Supabase Auth proyek ini `mailer_autoconfirm=true`, jadi validasi di lapisan platform (Gmail-only + password) yang berlaku; dicatat di laporan. |
-| SEC-12 | ✅ | Tiket owner mengikat `m` (method) + `p` (path) + `nonce` sekali-pakai; diverifikasi live (ticket valid 200, replay 401, path lain 401). Nama file panel divalidasi (`safeEntryName`). Tool internal (`console-logs`, `configure-panel2`, `set-panel-autoorder`, `recover-after-outage`) ikut memakai tiket terikat. |
-| SEC-13 | ✅ (uji) | Uji anon: `platform_profiles` 401/42501, INSERT `api_profiles`/`api_access_keys`/`api_settings` 42501, PATCH tanpa baris 0 dampak. Rekomendasi SQL (revoke UPDATE anon) dicatat untuk dijalankan manual. |
-
-Bukti live: header game `strict-transport-security/x-frame-options=nosniff/CSP` ada di `/health` & `/trading`;
-`/api/stats` 401 tanpa auth, 200 dengan rahasia; tiket owner replay/path-mismatch 401; room: `state` header-only
-(viewer 0) vs `?token=` (viewer -1), `/events?token=` 401, `/events?ticket=` 200.
+Terakhir diperbarui: **2026-10-19 (Task 64)**
 
 ## Done
 
@@ -1004,579 +995,12 @@ sistem room `game.js` yang sama dengan UNO/Catur/Ular Tangga/Werewolf.
   (bisa ditutup host / dibiarkan gugur oleh pembersihan room otomatis).
 
 
-## Task 29 — Halaman Feedback bersih: 34 laporan bot ditelusuri & diperbaiki (2026-10-17 19.10 WITA)
-
-Permintaan: *"Benerin bug di bot whatsapp cek halaman feedback dan lihat semua laporan bot
-otomatis error semua benerin semua yang ada di situ halaman feedback."*
-
-### 1. Isi halaman Feedback saat diperiksa
-- `platform_audit_logs?action=eq.feedback.submit` → **75 baris**, 71 di antaranya `source: bot`,
-  **34 laporan unik**, status `open` 54 / `resolved` 21.
-- Setiap kejadian tampil 2 baris karena `POST /api/platform/feedback/bot` memang menulis satu baris
-  untuk **pemilik sesi** dan satu untuk **owner platform** (`FIXED_OWNER`). `GET /feedback`
-  memfilter `actor_id`, jadi tiap orang tetap melihat satu baris per kejadian — bukan duplikat
-  yang bisa dihapus tanpa menghilangkan akses salah satu pihak.
-- Laporan dibagi tiga: (a) bug kode nyata, (b) panduan pemakaian yang ikut dilaporkan sebagai
-  error (false positive), (c) laporan lama yang sudah beres tetapi belum ditandai.
-
-### 2. Bug kode yang diperbaiki
-| Berkas | Gejala di Feedback | Perbaikan |
-|---|---|---|
-| `game/trading-umi.js` | `.trading` / `.portofolio` / `.saham` → `ReferenceError: usedPrefix is not defined` | `accountCard(..., prefix)` & `boardCard(..., prefix)`; call-site kirim `usedPrefix` |
-| `game/trading-umi.js` | `.pasar` menampilkan `*undefined*` | API memakai kunci `sym`, bukan `symbol` (diperbaiki di kartu harga & daftar posisi) |
-| `maker/maker-cewekbrat.js` | `Cannot read properties of undefined (reading 'deline')` | `global.APIs` tidak pernah diisi config → basis API `api.deline.web.id` + validasi `content-type` |
-| `maker/maker-faketweet.js`, `maker/maker-ytcomment.js` | sumber masalah sama (`global.APIs.deline`) | pola yang sama diterapkan |
-| `info/info-script.js` | `.sc` → `Input Buffer is empty` | `/media` tidak ada di server; thumbnail dicari di 4 berkas (`bg-template.jpg` ada), kalau kosong dibuat gambar polos |
-| `tools/usanagi-hdvid.js` | `cpb: bitrate max/min/avg: 0/0/0` | `-c:a aac` (bukan `copy`) + dimensi genap `trunc(...)`; gagal → balasan jelas, bukan throw |
-| `maker/brat.js` | `Connection Closed` | reaksi WA dibungkus `safeReact`, timeout 20 s, pesan alasan yang ramah |
-| `group/group-totag.js` | `Cannot read properties of undefined (reading 'map')` | `participants` bisa kosong → sekarang array aman, validasi kutipan jalan lebih dulu |
-| `rpg/rpg-bank.js`, `rpg/rpg-sell.js` | `global.rpg.emoticon` TypeError | dibaca aman (`global.rpg?.emoticon`) + nilai saldo default |
-
-### 3. Akar "semua error": throw-string dianggap kegagalan plugin
-Banyak plugin memakai `throw 'Teksnya mana?'` / `throw 'Format: …'` untuk menampilkan petunjuk.
-`handler.js` menangkapnya sebagai error plugin lalu mengirim laporan otomatis.
-- `lib/error-report.js` dapat `isUserFacingError()` (string, Error tanpa `stack`, atau pesan
-  berpola Format/Contoh/Reply/Balas/Teksnya/…) dan `isTransientError()` (`Connection Closed`,
-  `ECONNRESET`, `AbortError`, …) → keduanya **tidak** dilaporkan.
-- Plugin yang melempar panduan diubah menjadi `return m.reply(...)`:
-  `group-setintro` (`.setintro`, `.intro`), `group-setcostum` (`.setwelcome`), `group-totag`
-  (`.totag`), `group-hidetag` (`.h`, `@all`), `sticker-smeme` (`.smeme`), `maker/wm` (`.wm`),
-  `misc/tool-translate` (`.t`), `rpg-sell` (`.sell`).
-
-### 4. Data & tampilan halaman Feedback
-- 51 baris lama (semua laporan bot yang masih `open`) ditandai `status: resolved` beserta
-  `resolution` per plugin dan `resolved_at`; tersisa **3 laporan manual pengguna** yang memang
-  belum dikerjakan (bukan error otomatis).
-- `website/public/assets/app.js` + `theme-liquid-glass.css`: laporan selesai diberi blok
-  **PERBAIKAN** (isi `resolution`) dan tanda ✓, warna ditenangkan agar yang masih rusak menonjol.
-
-### 5. Alat deploy yang selama ini salah sasaran
-- `tools/deploy-bot-plugins.mjs` mengunggah ke `bot/plugins/...`, padahal bot membaca `/plugins`
-  di root container. Sekarang tujuan dipetakan ke `/plugins/...`, dan berkas yang tidak ada di
-  repo dilewati (bukan dihitung gagal).
-- `tools/e2e-error-report.mjs` mencari `lib/error-report.js` di root; kini mendeteksi dua tata
-  letak (container: root, repo: `bot/`).
-
-### 6. Verifikasi
-- `node --check` 18 berkas berubah → lolos; `tools/test-error-report.mjs` **55/55**.
-- Uji saring langsung: string panduan, `Error` tanpa `stack`, dan `Connection Closed` → 
-  `{reported:false}`; `ReferenceError` sungguhan → `{reported:true}`.
-- Uji e2e live (`node tools/e2e-error-report.mjs` dengan rahasia server) → laporan masuk
-  halaman Feedback, lalu baris ujinya dihapus supaya tidak mengotori daftar.
-- Uji handler `.pasar`, `.saham`, `.portofolio`, `.trading`, `.tradingkaya`, `.peringkat`
-  memakai token game produksi → semuanya membalas kartu normal, tanpa `usedPrefix`.
-- Deploy: 18 berkas diunggah ke `/plugins/...` & `/lib/error-report.js` (sha256 **11/11 SAMA**
-  saat diperiksa ulang), restart `HTTP 204`, `/api/health` v1.4.0 naik dari 0. Setelah restart
-  **tidak ada laporan error baru**.
-- Website: deployment `dpl_2rbj1WgfwU8kbqodcWzwMQABSr6R` READY; `assets/app.js` dan
-  `theme-liquid-glass.css` di produksi memuat blok `is-resolved`.
-
-### 7. Catatan
-- `.cewekbrat` diuji langsung ke API: `200 image/png` 1,5 MB; `.brat` `200 image/png` 30 KB.
-- Saldo `AlzRiss` di papan peringkat trading terbaca $AS 10 T (akibat permainan, bukan bug
-  tampilan) — tidak diubah karena di luar lingkup perbaikan error.
-- Laporan manual yang masih terbuka: "Respon bot lambat", "Tidak bisa kode pairing"
-  (pesan ini berasal dari layanan jadibot, bukan repo bot ini), dan satu laporan uji pengguna.
-
-### 8. Tambahan: `global.APIs` diisi sekali saat boot (`lib/api-globals.js`)
-Masih ada satu akar yang belum tertutup di commit sebelumnya. Perbaikan `.cewekbrat` hanya
-memasang cadangan lokal di dalam plugin itu, sedangkan **19 pemakaian `global.APIs.deline` dan
-22 pemakaian `global.APIs.faa`** tersebar di plugin maker/ai/search/fun. Kalau `global.APIs`
-kosong, perintah lain akan gagal dengan `TypeError … reading 'deline'` yang sama.
-
-- `bot/lib/api-globals.js` → `installApiGlobals()` mengisi `global.APIs` dengan
-  `{ deline: 'https://api.deline.web.id', faa: 'https://api-faa.my.id' }`, **idempoten** dan
-  **tidak menimpa** nilai yang sudah disetel config/custom (diuji 3× berturut-turut +
-  nilai custom `https://x.example` tetap utuh).
-- Dipanggil di `bot/main.js` sebelum `await filesInit()`, jadi semua plugin yang di-load
-  sesudahnya sudah melihat `global.APIs`.
-- Berkas live: `/main.js` **44.239 B** dan `/lib/api-globals.js` **1.721 B**, sha256 **identik**
-  dengan repo (dicek lewat Client API `files/contents`).
-- Verifikasi ulang 17 Okt: `node --check` 18 berkas lolos; **20/20 berkas** (main, lib, dan 18
-  plugin) sha256 **SAMA** antara server dan repo; konsol `ptero watch` 30 detik tanpa
-  `error|syntax|failed|gagal`; uji handler nyata `.trading` (prefix `.` dan `/`), `.totag`,
-  `.setintro`, `.intro`, `.setwelcome`, `.bank`, `.sell` semuanya membalas normal; halaman
-  Feedback **tidak menerima laporan otomatis baru** setelah restart.
-
-## Task 30 — Property Empire masuk bot utama & semua sesi jadibot (2026-10-17 19.08 WITA)
-
-Permintaan: *"Fitur empire belum ada di bot, apply ke bot utama dan bot jadibot untuk semua
-pembaruan."*
-
-### 1. Kenapa `.empire` tidak ada
-- Berkas di server `/plugins/game/game-webmultiplayer.js` masih versi lama **8.364 B** —
-  daftar `GAMES`-nya hanya enam meja (UNO, UNO Flip, Catur, Ular Tangga, Monopoli, Werewolf).
-  `empire` tidak terdaftar, jadi `.empire` tidak cocok dengan regex command dan plugin
-  mengembalikan `undefined` tanpa balasan sama sekali.
-- `/lib/webgame.json` juga **belum ada** (hanya `webgame.example.json`), sehingga pembuatan
-  room lewat bot tidak punya token dan akan gagal dengan "Token game belum diatur".
-
-### 2. Yang diperbaiki
-- `game-webmultiplayer.js` versi **8.673 B** diunggah ke `/plugins/game/`: `GAMES` kini berisi
-  **tujuh meja** termasuk `empire: { id: 'empire', label: 'Property Empire', emoji: '🎩' }`.
-- Balasan pembuatan room sekarang menyertakan **kode masuk** host
-  (`🔑 Kode masuk kamu: 6 digit`) — sebelumnya host dapat tautan tapi tidak tahu kode untuk
-  masuk ke room di browser.
-- `handler.register = false`: bot utama dan sesi jadibot bisa langsung membuka meja tanpa
-  harus `.daftar` lebih dulu.
-- `/lib/webgame.json` dibuat di server (bukan di repo — masuk `.gitignore`):
-  `{"enabled":true,"baseUrl":"https://game.gwenna.my.id","token":"<48 karakter>"}`.
-- `game-hub.js`: kartu **🎩 Property Empire** dan **🃏 UNO Web** ditambahkan di urutan depan
-  carousel `.gamehub` / `.games`, supaya game baru kelihatan tanpa harus tahu nama perintahnya.
-  `.playgame empire` juga mengenali nama itu dan menyarankan `.empire`.
-
-### 3. Kenapa jadibot otomatis ikut
-`lib/jadibot.js` membangun setiap sesi dengan `await import('../handler.js')` — handler yang
-sama dengan bot utama. Handler memuat plugin dari `./plugins` relatif ke `handler.js`, dan
-`lib/webgame.json` dibaca dari path absolut plugin (`../../lib/webgame.json`). Jadi satu
-berkas plugin + satu berkas token melayani **bot utama dan semua sesi jadibot**; tidak ada
-folder plugin terpisah per sesi dan tidak perlu deploy ulang per nomor.
-
-### 4. Alur main yang sekarang berlaku (7 meja)
-1. `.empire` → bot membuat meja + tautan + kode masuk host.
-2. Teman buka tautan yang sama, lalu kirim `.empire join <id>`.
-3. Teman kirim `.empire <id>` → bot membalas kode masuk masing-masing kursi.
-4. `.webgame room <id>` → intip status/kursi. Nama perintah lain: `.uno`, `.unoflip`,
-   `.caturweb`, `.utweb`, `.monopoli`, `.wwweb`.
-
-### 5. Verifikasi
-- Uji handler langsung dengan token produksi:
-  - `.empire` → meja `tjFARaStGE` + kode `233993`;
-  - `/empire` (prefix miring) → meja `NfrPs8UJbX`;
-  - `.empire join tjFARaStGE` → kursi pending pemain kedua;
-  - `.empire tjFARaStGE` → kursi #2 terverifikasi + kode `435046`;
-  - `.webgame room tjFARaStGE` → "Status: menunggu pemain · Pemain: 2" dengan dua kursi ✅.
-- Halaman web `https://game.gwenna.my.id/empire/<id>` → **HTTP 200, 116.862 B** (v2.2.0).
-- Berkas di server = repo: `game-webmultiplayer.js` sha256 `81757833c0069622…` (8.673 B),
-  `game-hub.js` sha256 `8153678c778a42d7…` (6.344 B), `/lib/webgame.json` bertoken 48 karakter.
-- Restart panel `HTTP 204`; `/api/health` bot v1.4.0 hidup; konsol 28 detik tanpa error plugin.
-- 20 berkas Task 29 dicek ulang: **20/20 sha256 SAMA** — tidak ada regresi.
-
-## Task 31 — Empire benar-benar aktif + login token trading (2026-10-17 19.37 WITA)
-
-Permintaan: *"Fitur empire belum ada di bot, apply ke bot utama dan bot jadibot untuk semua
-pembaruan. Benerin juga command trading itu buat login seperti /trading (token akun) kalo token
-ga valid atau token gaada kasih tutorial nya login pake token."*
-
-### 1. Kenapa `.empire` masih belum ada
-- Deploy Task 30 sempat **tertimpa**: isi `/plugins/game/game-webmultiplayer.js` di server
-  berubah lagi menjadi 8.454 B dengan **6 meja** (tanpa empire). Penyebabnya unggahan dari
-  salinan lokal yang sudah kembali ke versi lama (snapshot workspace sering revert), bukan kode
-  repo.
-- Bukti langsung dari konsol runtime: `[WEBGAME] plugin aktif — 6 meja: uno, unoflip, caturweb,
-  utweb, monopoli, wwweb` setelah hot reload.
-- Setelah ditulis ulang dari commit yang benar (8.763 B), konsol menampilkan
-  `[WEBGAME] plugin aktif — 7 meja: uno, unoflip, caturweb, utweb, monopoli, empire, wwweb`.
-- Plugin dimuat oleh `handler.js` yang sama untuk bot utama dan seluruh sesi jadibot, jadi satu
-  berkas benar = semua bot dapat `.empire`.
-
-### 2. Trading: login pakai token akun
-- `.trading login` (tanpa token) → tutorial lengkap: buka
-  `https://jadibot-alzriss.gwenna.my.id/#profile` → bagian **Token Akun** → salin → kirim
-  `.trading login <token>`.
-- `.trading login <token>` maupun `.trading <token>` → token divalidasi ke server game; berhasil
-  = tautkan ke nomor WA + tampilkan kartu akun; gagal = tutorial + alasan yang jelas.
-- `.trading` tanpa tautan → kartu akun nomor WhatsApp + baris `🔑 Mau pakai akun website?
-  .trading login <token>`.
-- Token tersimpan yang sudah tidak berlaku → tautan dilepas otomatis + tutorial (bukan sekadar
-  pesan error).
-- `.belisaham` / `.jualsaham` / `.redeem` dengan token tidak valid juga membalas tutorial.
-- `handler.register = false` untuk plugin trading: login token bisa langsung dipakai dari bot
-  utama maupun sesi jadibot tanpa wajib `.daftar` lebih dulu.
-
-### 3. Server trading menolak token ngawur
-- Sebelumnya `GET /api/trading/me?token=<apa saja>` **membuat akun baru** dengan saldo $AS 110 —
-  token ngawur pun dianggap akun sah. Sekarang token non-sesi diverifikasi ke platform
-  (`/api/platform/verify-token`, cache 60 detik): invalid → **HTTP 401** “Token tidak dikenali.
-  Buat token baru di halaman Profil.”
-- Token sesi bot (`bot-…`, hasil `/api/trading/code-login`) tetap lolos tanpa verifikasi.
-- Aturan yang sama dipakai `POST /api/trading/trade`, `POST /api/trading/redeem`,
-  `POST /api/trading/link`, dan `GET /api/trading/market` (token invalid diabaikan, tidak
-  membuat akun baru).
-- Uji langsung: token ngawur → 401 di `me` dan `trade`; alur sesi bot
-  (`bot/login-code` → `code-login` → `me?token=bot-…`) → 200.
-
-### 4. Verifikasi berkas live
-- `/plugins/game/game-webmultiplayer.js` **8.763 B**, sha256 `4292a7440830c493…` = repo.
-- `/plugins/game/trading-umi.js`, sha256 `5bb52b8be965bcd5…` = repo.
-- `/game/game.js` **123.943 B**, sha256 `c77eec6e6836db89…` = repo; `/health` game v2.2.0.
-- Boot bot: `Successfully Loaded 2047 Plugins`, **0** error plugin; konsol menampilkan 7 meja.
-
-### 5. Catatan bot utama
-- `/api/owner-console/status` → `registered:true, connected:false, connection:"close"`, log
-  berulang `Koneksi terputus: Connection Failure` + `Sesi telah logout. … pairing ulang
-  diperlukan.`
-- Artinya nomor bot utama `6287813709432` perlu **pairing ulang** dari halaman Bot Utama
-  (sesi WhatsApp-nya sudah logout), bukan masalah plugin. Begitu tersambung, `.empire` dan
-  perintah lain langsung tersedia karena memakai runtime & plugin yang sama.
-
-## Task 32 — Groq API key untuk Auto AI (2026-10-17 19.55 WITA)
-
-Permintaan: memasang API key Groq agar Auto AI bisa menjawab chat.
-
-- Key **tidak** ditulis di repo. Disimpan di server `/.env.groq` (mode `600`) lewat
-  `POST /api/owner-agent/settings` (`provider: groq`, `model: openai/gpt-oss-120b`), dan
-  salinannya di `/home/user/.secrets/groq.env` (chmod 600). Yang tercatat di sini hanya
-  prefiksnya: `gsk_2nea…`.
-- Isi berkas: `GROQ_API_KEY=<56 karakter>`, `GROQ_MODEL=openai/gpt-oss-120b`,
-  `UMI_AUTO_AI_ENABLED=true`.
-- `lib/groq-client.js` membaca berkas itu (cache 15 detik) → tidak perlu restart; satu proses
-  melayani bot utama dan semua sesi jadibot.
-- Verifikasi:
-  - key diuji langsung ke `api.groq.com/openai/v1/chat/completions` → **HTTP 200**, model
-    `openai/gpt-oss-120b`;
-  - `GET /api/owner-agent/status` → `configured:true`, `updatedAt` terisi;
-  - `POST /api/owner-agent/chat` → balasan nyata dari Groq ("Saya dapat memantau kesehatan
-    bot…"), artinya runtime benar-benar memakai key baru.
-- Auto AI (`lib/auto-ai.js`) aktif saat bot di-mention atau pesannya di-reply, dan tetap
-  menghormati sakelar `UMI_AUTO_AI_ENABLED` serta setelan per-bot.
-
-## Task 33 — Fix TypeError `mentionedJid` getter di Auto AI dispatch (2026-10-17 20.02 WITA)
-
-Laporan: `TypeError: Cannot set property mentionedJid of #<WebMessageInfo> which has only a
-getter` di `handler.js:725`.
-
-- Akar masalah: objek `WebMessageInfo` dari Baileys mendefinisikan `mentionedJid` sebagai
-  **getter read-only**. Di jalur auto-AI (`aiPlan.kind === 'command'`), handler mencoba menimpa
-  field itu dengan assignment biasa; karena ESM berjalan strict mode, assignment melempar
-  TypeError dan perintah gagal sebelum plugin dipanggil.
-- Perbaikan di `bot/handler.js`:
-  - hasil filter mention disimpan ke variabel lokal `aiMentions`;
-  - dipasang lewat `Object.defineProperty(m, 'mentionedJid', { value, writable, configurable,
-    enumerable })` di dalam `try/catch` (properti milik objek menutupi getter prototipe);
-  - `m.quoted = null` pada blok yang sama juga diganti `Object.defineProperty` karena berisiko
-    kena getter yang sama.
-- Verifikasi:
-  - reproduksi kelas dengan getter-only `mentionedJid` di ESM: assignment melempar TypeError
-    yang sama, sedangkan `defineProperty` berhasil;
-  - `node --check bot/handler.js` lolos;
-  - `/handler.js` di server **47.374 B**, sha256 `7dc8dd38608f5ff4…` = repo;
-  - restart `HTTP 204`, boot `Successfully Loaded 2047 Plugins`, **0** error plugin, WEBGAME
-    7 meja (empire ikut termuat).
-
-## Task 34 — Fix "Gagal membuka grup" (`Cannot read properties of undefined (reading 'announce')`) (2026-10-17 21.15 WITA)
-
-Laporan: `.open` / `.buka` menjawab
-
-```
-❌ *ᴇʀʀᴏʀ*
-> Gagal membuka grup.
-> _Cannot read properties of undefined (reading 'announce')_
-```
-
-- Akar masalah (dua lapis):
-  1. Plugin impor Usanagi (`integrations/umi/plugins/group/open.js`) membaca
-     `m.groupMetadata.announce`. Padahal lapisan kompat `lib/imported-compat.js` membuat
-     `message = Object.create(m)` dan **hanya** menyalin `text, body, command, args, prefix,
-     isOwner, isAdmin, isBotAdmin, isPremium, pushName`. `groupMetadata` tidak ikut, jadi
-     nilainya `undefined` walau handler sudah menghitungnya di `extra.groupMetadata`.
-  2. Handler plugin memakai `sock.groupSettingUpdate(...)`. Kunci `sock` memang disuntikkan
-     loader (`handler(message, { ...extra, sock: sockAdapter(extra.conn) })`), tetapi plugin
-     tetap rapuh kalau `sock`/`groupMetadata` tidak lengkap.
-- Perbaikan:
-  - `bot/lib/imported-compat.js`: tambah `groupMetadata: extra.groupMetadata || m.groupMetadata || {}`
-    dan `groupMembers: extra.participants || m.groupMembers || []` ke daftar properti yang
-    disalin ke `pluginMessage`. Ini memperbaiki **semua** plugin grup impor sekaligus
-    (`close`, `mute`, `unmute`, `intro`, `cekonline`, `banchat`, `mutegc`, `unmutegc`).
-  - `bot/integrations/umi/plugins/group/open.js` & `close.js`: `groupMeta` diambil dari
-    `m.groupMetadata`; kalau kosong/tanpa `subject`, ambil ulang lewat
-    `sock.groupMetadata(m.chat)`. Jika tetap gagal, balas pesan jelas
-    "Tidak bisa membaca data grup…" (bukan TypeError mentah).
-- Bukti:
-  - uji langsung handler `open.js`: metadata ada → `groupSettingUpdate('not_announcement')`
-    terpanggil; metadata kosong → fetch metadata dulu lalu sukses; fetch gagal → pesan jelas;
-    grup sudah terbuka → pesan validasi "sudah terbuka" tetap muncul;
-  - uji end-to-end lewat `runImportedFeature('umi','plugins/group/open.js', …)` (jalur yang
-    dipakai bot): `{success:true}` + `SETTING …@g.us not_announcement` + `✅ @… telah membuka
-    grup ini`; `close.js` menghasilkan `announcement`;
-  - unggah ke server: `/lib/imported-compat.js` 12.067 B sha `fd88dd1b434c56b0`,
-    `/plugins/open.js` 3.774 B sha `352dfab4894b4fe9`, `/plugins/close.js` 3.736 B sha
-    `965745a4f6855749` — ketiganya **SAMA** dengan repo;
-  - restart `HTTP 204`, boot `Successfully Loaded 2049 Plugins`, 0 baris error di konsol,
-    WEBGAME 7 meja.
-- Commit: `c9eeaf3` (push ke `main`).
-
-## Task 35 — Auto-AI bisa menjadwalkan rangkaian perintah + paham argumen + game Ular Tangga rich HTML (2026-10-17 22.40 WITA)
-
-Permintaan: (1) Auto-AI boleh menjalankan perintah pada waktu tertentu tanpa mentok — contoh
-"tutup grup lalu buka 5 detik kemudian" gagal; (2) Auto-AI harus paham semua fitur, karena
-"bikin bratvid teks ayam" malah mengirim bratvid berisi link; (3) game ular tangga yang bisa
-dimainkan di WhatsApp lewat rich HTML seperti trading offline.
-
-### 1. Auto-AI multi-perintah + jeda waktu
-- `lib/auto-ai.js`
-  - tool `run_command` kini punya `delay_seconds` (0 = sekarang) dan **boleh dipanggil beberapa
-    kali dalam satu jawaban**; hasilnya `{kind:'steps', steps:[…]}` yang diurutkan berdasarkan
-    jeda. Batas: 6 langkah per permintaan, 7 hari per langkah.
-  - `delay_seconds` menerima angka atau teks ("5 detik", "10 menit", "1 jam").
-  - args dibersihkan dari label `args:` / tanda kutip pembungkus.
-  - tool baru `list_features(category)` supaya model bisa melihat isi satu kategori.
-- `lib/auto-ai-scheduler.js` (baru) — penjadwal di proses bot:
-  - tugas disimpan di memori, dijalankan `setTimeout` tanpa menahan handler;
-  - plugin diambil ulang dari `global.plugins`, metadata grup + status admin pengguna/bot
-    dihitung ULANG saat waktu tiba (tidak ada pembekuan izin);
-  - pesan dikirim tanpa kutipan karena key lama bisa kedaluwarsa;
-  - batas praktis: 200 tugas menunggu, 7 hari per tugas;
-  - command `.jadwal` (plugin `plugins/tools/umi-jadwal.js`) menampilkan antrean + sisa waktu,
-    `.jadwal batal` membatalkan semua jadwal milik pengirim di chat itu (owner: semua orang).
-- `handler.js` — satu langkah tanpa jeda tetap dijalankan dispatcher asli (perilaku lama),
-  langkah lain masuk penjadwal, dan pengguna menerima pesan konfirmasi
-  `⏱️ JADWAL AUTO-AI` berisi perintah + "dalam X detik/menit".
-
-### 2. Auto-AI lebih paham fitur & argumen
-- Katalog kini memakai `handler.importConfig.usage`, `example`, `category`, dan `description`
-  dari plugin impor Usanagi (sebelumnya hanya `handler.help`, sehingga bentuk argumen tidak
-  terlihat). Sinonim kata kunci ditambah (brat/bratvid, ular tangga, game).
-- Prompt (`lib/auto-ai-prompt.js`) diberi aturan tegas:
-  - args hanya parameter, tanpa kalimat permintaan dan **tanpa URL** kecuali fitur memang
-    butuh URL; contoh "bratvid2 teks ayam" → args `ayam`;
-  - nama fitur mirip harus dibedakan (ular vs ulartangga, brat vs bratvid2);
-  - command tutup/buka grup wajib diambil persis dari hasil pencarian (tidak boleh mengarang
-    alias seperti `closegc` yang tidak ada).
-- Skor pencarian diberi boost untuk close/tutup dan open/buka.
-
-### 3. Game Ular Tangga rich HTML di WhatsApp
-- `plugins/game/ular-tangga-wa-html.js` — HTML mandiri 16.945 B: papan 10×10, 7 ular + 8 tangga
-  (garis SVG), dadu beranimasi, pion berjalan petak demi petak, suara WebAudio, konfeti,
-  progres di localStorage, mode **lawan bot** atau **2 pemain** bergantian.
-- `plugins/game/game-ular-tangga-wa.js` — perintah `.ular` (+ `ularpapan`, `ularrich`,
-  `ularwa`, `ularboard`, `utwa`) mengirim rich message lewat `kirimForwardSigned`
-  (jalur yang sama dengan trading offline/game-sonic). `.ular file` mengirim berkas HTML;
-  kalau rich message ditolak, otomatis jatuh ke mode berkas.
-- Diuji di jsdom: 100 sel, 7 ular/8 tangga, token bergerak, giliran bot jalan, reset aman,
-  0 error JavaScript.
-
-### 4. Verifikasi live
-- Deploy 7 berkas ke server, semuanya **SAMA** dengan repo:
-  `/lib/auto-ai.js` 15.942 B `99c91ef8…`, `/lib/auto-ai-prompt.js` 4.887 B `92d374fc…`,
-  `/lib/auto-ai-scheduler.js` 8.496 B `4412caab…`, `/lib/database.js` 3.486 B `b005a0ff…`,
-  `/handler.js` 50.276 B `73b14b08…`, `/plugins/game/game-ular-tangga-wa.js` 2.826 B
-  `ceaa721d…`, `/plugins/game/ular-tangga-wa-html.js` 16.945 B `fc6afe6a…`.
-- Restart `204` → `Successfully Loaded 2052 Plugins` (2 berkas ular + `.jadwal`), 0 error,
-  WEBGAME 7 meja. Sempat muncul `Failed to load plugin umi-jadwal.js: Cannot find module
-  '/home/lib/auto-ai-scheduler.js'` karena plugin taruh di `/plugins` (datar); dipindah ke
-  `/plugins/tools/` supaya `../../lib` benar, lalu boot bersih.
-- Uji perencanaan dengan Groq asli:
-  - "tutup grup terus buka 5 detik kemudian" → `umi-group-close` delay 0 + `umi-group-open`
-    delay 5000 (command nyata dari katalog);
-  - "bikin bratvid2 teksnya ayam" → `bratvid2` args `ayam` (bukan URL);
-  - "main ular tangga langsung di chat" → `ular` (bukan `ulartangga` room).
-- `database.js`: default `autoread` diubah ke `false`; Auto Read 14 sesi tetap `false` setelah
-  restart.
-- Catatan: tugas jadwal disimpan di memori, jadi restart container membatalkan tugas yang
-  belum jatuh tempo (pemberitahuan dikirim hanya untuk tugas yang sempat berjalan).
-
-## Task 36 — Kenapa Auto-AI bilang "Batas penggunaan Groq tercapai" (2026-10-17 23.35 WITA)
-
-Laporan: mention bot dibalas `Auto-AI: Batas penggunaan Groq tercapai. Tunggu sebentar lalu coba lagi.`
-
-### Penyebab
-- Itu **HTTP 429 dari Groq**, bukan key mati. Cek langsung ke API: status 200, limit
-  `x-ratelimit-limit-tokens: 8.000` token/menit (per model), `x-ratelimit-limit-requests: 1.000`,
-  sisa token saat sepi 7.923.
-- Satu permintaan Auto-AI memakai 2–4 panggilan model (cari fitur → pilih command → jawab).
-  Dengan prompt + katalog + tools, satu panggilan ≈ 1,7–1,9 rb token input; tiga panggilan
-  ≈ 5,4 rb token. Dua permintaan berdekatan (atau dua orang chat bersamaan) langsung
-  menembus 8 rb/menit → 429.
-- Kode lama membuang alasan asli dan tidak punya cadangan, jadi pengguna hanya melihat pesan
-  generik berulang.
-
-### Perbaikan
-- `lib/groq-client.js`
-  - membaca `retry-after` / `x-ratelimit-reset-tokens` / `x-ratelimit-reset-requests`
-    (format `577ms`, `7.66s`, `1m2.3s`, `1h40m48s`) dan menampilkan sisa waktu di pesan:
-    “Batas Groq tercapai (8.000 token/menit). Coba lagi dalam 42 detik.”;
-  - retry otomatis sekali bila reset ≤ 3 detik;
-  - **fallback model** ke `openai/gpt-oss-20b` (kuota terpisah) bila model utama 429;
-  - memilih model dengan sisa kuota terbanyak berdasarkan header tiap respons.
-- `lib/auto-ai.js` — payload dipangkas supaya lebih hemat:
-  kandidat awal 6 entri, deskripsi 160 karakter, usage 3 baris, `maxTokens` 700 (dari 1.800),
-  maksimal 4 ronde (dari 5), budget 30 detik.
-- Hasil ukur ulang: satu permintaan “tutup grup lalu buka 5 detik kemudian” = 3 panggilan
-  ≈ 5,4 rb token dan tetap menghasilkan `umi-group-close` delay 0 + `umi-group-open` delay 5000.
-
-### Verifikasi
-- `node --check` lolos; uji unit 429: fallback model, retry 900 ms, dan pesan “coba lagi dalam
-  42 detik” semuanya benar.
-- Deploy `/lib/groq-client.js` 8.844 B `b026eb86…` dan `/lib/auto-ai.js` 16.046 B `fe2804a6…`
-  (keduanya SAMA dengan repo), restart `204`, boot `Successfully Loaded 2052 Plugins`, 0 error.
-- Uji dengan Groq asli setelah deploy: rencana 2 langkah tetap benar.
-
-### Catatan
-- Kalau pemakaian makin ramai, opsi berikutnya: naikkan tier Groq atau tambahkan key kedua
-  (rotasi key belum dilakukan; semua key tetap seperti sekarang).
-
-## Task 37 — Fix `sock.sendVideoAsSticker is not a function` (bratvid2 & stiker lain) (2026-10-18 00.20 WITA)
-
-Laporan: `.bratvid2` gagal dengan
-`❌ Gagal membuat stiker bratvid2. Alasan: sock.sendVideoAsSticker is not a function`.
-
-### Akar masalah
-- `lib/imported-compat.js` membungkus socket dengan `Proxy` + objek `fallback`. Fallback hanya
-  menyediakan `sendMedia`, `sendText`, `sendTextWithMentions`, `sendPreview`, `sendImage`,
-  `sendVideo`, `sendAudio`; metode lain diteruskan ke socket Baileys.
-- Socket Baileys (dan `lib/simple.js`) **tidak punya** `sendVideoAsSticker` /
-  `sendImageAsSticker`, padahal plugin impor Usanagi banyak memakainya:
-  `bratvid2`, `swm`, `linesticker`, `attp2`, `autosticker`, `stikerwa`, `bratextra`, `smeme`,
-  dan lain-lain (5 pemakaian `sendVideoAsSticker`, 14 `sendImageAsSticker`).
-- Jadi bukan cuma bratvid2: semua perintah stiker impor yang lewat jalur itu ikut gagal.
-
-### Perbaikan (`lib/imported-compat.js`)
-- Adapter sekarang punya pembuat stiker sendiri memakai `lib/exif.js` → `writeExif`:
-  gambar/video dikonversi ke WebP 320px (video: 15 fps, maks 5 detik, animasi) lalu diberi
-  EXIF packname/author.
-- Metode baru di `fallback`: `sendVideoAsSticker`, `sendImageAsSticker`,
-  `sendStickerAsSticker`, dan `sendStickerPack` (mengirim tiap stiker satu per satu).
-- Pesan gagal dibuat jelas (“Pastikan ffmpeg terpasang di server”) bila konversi gagal.
-
-### Verifikasi
-- Uji nyata dengan ffmpeg lokal: video uji 2 detik (11.262 B) → stiker **117.912 B** dengan
-  header `RIFF/WEBP`; PNG 1×1 → 686 B WebP.
-- Uji lewat `runImportedFeature` (jalur asli bot): `sock.sendVideoAsSticker` terpanggil dan
-  `sendMessage` menerima payload `{ sticker, isAnimated: true }` lalu plugin membalas
-  “stiker terkirim” — **tidak ada** lagi error “is not a function”.
-- Deploy `/lib/imported-compat.js` 13.991 B `fdcc314f…` = repo; restart `204`,
-  `Successfully Loaded 2052 Plugins`, 0 error.
-- Dependensi server dicek ada: `file-type`, `fluent-ffmpeg`, `node-webpmux`.
-
-## Task 38 — Auto-AI tetap pintar tapi ngobrolnya kayak manusia (2026-10-18 01.10 WITA)
-
-Permintaan: Auto-AI tetap bisa menjalankan perintah, tapi balasannya dibuat natural supaya
-terasa seperti manusia (bukan laporan sistem).
-
-### Yang diubah
-- `lib/auto-ai-prompt.js` ditulis ulang dengan bagian **GAYA BICARA**:
-  - ngobrol santai, balasan 1–2 baris, huruf kecil, emoji maksimal satu;
-  - dilarang membuka dengan "Tentu/Baik, saya akan/Berhasil" atau menutup "Semoga membantu";
-  - tidak menyebut AI, model, tool, katalog, antrean, plugin, endpoint;
-  - setelah menjalankan perintah, cukup bilang apa yang dilakukan ("udah tak tutup, 5 detik
-    lagi tak buka ya"), tanpa daftar perintah;
-  - aturan tool/argumen/izin tetap sama seperti sebelumnya.
-- `lib/auto-ai.js`:
-  - fungsi baru `humanizeReply()`: membuang awalan "Auto-AI:", "Berhasil masuk antrean
-    command …", mengubah `**tebal**` → `*tebal*` (format WhatsApp), menghapus heading dan
-    backtick, serta menukar kata mesin (command→perintah, antrean→rencana, plugin→fitur);
-  - semua jawaban AI dan pesan galat kini memakai kalimat manusia:
-    "aduh ai-ku lagi kena limit groq, coba lagi sebentar ya 😅", "sabar ya, yang tadi masih
-    kupikirkan dulu 🙏", "ini cuma buat admin grup ya".
-- `handler.js`:
-  - helper `sendAutoAIReply()`: kirim status **composing** (sedang menulis), jeda sesuai
-    panjang teks (320–2.600 ms), kirim balasan, lalu `paused` — hilang efek "balas instan";
-  - template `⏱️ JADWAL AUTO-AI` dihapus. Untuk rangkaian berjadwal, pengguna hanya menerima
-    kalimat natural dari AI (atau kalimat buatan `naturalScheduleNote()` kalau AI diam).
-
-### Verifikasi
-- Uji perencana dengan model tiruan: "tutup grup terus buka 5 detik kemudian" → langkah
-  `tutup` (0 ms) + `buka` (5.000 ms) dengan balasan "udah tak tutup, 5 detik lagi tak buka ya".
-- Uji dengan **Groq asli** (4 skenario):
-  - jadwal → `umi-group-close` 0 ms + `umi-group-open` 5.000 ms, balasan
-    "siap, udah tak tutup. 5 detik lagi tak buka balik ya." (1.088 ms);
-  - brat → `bratvid2` args `ayam` (807 ms, tanpa balasan template);
-  - sapaan → "halo juga, lagi nunggu pesan nih. ada yang mau dibantu?" (241 ms);
-  - saat kena limit → "aduh ai-ku lagi kena limit groq, coba lagi sebentar ya 😅"
-    (tidak lagi memakai awalan "Auto-AI:").
-- Deploy `/lib/auto-ai.js` 17.355 B `993f989b…`, `/lib/auto-ai-prompt.js` 4.416 B
-  `c25206b2…`, `/handler.js` 51.618 B `e0573f2a…` (ketiganya SAMA dengan repo).
-- Restart `204` → `Successfully Loaded 2052 Plugins`, 0 error di konsol.
-- `grep` memastikan tidak ada lagi teks "JADWAL AUTO-AI" di `handler.js`.
-
-## Task 39 — Groq cepat kena limit: pemakaian token dipotong 8x (2026-10-18 02.05 WITA)
-
-Laporan: kuota Groq cepat habis padahal pemakaian belum banyak.
-
-### Penyebab terukur
-- Batas Groq untuk key ini **8.000 token/menit** (dihitung input + output + **reasoning**
-  token; `gpt-oss` adalah model reasoning, jadi token berpikir ikut dihitung).
-- Alur lama: 2–4 panggilan model per permintaan (cari fitur → pilih command → tulis balasan),
-  tiap panggilan membawa system prompt 4,4 rb karakter + daftar tool + kandidat katalog.
-  Hasil ukur: **±5.400 token untuk satu permintaan** → hanya **~1,5 permintaan/menit**
-  sebelum 429.
-- Dua orang chat bersamaan langsung menembus batas.
-
-### Perbaikan
-- `lib/auto-ai-prompt.js`: prompt dipadatkan dari 4.416 → **1.447 byte** (aturan gaya bicara
-  tetap ada, tapi ringkas). Tool calling dihapus.
-- `lib/auto-ai.js`:
-  - **satu panggilan model per permintaan**: kandidat fitur dicari lokal (`searchCatalog`),
-    lalu model diminta menjawab JSON `{reply, commands:[{command,args,delay}]}` sekaligus —
-    balasan manusia + perintah dalam satu respons;
-  - mode `json_object` (`response_format`) supaya keluaran tidak bertele-tele;
-  - `maxTokens` 500, `temperature` 0,4, timeout 16 detik;
-  - validasi command dilakukan lokal terhadap katalog (tanpa token), termasuk cek
-    `DANGEROUS` dan izin; kalau model minta cari lagi (`need`) baru satu panggilan tambahan;
-  - pengaman kuota `groqBudget()`: kalau sisa token/menit < 700, bot menjawab
-    “bentar ya, ai-ku lagi penuh…” tanpa memanggil API.
-- `lib/groq-client.js`: mencatat `usage` tiap respons (`recordGroqUsage`) dan menyediakan
-  `groqBudget()` (total token 60 detik terakhir vs 8.000).
-
-### Hasil ukur (Groq asli, setelah perbaikan)
-| permintaan | dulu | sekarang |
-|---|---|---|
-| tutup grup + buka 5 detik | ±5.400 token, 1.088 ms | **689 token**, 494 ms |
-| bratvid2 teks ayam | ±5.400 token, 807 ms | **627 token**, 301 ms |
-| sapaan biasa | ±5.400 token, 241 ms | **569 token**, 316 ms |
-| ular tangga | ±5.400 token | **725 token**, 325 ms |
-
-Artinya satu menit kini cukup untuk **±12 permintaan** (dulu ±1,5). Pemilihan perintah tetap
-benar: `tutup@0 + buka@5000`, `bratvid2 ayam`, `ular` (bukan `ulartangga`), balasan tetap
-natural (“siap, grup ditutup dulu, 5 detik lagi dibuka ya”).
-
-### Deploy
-- `/lib/auto-ai.js` 18.350 B `221f72ff…`, `/lib/auto-ai-prompt.js` 1.447 B `4a178655…`,
-  `/lib/groq-client.js` 9.801 B `79f209d8…` — ketiganya SAMA dengan repo.
-- Restart `204` → `Successfully Loaded 2052 Plugins`, 0 error di konsol.
-
-## Task 40 — Auto-AI salah fitur: minta "room empire" malah quote / "room tidak ditemukan" (2026-10-18 03.00 WITA)
-
-Laporan: disuruh bikin room malah bilang room tidak ditemukan; disuruh jalanin command
-`empire` malah bikin quotes.
-
-### Akar masalah
-1. **Alias dipotong 4 di prompt.** `compactCandidate()` hanya menampilkan 4 alias pertama.
-   Plugin webgame mendaftarkan 8 meja (`webgame, uno, unoflip, caturweb, utweb, monopoli,
-   empire, wwweb`), jadi `empire` (alias ke-7) **tidak pernah terlihat model** → dia memilih
-   fitur lain yang kebetulan muncul (quote).
-2. **Tidak ada arahan soal "room".** Model tidak tahu bahwa "bikin room <game>" = jalankan
-   command game tanpa argumen, sehingga dia mengarang id room → plugin menjawab
-   "Room id tidak dikenal / room tidak ditemukan".
-3. Permintaan yang sudah jelas masih dilempar ke model (boros token + bisa salah).
-
-### Perbaikan
-- `lib/auto-ai.js`
-  - `compactCandidate()` menampilkan **semua alias (maks 12)** + `focusAlias()` menandai
-    alias yang paling cocok dengan kata kunci pengguna (tanda `*`).
-  - **Router lokal `directIntent()`** sebelum memanggil model:
-    - "jalanin/pakai/eksekusi command X …" → jalankan X + argumennya;
-    - "bikin/buat/buka room|meja|lobi <game>" → command game **tanpa argumen**
-      (empire, monopoli, uno, unoflip, caturweb, utweb, wwweb);
-    - "main ular tangga di chat" → `ular` (papan rich HTML), bukan room;
-    - "bikin room" tanpa nama game → tanya balik singkat (tanpa token Groq).
-  - Saat model tetap dipakai: kalau pesan memuat "room/meja", argumen hasil karangan model
-    dibuang (dipaksa kosong) supaya tidak muncul error room.
-- `lib/auto-ai-prompt.js` — ditambah **PETA FITUR** (room/meja, game chat, grup, stiker,
-  trading) dan larangan menjawab "room tidak ditemukan / fitur tidak ada" sebelum mencoba
-  command.
-
-### Verifikasi
-- Uji router lokal (tanpa model): `jalanin command empire` → `empire`; `bikin room empire` →
-  `empire`; `buat meja monopoli dong` → `monopoli`; `bikin room` → "mau main apa? ada uno,
-  unoflip, caturweb, utweb, monopoli, empire, wwweb…"; `main ular tangga langsung di chat` →
-  `ular`. Semua **0 token**.
-- Uji dengan Groq asli: `empire dong` → `empire` (936 token, 483 ms); `open room werewolf ya`
-  → `wwweb` (router lokal, 0 token); `aku mau main monopoli sama temen` → `monopoli` (949
-  token); `coba bikin quote kata kata mutiara` → `quote` args `kata kata mutiara` (906 token)
-  — quote tetap dipilih hanya ketika memang diminta quote.
-- Deploy `/lib/auto-ai.js` 22.957 B `eaefe2eb…` dan `/lib/auto-ai-prompt.js` 2.548 B
-  `25e2252e…` (SAMA dengan repo); restart `204`, `Successfully Loaded 2052 Plugins`, 0 error.
-
 ## Pending
 
 - Feedback auto-report sudah jalan (jalur bot→website diuji 201), brat.js sudah di-fix
 - Payment gateway (TriPay) belum dikonfigurasi (saat ini manual DANA)
 - ACC Top Up **sudah terbukti jalan** dari akun owner (2 permintaan Rp1.000.000 di-approve 20:29Z)
-- ~~Perlu 1x klik nyata dari akun owner: tombol Auto Read~~ **Auto Read sudah OFF** untuk 13 sesi
-  (disetel lewat `POST /api/owner-console/autoread {enabled:false}`); tombol Bot Utama masih
-  perlu dicoba setelah bot utama dipasangkan ulang
+- **Perlu 1x klik nyata dari akun owner**: tombol Auto Read & Bot Utama di halaman Bot Utama
 - Uji end-to-end WhatsApp: kirim `.daftar` dan `@verify` → akun trading otomatis muncul di
   papan peringkat (harness lokal sudah lolos, belum dari WA asli)
 - ~~Harness plugin `bot/plugins/game/trading-umi.js`~~ **selesai Task 19**: `.tradingoffline` (rich HTML)
@@ -1625,7 +1049,7 @@ Laporan: disuruh bikin room malah bilang room tidak ditemukan; disuruh jalanin c
   `/plugins/_system/_allmenu.js` **21.649 B**, `f756a20f8d49d569`.
 - Ketiga file diunduh kembali: byte identik. Restart panel API 204.
 
-- Log setelah restart: `Successfully Loaded 2052 Plugins`; 0 baris error pada log startup yang diperiksa. Konfirmasi tampilan menu di WhatsApp masih menunggu uji user.
+- Verifikasi startup: `Successfully Loaded 2052 Plugins`, 0 baris error di log yang diperiksa. Commit/push: `a53c34b`. Konfirmasi di WhatsApp masih menunggu uji user.
 
 ## Task 42 — Bratvid2 wajib menghasilkan stiker, bukan video (2026-10-18)
 
@@ -1653,7 +1077,7 @@ User meminta hasil bratvid2 berupa stiker. Perbaikan adapter impor sebelumnya su
 - Upload `/plugins/maker/brat2.js` HTTP 204, **8.997 byte**, SHA-256 awal `ded832e36402d33d`.
 - Unduh ulang: byte identik dengan lokal. Restart via panel API: HTTP 204.
 
-- Sesudah restart: `Successfully Loaded 2052 Plugins`; 0 baris error pada log startup yang diperiksa. API panel masih menandai state `starting` ketika dicek, tetapi proses bot sudah memuat plugin.
+- Startup: `Successfully Loaded 2052 Plugins`, 0 baris error di log yang diperiksa. Commit/push: `9ccff80`. Tampilan stiker di WhatsApp masih perlu konfirmasi user.
 
 ## Task 43 — Papan ular tangga chat bergaya vintage (2026-10-18)
 
@@ -1683,7 +1107,7 @@ User meminta hasil bratvid2 berupa stiker. Perbaikan adapter impor sebelumnya su
 - Upload 204; unduh ulang identik; restart melalui panel API 204. File pengirim game dan semua session/key tidak diubah.
 - Pesan rich HTML lama tidak berubah otomatis; panggil `ular` / `ularpapan` lagi dengan prefix aktif untuk mendapatkan papan baru.
 
-- Verifikasi setelah restart: `Successfully Loaded 2052 Plugins`, 0 baris error pada log startup yang diperiksa.
+- Startup: 2052 plugin termuat, 0 baris error pada log yang diperiksa. Commit/push: `089c27a`.
 
 ## Task 44 — Kartu rich HTML informasi + optimasi lag ular tangga (2026-10-18)
 
@@ -1726,6 +1150,8 @@ Diterapkan untuk saham/pasar/harga, portofolio/trading, peringkat trader, bukti 
 - Restart panel API 204; `Successfully Loaded 2052 Plugins`; 0 baris error pada log startup yang diperiksa.
 - Sesi, backup, key/token, autoread dan website produksi tidak diubah. Pesan game/kartu lama tidak diperbarui otomatis; kirim perintah ulang untuk menerima versi terbaru.
 
+- Commit/push: `c7ab631`. Uji penerimaan rich HTML dan kelancaran di HP user masih menunggu konfirmasi.
+
 ## Task 45 — Similarity hanya fallback setelah command/Auto-AI (2026-10-18)
 
 ### Laporan dan akar masalah
@@ -1752,6 +1178,8 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
   - `/plugins/_system/_didyoumen.js` 2.756 B `1192d57ea46376cc`
 - Restart melalui panel API: 204. Console sesudah restart: `Successfully Loaded 2052 Plugins`, tidak ditemukan error import/syntax/load plugin pada pemeriksaan startup.
 - Key/token, sessions dan backup, autoread, website, aset trading/game tidak diubah. Verifikasi pesan WhatsApp nyata pascadeploy masih perlu retry user; hasil tes bukan klaim sudah diuji dari HP user.
+
+- Task45 commit/push: `41fd8cb` — deploy 3 file terverifikasi, 112 tes lulus.
 
 ## Task 46 — Eclipse Realms: shared RPG vertical slice (2026-10-18)
 
@@ -1796,6 +1224,8 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - Gate masih single-process; load/distributed tests, audit ekonomi legacy menyeluruh, retention ledger dan admin review workflow belum selesai.
 - Laporan teknis/setup/env/deploy/rollback: `docs/ECLIPSE-REALMS.md`. Ini vertical slice berfungsi, bukan klaim memenuhi seluruh master prompt.
 
+- Task46 source commit/push: `0d65cd1`; formatting follow-up recorded in repository. Production remains Task45; deployment blocked by panel HTTP500.
+
 ## Task 47 — dunia baru, preview Arena & paket VPS (2026-10-18)
 
 ### Deploy aktual dan batasannya
@@ -1829,6 +1259,17 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - Smoke test awal mendeteksi staging parsial belum menyertakan package type dan awang-lock; staging diperbaiki, Docker COPY juga dilengkapi, run final lulus. Docker engine/build tetap belum diuji.
 - Scan exact22nilai private + pola token/private-key/JWT privileged lulus tanpa temuan setelah redaksi catatan lama. Tidak menghapus history atau merotasi kredensial.
 - Source ZIP final: `Umi-Eclipse-Realms-Task47-Source.zip`, manifest per-file di dalam ZIP dan checksum terpisah; panduan utama `README-START-HERE-TASK47.md`.
+
+- Task47 commit/push berhasil: **7567d7a** ke origin/main. ZIP final3968sourcefile, 40875019bytes; SHA256 `af0abb319efb49208da300206a2edcaabdc16ebd901e861244c1b1067f921288`. File panduan terpisah: `Panduan-VPS-Eclipse-Realms.md`.
+
+## Task 48 — deploy produksi + gabungkan seluruh RPG (2026-10-18, berlangsung)
+- Pemilik menyatakan VPS/bot lama kembali hidup dan memilih keduanya: deploy shared Realms + konsolidasi semua RPG lama.
+- Workspace kembali ke snapshot0d76f6a; simpan patch dan untracked privat `.secrets/task48/`, pulihkan origin/fetch/reset7567d7a sebelum perubahan Task48. Tidak merotasi key; permission secret dipulihkan.
+- Audit pertama: panel resources200 (starting), game health200, API health200; Realms404. Enam baseline produksi dan tiga helper SQLite/RPG cocok source/hash acuan. Unduh JSON/config/source audit privat, tidak mempublikasikan nomor/token.
+- Legacy JSON553record termasuk118newsletter,232PN,203LID; money nonzero2record, balance/koin field tidak ada; exp nonzero370, level semuanya0. Jangan menganggap semuanya553pemain unik, atau menjumlahkan aliasPN/LID. Wallet/topup dan trading bukan sasaran konversi RPG. SQLite produksi belum berhasil diambil/diperiksa.
+- Install dependency dan40/40backend+migrasi Realms lulus lagi.
+- Preflight targeted deploy berhenti sebelum writes: TLS ECONNRESET/unexpectedEOF panel. CurlIPv4HTTP1.1 juga gagal. Recheck publik kemudianHTTP530 (setelah tadinya200). **Belum ada upload produksi, power command, restore, migrasi data atau perubahan sesi.** Backup konsisten belum bisa dieksekusi; jangan mengklaim auth/SQLite sudah aman.
+- Penggabungan currency/level/item lintas format memerlukan kebijakan eksplisit dan validasi alias terpercaya; bukan penjumlahan mentah. Sumber source Realms Task47 tetap siap, produksi belum terpasang.
 
 ## Task 49 — pindah ke panel baru, bot/game dua server (2026-10-18)
 
@@ -1865,6 +1306,8 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - 10pemeriksaanHTTPakhir lulus: bot/game/meta200, state/logininvalid/guest401, CSRF403, trading/wallet503maintenance, market200. Ownerrelay200 danautoreadfalse.
 - Artefak `deploy-check/task49/`; log/rawconfig/data hanya `.secrets/task49/`. Panduan pemulihan dan batasan lengkap: `docs/PANEL-MIGRATION-TASK49.md`.
 
+- Task49 commit/push sukses: **801814f**, origin/main. Layanan publik tervalidasi; statusWA terakhirunpaired,autoreadOFF. Crypto recovery bundle terverifikasi; tidak mengklaim pemulihan seluruh data.
+
 ## Task50 — keputusan baru, main OFF, backup dan audit RPG (2026-10-18)
 
 - Owner memilih semua pekerjaan, tidak ada backup lama tambahan, konversi **RPG-only money+balance+koin→koin1:1**, main bot **OFF/tidak pairing**. Wallet/topup/trading dikecualikan. Nomor/keys tidak dirotasi; autoread OFF. Keputusan ini menggantikan pairing main dan currency belum-disetujui pada catatan lama.
@@ -1880,6 +1323,8 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - Detail: `docs/RPG-UNIFICATION-TASK50.md`; README diperbarui agar tidak menyuruh pairing main lagi. Task50 ini **bukan klaim penyatuan RPG selesai**.
 
 - Final safety Task50:3983file source/22nilai private diperiksa,0temuan; node_modules symlink dilepas sebelum staging. Final25target preflight/readback lulus tanpa restart tambahan.
+
+- Source Task50 dipublikasikan ke origin/main: `77dcd6411d891f9d6f643719b012b0f16ba42e7b` (9file). Working tree bersih. Deploy runtime read-only sudah dilakukan dan diverifikasi; penyatuan live tetap belum aktif.
 
 ## Task51 — Groq aktif dan unified RPG terverifikasi LIVE (2026-10-18)
 
