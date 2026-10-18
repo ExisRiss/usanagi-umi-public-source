@@ -45,10 +45,20 @@ export function wrapRpgOutbound(conn,m){
  if(!unifiedRpg())return
  for(const target of [conn,m]){
   if(!target)continue
-  for(const name of ['sendMessage','reply','sendFile','sendImage','sendVideo','sendAudio','sendSticker']){
+  for(const name of ['sendMessage','relayMessage','reply','sendFile','sendImage','sendVideo','sendAudio','sendSticker']){
    const original=target[name];if(typeof original!=='function'||original[WRAPPED])continue
    const wrapped=function(...args){unifiedRpg()?.flush();return original.apply(this,args)}
-   wrapped[WRAPPED]=true;target[name]=wrapped
+   wrapped[WRAPPED]=true
+   // Socket helpers may be immutable own properties; message helpers may be
+   // inherited readonly methods. Never assign through either descriptor.
+   const descriptor=Object.getOwnPropertyDescriptor(target,name)
+   if(descriptor&&!descriptor.configurable){
+    if(descriptor.writable)Object.defineProperty(target,name,{value:wrapped})
+    // Immutable convenience methods delegate to the wrapped socket transport.
+    continue
+   }
+   if(!descriptor&&!Object.isExtensible(target))continue
+   Object.defineProperty(target,name,{value:wrapped,writable:true,configurable:true,enumerable:descriptor?.enumerable||false})
   }
  }
 }

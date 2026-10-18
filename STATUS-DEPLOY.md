@@ -1890,3 +1890,22 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - Detail docs/WEBSITE-BACKEND-TASK52.md; artefak sanitizeddeploy-check/task52, semua rawlog/feedback/env/backup hanya.secrets/task52. Tidak mengklaim nolerror selamanya, seluruhMMORPG selesai, atau seluruhaksiWA teruji. Manual ownershipguard tidak dibypass.
 
 - Final safety Task52:3996file source/24nilai private diperiksa,0temuan. Source runtime43/43 dan aset website di kedua domain cocok; credential/data privat tidak dipublikasikan.
+
+
+## Task53 — hotfix Jadibot tidak merespons (2026-10-18)
+
+- Produksi membuktikan before-hook gagal di wrapper RPG: assignment `reply` readonly. Socket connected bukan bukti handler berjalan; tes Task51/52 memakai helper mutable dan melewatkan bentuk descriptor sebenarnya. Bug ini berasal dari update sebelumnya, bukan konfigurasi pengguna.
+- Wrapper descriptor-safe + relayMessage dideploy otomatis; preserve immutable own helpers, shadow inherited readonly methods, flush-before-send dan wrap-once. Source SHA6b5b9eb581bd5b53337d080c365ec723a977002025429b97eb9885d2f4b31184.
+- Pemeriksaan sesudah restart menemukan blocker kedua: repair main.js menulis EXP/currency/cooldown pada held identity, ditolak409 dan menyebabkan boot loop/API502. Guard tidak dibuka; repair legacy progression dilewati ketika unified authority aktif. Deploy kedua code-only/restart terkontrol, SHA0642a28fac6bb9613c9bd1b1eca17d83775dd7a5ae6735259600c5b5837d83fc. Kedua source live diunduh ulang dan hash cocok.
+- Credential panel dipulihkan dari vault existing setelah workspace reversion; patch lama dipreservasi privat. Tidak restore database/config/sesi stale, tidak merotasi key, tidak redeploy website/game. MainOFF/autoreadOFF/tanpapairing, retensi sesi disconnect>=15menit dan financial guard dipertahankan.
+- Sesudah deploy kedua API/website bridge/game HTTP200JSON. Owner-agent: dua jadibot terhubung,2039plugin,uptime139detik. RPG aktif,profil241/source278/alias281/held202 pada salah satu pemeriksaan; progres terus bergerak, bukan rollback. Groq configured tetap.
+- Log pertama sesudah deploy pertama HTML502→JSON parse gagal; buffer lama sempat dihitung lagi dan TIDAK dipakai sebagai bukti pasca-fix. Fetch diperbaiki validasi HTTP/content-type/schema; buffer baru dipisahkan. Buffer setelah deploy kedua:0readonly/identityboot/runtimeerror pada pemeriksaan, pesan masuk terlihat. Raw pesan/key/pairing/log hanya privat600.
+- QA77PASS:41unified+36handler/native/similarity. Tambahan4descriptor regressions, actual repair main.js terhadap realSQLite held/canonical proxies, actual handler before→command→readonlyreply memakai socketjadibot. Transport/serializer handler masihmock, **belum acceptance balasan WhatsApp fisik**. Tidak mengirim command QA ke pengguna atau mengklaim keseluruhan bot/MMORPG selesai.
+- Dokumentasi docs/JADIBOT-RESPONSE-TASK53.md/README; evidence sanitized deploy-check/task53. Uji penerimaan pengguna: kirim {prefix}menu dengan prefix aktif. Status koneksi/HTTP200 tidak dijadikan pengganti tes balasan.
+
+- Monitoring berikutnya menemukan6error held identity dari handler260/finalizer944, **bukan boot crash** (uptime210detik,3jadibot). Perbaikan diperluas ke message defaults, finalizer, dan actual database initializer: tidak menulis default RPG saat authority aktif, tetapi limit/registration/non-RPG tetap bekerja. Regresi held-LID actual handler dibuat dahulu dan terbuktiFAIL sebelum patch, laluPASS; mutasi RPG held tetap ditolak.
+- Deploy ketiga otomatis code-only melalui44target preflight/readback, bot restart diterima; handlerSHA995c93d73b5bc27fa27a7bc0061dbcd8c05ecdeae811d410c4793096e62a32ee, databaseinitializerSHAcb3ab113fe3ab9290b3f9c446e412a67d77cb4c7ac065d805c5dc5eb80479f1b. QA final78PASS=41+37. Tidak mengubah financialguard atau menyatakan held identity terverifikasi.
+
+- Verifikasi final deploy ketiga:44/44sourceSHA live cocok;4health API/duawebsite/game200JSON. Buffer114chunk baru mencatat16chat/4command,0readonly/identity/runtime/error-message. Dua jadibot connected,2039plugin,uptime59detik; RPG245canonical/289source/292alias/199held. Ini bukti command masuk handler lagi, bukan acceptance balasan di HP. MainOFF/autoreadOFF/tanpapairing tetap.
+
+- Final safety Task53:3998file source/23nilai privat diperiksa,0temuan; dependency symlink tidak dipublikasikan.78tesPASS,44readbackSHA cocok.

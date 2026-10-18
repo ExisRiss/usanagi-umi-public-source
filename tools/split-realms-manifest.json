@@ -3,7 +3,7 @@
     "bot": "serverjadibotVip",
     "game": "servergameVip"
   },
-  "note": "Task52: guarded per-socket group metadata cache and participant event safety; preserve active unified RPG, credentials and sessions. Code-only updates, no data restore.",
+  "note": "Task53: descriptor-safe RPG replies; authority-aware boot, message defaults and finalizer. Held identities may use non-RPG commands without bypassing progression guards. Preserve data, keys, sessions and main OFF.",
   "files": [
     {
       "role": "bot",
@@ -28,6 +28,13 @@
     },
     {
       "role": "bot",
+      "source": "bot/lib/database.js",
+      "remote": "/lib/database.js",
+      "beforeSha256": "b005a0fff9b9f2272e490826a4e134a0862feeca637fa33afbafb5f7cb3a4ad1",
+      "sourceSha256": "cb3ab113fe3ab9290b3f9c446e412a67d77cb4c7ac065d805c5dc5eb80479f1b"
+    },
+    {
+      "role": "bot",
       "source": "bot/lib/rpg/unified-store.js",
       "remote": "/lib/rpg/unified-store.js",
       "beforeSha256": "b4d3fd620d086efebde617531329c0ce9c97d43f7f53d7fc5d6a745376064791",
@@ -37,8 +44,8 @@
       "role": "bot",
       "source": "bot/lib/rpg/unified-runtime.js",
       "remote": "/lib/rpg/unified-runtime.js",
-      "beforeSha256": null,
-      "sourceSha256": "669f65434a7f2c4e7a3606545fcb82fa75b2d4737103eb0838de7a54e38a415c"
+      "beforeSha256": "669f65434a7f2c4e7a3606545fcb82fa75b2d4737103eb0838de7a54e38a415c",
+      "sourceSha256": "6b5b9eb581bd5b53337d080c365ec723a977002025429b97eb9885d2f4b31184"
     },
     {
       "role": "game",
@@ -296,15 +303,15 @@
       "role": "bot",
       "source": "bot/handler.js",
       "remote": "/handler.js",
-      "beforeSha256": "2ac62d93fdec21c6e7679afbafcce072aaab7dabaf045169ac01789f015892e7",
-      "sourceSha256": "b5e3335be1671fce1fd3f27a3ea04a69c4fc6ff6fb9c3cc9098d54f83c8dc6a1"
+      "beforeSha256": "b5e3335be1671fce1fd3f27a3ea04a69c4fc6ff6fb9c3cc9098d54f83c8dc6a1",
+      "sourceSha256": "995c93d73b5bc27fa27a7bc0061dbcd8c05ecdeae811d410c4793096e62a32ee"
     },
     {
       "role": "bot",
       "source": "bot/main.js",
       "remote": "/main.js",
-      "beforeSha256": "de51295712b6cf003943a9a97779e0415dc73101a293c28e1e40fc1043dae70d",
-      "sourceSha256": "33138454f99d7acac6455d2ad9cd8dd037f8e20d81178a4f31c051f6d12abbf9"
+      "beforeSha256": "33138454f99d7acac6455d2ad9cd8dd037f8e20d81178a4f31c051f6d12abbf9",
+      "sourceSha256": "0642a28fac6bb9613c9bd1b1eca17d83775dd7a5ae6735259600c5b5837d83fc"
     }
   ]
 }

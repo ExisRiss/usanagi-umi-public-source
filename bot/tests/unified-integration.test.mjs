@@ -51,3 +51,24 @@ test.after(()=>{delete globalThis[UNIFIED_RPG];delete global.db;cleanup()})
 test('first imported recipient receives canonical currency and survives JSON/restart',async()=>{
  const f=fixture();try{const {getImportedDatabase}=await import('../lib/imported-compat.js');const fresh='333333333@s.whatsapp.net';await runUnifiedCommand('new-recipient'+f.id,()=>{const u=getImportedDatabase().getUser(fresh);u.money+=30},f.conn,f.m);const raw=JSON.parse(JSON.stringify(f.s.users));assert.equal(getUser(fresh).koin,30);const resumed=createUnifiedStore({db,users:raw});resumed.migrate();assert.equal(resumed.users[fresh].money,30)}finally{f.finish()}
 })
+
+test('real socket descriptor shape: readonly reply/helpers and inherited message reply do not abort hooks',async()=>{
+ const f=fixture();try{
+  let sends=0;const conn={sendMessage:async function(chat,body){assert.equal(this,conn);assert.equal(JSON.parse(db.prepare('SELECT data FROM rpg_users WHERE jid=?').get(f.id).data).koin,5007);sends++;return {key:{id:'accepted'}}}}
+  Object.defineProperties(conn,{reply:{value:function(chat,text){return this.sendMessage(chat,{text})}},sendFile:{value:function(chat){return this.sendMessage(chat,{text:'file'})}}})
+  const proto=Object.defineProperty({},'reply',{value:function(text){return this.conn.reply(this.chat,text)}})
+  const m=Object.assign(Object.create(proto),{conn,chat:f.m.chat,sender:f.a,key:f.m.key})
+  await runUnifiedCommand('readonly-before'+f.id,()=>undefined,conn,m)
+  const result=await runUnifiedCommand('readonly-command'+f.id,()=>{f.s.users[f.a].money+=7;return m.reply('done')},conn,m)
+  assert.equal(result.key.id,'accepted');assert.equal(sends,1);assert.equal(Object.getOwnPropertyDescriptor(conn,'reply').writable,false)
+ }finally{f.finish()}
+})
+test('immutable quoted reply delegates to socket transport with commit-before-send',async()=>{
+ const f=fixture();try{let sends=0;const conn={sendMessage:async()=>{assert.equal(JSON.parse(db.prepare('SELECT data FROM rpg_users WHERE jid=?').get(f.id).data).koin,5003);sends++;return 'sent'}};Object.defineProperty(conn,'reply',{value:()=>conn.sendMessage()});const m=Object.freeze({reply:()=>conn.reply()});await runUnifiedCommand('frozen'+f.id,()=>{f.s.users[f.a].money+=3;return m.reply('ok')},conn,m);assert.equal(sends,1)}finally{f.finish()}
+})
+test('configurable getter helpers are shadowed without invoking their setter',async()=>{
+ const f=fixture();try{let sends=0;const m={};Object.defineProperty(m,'reply',{get:()=>()=>{sends++;return 'ok'},configurable:true});await runUnifiedCommand('getter'+f.id,()=>m.reply('ok'),f.conn,m);assert.equal(sends,1)}finally{f.finish()}
+})
+test('direct rich-message relay is wrapped once and commits before transmission',async()=>{
+ const f=fixture();try{let sends=0;const conn={relayMessage:async()=>{assert.equal(JSON.parse(db.prepare('SELECT data FROM rpg_users WHERE jid=?').get(f.id).data).koin,5009);sends++;return 'relayed'}};wrapRpgOutbound(conn);const first=conn.relayMessage;wrapRpgOutbound(conn);assert.equal(conn.relayMessage,first);assert.equal(await runUnifiedCommand('relay'+f.id,()=>{f.s.users[f.a].money+=9;return conn.relayMessage()},conn),'relayed');assert.equal(sends,1)}finally{f.finish()}
+})

@@ -4,6 +4,12 @@ This repository contains the **sanitized source template** for the Usanagi Umi W
 
 > **Security notice:** This is intentionally not a production backup. WhatsApp sessions, phone numbers, pairing codes, database/runtime data, Pterodactyl/GitHub/Vercel credentials, API keys, environment files, deployment archives, and owner-specific configuration have been removed or replaced with placeholders.
 
+## Hotfix respons Jadibot — Task53 (18 Oktober 2026)
+
+- Wrapper RPG tidak lagi menulis langsung ke helper `reply` readonly; repair startup/default pesan/finalizer tidak lagi menulis progression ke identitas yang ditahan.
+- Source produksi sudah diperbarui dan hash readback cocok; API sehat, dua jadibot terhubung, main/autoread tetap OFF. 78 tes regresi lulus.
+- Acceptance balasan pada WhatsApp pengguna masih perlu; connected bukan bukti command berhasil. [Penyebab, pengujian dan batasan Task53](docs/JADIBOT-RESPONSE-TASK53.md).
+
 ## Perbaikan website/Jadibot — Task52 (18 Oktober 2026)
 
 - Error backend website502 diperbaiki: routing produksi kini melalui API HTTPS aktif, bukan alokasi server lama.

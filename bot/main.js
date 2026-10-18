@@ -140,7 +140,7 @@ global.loadDatabase = async function loadDatabase() {
 };
 
 await global.loadDatabase();
-initializeUnifiedRpg();
+const unifiedRpgStore = initializeUnifiedRpg();
 
 // /welcome on is stored in SQLite, whereas the long-running participant
 // listener reads the established chat.welcome flag. Reconcile explicit modern
@@ -180,14 +180,19 @@ for (const id in global.db.data.users) {
     const user = global.db.data.users[id];
     if (!user) continue;
 
-    if (!Number.isFinite(user.exp)) { user.exp = 0; repaired++; }
-    if (!Number.isFinite(user.level)) { user.level = 0; repaired++; }
-    if (!Number.isFinite(user.money)) { user.money = 0; repaired++; }
+    // Unified authority owns progression; never repair held identities through legacy aliases.
+    if (!unifiedRpgStore) {
+        if (!Number.isFinite(user.exp)) { user.exp = 0; repaired++; }
+        if (!Number.isFinite(user.level)) { user.level = 0; repaired++; }
+        if (!Number.isFinite(user.money)) { user.money = 0; repaired++; }
+    }
     if (!Number.isFinite(user.limit)) { user.limit = 50; repaired++; }
 
     user.premiumTime ??= 0;
-    user.lastclaim ??= 0;
-    user.lastWarn ??= 0;
+    if (!unifiedRpgStore) {
+        user.lastclaim ??= 0;
+        user.lastWarn ??= 0;
+    }
 }
 
 console.log(`Repair selesai (${repaired} field diperbaiki)`);

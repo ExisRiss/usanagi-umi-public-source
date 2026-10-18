@@ -257,30 +257,30 @@ global.db.data.blacklistUser = global.db.data.blacklistUser || {}
 let userData = global.db.data.users[m.sender]
 
 // Default field
-userData.exp ??= 0
-userData.level ??= 0
-userData.money ??= 0
+// RPG defaults belong to the authority, not legacy initialization (including held LIDs).
+if (!unifiedRpg()) {
+    userData.exp ??= 0
+    userData.level ??= 0
+    userData.money ??= 0
+    userData.lastclaim ??= 0
+    userData.lastWarn ??= 0
+}
 // Nilai -1 adalah sentinel unlimited dan tidak pernah dipotong.
 const configuredDefaultLimit = Number(botConfig.defaultLimit)
 userData.limit ??= configuredDefaultLimit === -1
     ? -1
     : Math.max(0, Number.isFinite(configuredDefaultLimit) ? configuredDefaultLimit : 0)
 userData.premiumTime ??= 0
-userData.lastclaim ??= 0
-userData.lastWarn ??= 0
 userData.registered ??= false
 userData.regTime ??= -1
 userData.age ??= -1
 
-// Repair database lama
-if (!Number.isFinite(userData.exp))
-    userData.exp = 0
-
-if (!Number.isFinite(userData.level))
-    userData.level = 0
-
-if (!Number.isFinite(userData.money))
-    userData.money = 0
+// Legacy repair must not write through authoritative/held RPG aliases.
+if (!unifiedRpg()) {
+    if (!Number.isFinite(userData.exp)) userData.exp = 0
+    if (!Number.isFinite(userData.level)) userData.level = 0
+    if (!Number.isFinite(userData.money)) userData.money = 0
+}
 
 if (!Number.isFinite(userData.limit))
     userData.limit = 50
@@ -940,7 +940,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 			if (m.sender && (user = global.db.data.users[m.sender])) {
 
     // Repair data rusak
-    if (!Number.isFinite(user.exp))
+    if (!unifiedRpg() && !Number.isFinite(user.exp))
         user.exp = 0
 
     if (!Number.isFinite(user.limit))

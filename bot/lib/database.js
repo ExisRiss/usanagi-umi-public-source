@@ -1,3 +1,4 @@
+import { unifiedRpg, ownedField } from './rpg/unified-store.js'
 export default function (m, conn) {
 	try {
 
@@ -155,6 +156,11 @@ export default function (m, conn) {
 			// per sesi lewat /api/owner-console/autoread atau .enable autoread.
 			autoread: false,
 			anticall: true,
+		}
+
+		// Never initialize authoritative RPG fields through legacy/held identity aliases.
+		if (unifiedRpg()) {
+			for (const key of Object.keys(defaultUser)) if (ownedField(key)) delete defaultUser[key]
 		}
 
 		// ===== USER =====
