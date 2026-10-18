@@ -1943,3 +1943,15 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - Verifikasi akhir:55/55sourceSHA live cocok;4healthAPI/duawebsite/game200JSON.5jadibot terhubung setelahrestart,mainOFF/autoreadOFF/tanpapairing. Uptime109detik,buffer536chunk:91chat/2command,0readonly/identity/runtimeerror/AFKnotificationfailure/AFKpersistencefailure. Belum ada AFKreturnnotice pada buffer itu, jadi physicalAFKacceptance tidak diklaim.
 
 - Read-only persistenceprobe:afkStateV1 benar-benar tersimpan dalam databaseJSONlive (0active saatprobe),0moduleimporterror; probe tidakmenulis userdata. Final safety Task55:4008file source/23nilai privat,0temuan; dependency symlink tidak dipublikasikan.
+
+
+## Task56 — slash tambahan di depan balasan bot dan AutoAI (2026-10-18)
+
+- Workspace kembali ke snapshot lama; diff disimpan privat sebelum fetch/reset ke d7c90a0. Panel credential saja dipulihkan dari vault existing, bukan database/config/session lama. Source live simple/prefix-rewrite/auto-ai/jadibot/translator dan plugin preview diunduh; SHA cocok baseline.
+- Akar terkonfirmasi lewat source dan reproduksi: `_system/_allfake.js` menyisipkan URL + `/` + 500 U+2063 + dua newline sebelum setiap plain-text reply. URL kosong menyisakan slash. Parser prefix command, response tracker, translator dan planner AI tidak perlu diubah.
+- Perbaikan sempit satu runtime file: body memakai content.text apa adanya; payload fields/mention/contextInfo tetap dipertahankan. Tidak strip slash global, tidak menghilangkan command/URL/path yang sah, tidak mengubah key/prompt/config. Preview metadata tetap terpisah. Restart memastikan socket lama tidak memakai wrapper terdahulu.
+- Reproduksi sebelum fix:12/13previewtes gagal. Sesudah fix:259PASS=13previewunit+25AFKunit+125dispatcher/AutoAI/AFK (termasuk10previewactualdispatcher)+96backend. Actual handler/planner/preview hook/SQLite dipakai; transportWA/serializer/providerrespons fixture, bukan acceptance perangkat pengguna. !!developer, !!menu, balasan command dengan prefix / ! !!, dan jawaban percakapan provider fixture teruji.
+- Guarded code-only deploy:56targetpreflight/readback, hanya `_allfake.js` diunggah; restartbot diterima. Tidak redeploy game/website atau menimpa auth/userdata. Task55 AFK, RPG authority dan guard finansial tetap utuh. Detail docs/REPLY-PREVIEW-TASK56.md; evidence sanitizeddeploy-check/task56, rawlog/patch/vault hanya.secrets.
+- Verifikasi akhir:56/56SHA live cocok,4healthAPI/website/game200JSON.5Jadibot tersambung,2039plugin, mainOFF/autoreadOFF/tanpapairing. Uptime39detik,138chunk/26chat/0command;0readonly/identity/runtime/preview/import/error-message/AFKnotification/AFKpersistenceerror. Buffer tidak membuktikan penerimaan balasan baru pada perangkat WhatsApp; physicalacceptance tetapfalse.
+
+- Final safety Task56:4011trackedfile/23nilai privat diperiksa,0temuan; gitdiffcheck PASS, dependency symlink dilepas sebelum publikasi.

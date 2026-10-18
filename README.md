@@ -4,6 +4,12 @@ This repository contains the **sanitized source template** for the Usanagi Umi W
 
 > **Security notice:** This is intentionally not a production backup. WhatsApp sessions, phone numbers, pairing codes, database/runtime data, Pterodactyl/GitHub/Vercel credentials, API keys, environment files, deployment archives, and owner-specific configuration have been removed or replaced with placeholders.
 
+## Balasan tanpa slash tambahan — Task56 (18 Oktober 2026)
+
+- Hapus URL/slash dan karakter tersembunyi yang disisipkan plugin preview di depan balasan biasa maupun AutoAI. Isi pesan dan metadata pemanggil dipertahankan; contoh command tetap mengikuti prefix aktif.
+- 259 tes otomatis lulus; satu runtime plugin di-deploy code-only dan bot direstart. 56/56 SHA live cocok, empat health endpoint OK, lima Jadibot tersambung; main/autoread tetap OFF.
+- Transport WA masih mock pada tes; penerimaan di perangkat pengguna tidak diklaim. [Detail Task56](docs/REPLY-PREVIEW-TASK56.md).
+
 ## AFK kembali terdeteksi — Task55 (18 Oktober 2026)
 
 - Status AFK legacy/native/impor kini memakai satu penyimpanan persisten. Chat biasa dan media mengakhiri AFK sebelum gate command private, termasuk alias PN/LID yang tepercaya.

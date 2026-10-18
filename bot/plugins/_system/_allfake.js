@@ -130,9 +130,10 @@ handler.all = async function (m, { __dirname }) {
         return originalSend(
           jid,
           {
-            text: `${global.links?.websiteUrl || global.scriptUrl || ''}/${'\u2063'.repeat(500)}
-
-${content.text}`,
+            ...content,
+            // Preview metadata must not inject a URL, slash or invisible padding
+            // into replies. Keep ordinary text and real command examples intact.
+            text: content.text,
 
             linkPreview: {
               'matched-text': global.links?.websiteUrl || global.scriptUrl || '',
