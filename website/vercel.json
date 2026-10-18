@@ -22,12 +22,19 @@
     },
     "api/panel.js": {
       "maxDuration": 60
+    },
+    "api/rpg-topup.js": {
+      "maxDuration": 60
     }
   },
   "rewrites": [
     {
       "source": "/api/cron/backup",
       "destination": "/api/backup-cron"
+    },
+    {
+      "source": "/api/platform/rpg-topup",
+      "destination": "/api/rpg-topup"
     },
     {
       "source": "/api/platform/(.*)",
