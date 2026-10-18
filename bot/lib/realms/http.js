@@ -3,6 +3,7 @@ import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {withRealmGate} from './gate.js'
 import {RealmError} from './service.js'
+import {realmRequestHost} from './proxy-auth.js'
 import {REALM_NAME,CLASSES,NPCS,MONSTERS,SHOP,PETS,QUEST,WORLD,WALKABLE,REGIONS,PORTALS,DUNGEON,ROYAL_QUEST} from './catalog.js'
 const ROOT=fileURLToPath(new URL('../../public/realms/',import.meta.url))
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.webp':'image/webp','.svg':'image/svg+xml'}
@@ -27,15 +28,15 @@ export function createRealmHttp(getService,{preview=false}={}){
    if(req.method==='POST'){
     if(!String(req.headers['content-type']||'').startsWith('application/json'))throw new RealmError('Gunakan JSON.',415)
     const origin=req.headers.origin
-    if(origin&&new URL(origin).host!==req.headers.host)throw new RealmError('Origin ditolak.',403)
+    if(origin&&new URL(origin).host!==realmRequestHost(req))throw new RealmError('Origin ditolak.',403)
     if(req.headers['sec-fetch-site']==='cross-site')throw new RealmError('Permintaan lintas situs ditolak.',403)
    }
-   if(route==='/realms/api/meta'&&req.method==='GET')return send(res,200,{name:REALM_NAME,classes:CLASSES,npcs:NPCS,monsters:MONSTERS,shop:SHOP,pets:PETS,quest:QUEST,world:WORLD,walkable:WALKABLE,regions:REGIONS,portals:PORTALS,dungeon:DUNGEON,royalQuest:ROYAL_QUEST,preview,phase:'world-expansion',channels:['global','local']})
+   if(route==='/realms/api/meta'&&req.method==='GET')return send(res,200,{name:REALM_NAME,classes:CLASSES,npcs:NPCS,monsters:MONSTERS,shop:SHOP,pets:PETS,quest:QUEST,world:WORLD,walkable:WALKABLE,regions:REGIONS,portals:PORTALS,dungeon:DUNGEON,royalQuest:ROYAL_QUEST,preview,recoveryNotice:String(process.env.UMI_REALMS_RECOVERY_NOTICE||''),phase:'world-expansion',channels:['global','local']})
    const ip=String(req.headers['cf-connecting-ip']||req.socket.remoteAddress||'').slice(0,80)
    if(route==='/realms/api/login'&&req.method==='POST'){
     rate('login:'+ip,8,60000);const input=await body(req)
     const result=await withRealmGate(()=>getService().redeem(input.code))
-    const secure=!/^(localhost|127\.0\.0\.1)(:|$)/.test(req.headers.host||'')
+    const secure=!/^(localhost|127\.0\.0\.1)(:|$)/.test(realmRequestHost(req))
     res.setHeader('Set-Cookie',`realm_session=${result.token}; Path=/realms; HttpOnly; SameSite=Strict; Max-Age=604800${secure?'; Secure':''}`)
     return send(res,200,{state:result.state})
    }

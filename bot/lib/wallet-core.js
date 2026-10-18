@@ -39,7 +39,12 @@ function ensureDir() {
 
 export function emptyWallet() { return { version: 1, accounts: {}, ledger: [], topups: {}, orders: {} } }
 
+function assertWalletRecovered() {
+  if (process.env.UMI_WALLET_RECOVERY_REQUIRED === 'true') throw Object.assign(new Error('Data dompet dan riwayat pembayaran lama belum dipulihkan. Saldo, top up dan pembelian dikunci sementara; bukan saldo nol.'), { status: 503, recoveryRequired: true })
+}
+
 export function readWalletFile() {
+  assertWalletRecovered()
   ensureDir()
   try {
     const data = JSON.parse(fs.readFileSync(WALLET_FILE, 'utf8'))
@@ -57,6 +62,7 @@ export function readWalletFile() {
 }
 
 export function writeWalletFile(wallet) {
+  assertWalletRecovered()
   ensureDir()
   const next = wallet && typeof wallet === 'object' ? wallet : emptyWallet()
   if (Array.isArray(next.ledger) && next.ledger.length > MAX_LEDGER_ROWS) next.ledger = next.ledger.slice(-MAX_LEDGER_ROWS)

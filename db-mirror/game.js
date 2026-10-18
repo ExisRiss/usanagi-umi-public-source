@@ -28,6 +28,8 @@
  *   POST /api/rooms/:id/action {token,action}     -> aksi game / host / chat
  */
 import http from 'node:http'
+import {createRealmProxy} from './realms-proxy.js'
+const realmProxy=createRealmProxy()
 import * as EMP from './empire.js'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -1037,19 +1039,12 @@ function page() {
 export async function gameHandler(req, res) {
         // Dedicated same-origin bridge; RPG remains in the BOT process and SQLite.
         if (/^\/realms(?:\/|\?|$)/.test(req.url || '')) {
-            const upstream = http.request({ hostname: '127.0.0.1', port: Number(process.env.UMI_REALMS_BOT_PORT || 3366), path: req.url, method: req.method, headers: req.headers }, reply => {
-                res.writeHead(reply.statusCode, reply.headers);
-                reply.pipe(res);
-            });
-            upstream.on('error', () => { if (res.destroyed || res.writableEnded) return; if (!res.headersSent) res.writeHead(503, {'Content-Type':'application/json'}); res.end(JSON.stringify({error:'Layanan RPG sedang memulai ulang.'})); });
-            res.on('close', () => upstream.destroy());
-            req.pipe(upstream);
-            return;
+            return realmProxy(req,res);
         }
         const url = new URL(req.url || '/', 'http://localhost')
         const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent)
         try {
-            if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'umi-web-games', version: '2.2.0', rooms: rooms.size, games: Object.keys(GAMES), openJoinDefault: OPEN_JOIN_DEFAULT, trading: { accounts: Object.keys(tradingDB.accounts || {}).length, session: sessionInfo().label }, time: new Date().toISOString() })
+            if (req.method === 'GET' && url.pathname === '/health') return sendJson(res, 200, { ok: true, service: 'umi-web-games', version: '2.2.0', rooms: rooms.size, games: Object.keys(GAMES), openJoinDefault: OPEN_JOIN_DEFAULT, trading: { recoveryRequired: process.env.UMI_TRADING_RECOVERY_REQUIRED === 'true', accounts: process.env.UMI_TRADING_RECOVERY_REQUIRED === 'true' ? null : Object.keys(tradingDB.accounts || {}).length, session: sessionInfo().label }, time: new Date().toISOString() })
             /* Aset statis: logo, dadu, kartu, papan game */
             if (req.method === 'GET' && parts[0] === 'assets' && parts.length >= 2 && parts.slice(1).every(p => /^[a-z0-9._-]+$/i.test(p))) {
                 const file = path.join(HERE, 'assets', ...parts.slice(1))
@@ -1563,7 +1558,7 @@ function loadTradingDB() {
     for (const [code, info] of Object.entries(tradingDB.loginCodes || {})) if (!info || info.expiresAt < now) delete tradingDB.loginCodes[code]
     saveTradingDB()
 }
-function saveTradingDB() { try { fs.writeFileSync(TRADING_DB_FILE, JSON.stringify(tradingDB, null, 2)) } catch (e) { console.log('[trading] save error:', e.message) } }
+function saveTradingDB() { if (process.env.UMI_TRADING_RECOVERY_REQUIRED === 'true') return; try { fs.writeFileSync(TRADING_DB_FILE, JSON.stringify(tradingDB, null, 2)) } catch (e) { console.log('[trading] save error:', e.message) } }
 
 function ensureAccount(accountId, patch = {}) {
     let account = tradingDB.accounts[accountId]
@@ -1810,6 +1805,7 @@ async function ownerFromRequest(req, url) {
 
 async function handleTradingAPI(req, res, url, parts) {
     try {
+        if (process.env.UMI_TRADING_RECOVERY_REQUIRED === 'true' && !(req.method === 'GET' && ['market','candles','session'].includes(parts[0]) && parts.length === 1)) return sendJson(res,503,{error:'Data akun trading lama sedang dipulihkan. Login, saldo dan transaksi dikunci sementara agar tidak membuat akun pengganti atau mengubah saldo.',recoveryRequired:true});
         /* ── Masuk dengan token akun website ── */
         if (req.method === 'POST' && parts[0] === 'login') {
             const body = await readBody(req)

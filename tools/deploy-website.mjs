@@ -43,7 +43,7 @@ if (SYNC) {
 }
 console.log(`==> proyek ${PROJECT} dari ${path.relative(REPO, WEB) || WEB}`)
 
-const skip = (rel) => /(^|\/)(node_modules|\.git)(\/|$)/.test(rel)
+const skip = (rel) => /(^|\/)(node_modules|\.git|\.vercel|\.secrets|\.backup-snapshot)(\/|$)/.test(rel) || /(^|\/)\.env(?:\.|$)/.test(rel) || /\.(?:log|sqlite|tar\.gz)$/.test(rel)
 const files = []
 const walk = (dir) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {

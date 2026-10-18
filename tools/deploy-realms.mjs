@@ -4,6 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import {fileURLToPath} from 'node:url'
+if(!process.argv.includes('--legacy-single-server'))throw Error('Single-server deploy retired. Use tools/deploy-split-realms.mjs for the current two-server topology.')
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')
 const manifest=JSON.parse(fs.readFileSync(path.join(ROOT,'tools/realms-deploy-manifest.json'),'utf8'))
 const evidence=process.env.REALMS_DEPLOY_EVIDENCE||'/home/user/deploy-check/task46/deployment'

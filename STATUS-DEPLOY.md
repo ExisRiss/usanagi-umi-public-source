@@ -1803,3 +1803,38 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - Smoke test awal mendeteksi staging parsial belum menyertakan package type dan awang-lock; staging diperbaiki, Docker COPY juga dilengkapi, run final lulus. Docker engine/build tetap belum diuji.
 - Scan exact22nilai private + pola token/private-key/JWT privileged lulus tanpa temuan setelah redaksi catatan lama. Tidak menghapus history atau merotasi kredensial.
 - Source ZIP final: `Umi-Eclipse-Realms-Task47-Source.zip`, manifest per-file di dalam ZIP dan checksum terpisah; panduan utama `README-START-HERE-TASK47.md`.
+
+## Task 49 — pindah ke panel baru, bot/game dua server (2026-10-18)
+
+### Konteks dan keputusan
+- Task48 sempat mendapat panel/API200, tetapi preflight berikutnya putus TLS dan publik530 sebelum write/power. Pemilik kemudian memberi panel baru dan memilih bot+game terpisah.
+- Workspace lagi kembali ke0d76f6a; simpan patch privat, fetch/reset7567d7a sebelum edit Task49. Key panel baru disimpan0600, tidak dicetak/di-commit atau dirotasi. API list mengonfirmasi kedua target kosong: serverjadibotVip(d178bf71,2176) dan servergameVip(186425d1,4470), nodeLONDON.
+
+### Deploy yang benar-benar dilakukan
+- Node22 dipilih lewat API panel, source baru3750file bot/90file game diunggah+ekstrak, runtime privat terpisah, cloudflared2026.10.1 diverifikasi digest release. Readback kode/data penting lulus. Arsip upload dihapus sesudah ekstrak; source/runtime terpasang, tidak menimpa server berisi data.
+- Bootstrap role menjalankan bot/API atau game serta named tunnel masing-masing. Tunnel umi-api-gwenna dan umi-games-gwenna dipakai dengan credential existing/config, **bukan --token**; tunnel alzriss-okta tidak dijalankan. DNSapi/umi-api pindah ke tunnel bot; game tetap tunnel game dengan port4470. Backup konfigurasi/DNS sebelumnya privat.
+- Proxy Realms lintas server melalui HTTPS tetap satu authoritySQLite pada bot. Forwarded-host dipercaya hanya setelah existing sharedkey cocok constant-time+hostname allowlist; kode/cookie pengguna tetap wajib. Tidak ada guest login produksi atau impor data Arena.
+- Website existing dicek: HTML live cocok byte-for-byte baseline sebelum Task47. Deploy update ke project yang sama READY (`dpl_G1Rbqwpi91S1wZtBboTUbW8LmYeE`); navigasi MMORPG live. Skip helper diperketat untuk env/.vercel/.secrets, bukan overwrite snapshot tua.
+
+### Perbaikan saat startup
+- Native SQLite sempat menyebabkan state/login500. npm panel memblokir lifecycle, sementara pemeriksaan lama cuma require() yang tidak memuat binding lazy. Probe boot sekarang membuka SQLite memory+SELECT1+close; binary diunduh lewat prebuild dan berfungsi. Canvas juga diperiksa dengan createCanvas. Final state/login invalid401, bukan500.
+- 2051plugin termuat, tidak ditemukan error syntax/import plugin pada log startup final. Main bot enabled, nomor pairing existing diatur; status **unregistered/unpaired**, bukan connected. Autoread OFF terverifikasi. Perlu pairing fisik user; belum mengklaim semua command teruji dari HP.
+- Panel resources masih melabeli kedua container `starting`, tetapi proses services-started dan HTTPSbot/game200. Jangan mengganti bukti ini dengan klaim daemon running.
+
+### Data yang tersedia dan yang tidak
+- Backup Blob terbaru18Oktober05:00UTC diunduh privat. Legacy database.json553record dipulihkan; money/balance/EXP/level/bank/gold/diamond existing0perubahan setelah startup. Record termasuk alias/channel; bukan553orang unik.
+- Auth WA lama, SQLiteRPG lama, trading accounts, wallet/order ledger dan privateGroqkey tidak tersedia di backup/workspace. Tidak merekayasa sesi connected, akun11.000, saldo0 atau histori. SQLite runtime baru bukan pemulihan progres lama; banner pemulihan tampil di Realms.
+- Trading account/login/mutasi503maintenance, market200; save trading juga dinonaktifkan sementara. File state kosong buatan startup awal dihapus setelah diverifikasi0akun/user/session/deposit/login-code. Wallet read/write dikunci503 di core agar tidak membentuk dompet baru seolah data lama kosong. Boost02.00 tetapfalse; aset trading tidak diubah.
+- Metadata jadibot tanpaauth tidak diaktifkan kembali. Sesi expired>=15menit tidak direstore. Supabase/cloud existing tetap, tidak direset. Store/merchant runtime yang tidak tersimpan juga tidak diklaim pulih.
+- Penggabungan semua RPG lama **belum selesai**: kebijakan currency sebelumnya dilewati; tidak menjumlahkan money/balance/koin atau aliasPN/LID tanpa aturan/proof. Wallet/topup/trading bukan sumber konversi RPG.
+
+### Backup dan deploy berikutnya
+- Bundle18file konfigurasi+key panel baru+legacyJSON terenkripsi AES256GCM/HKDF ke BlobPRIVATE `private-migrations/task49/runtime-20261018.enc`;59009bytes. Download/decrypt/byte-roundtrip lulus, tidak rotasi key. Ini bukan backup auth/SQLite/trading/wallet lama; **tidak otomatis memperbarui auth setelah pairing**.
+- Tool private-recovery-vault restore menolak overwrite dan tidak langsung mengekstrak ke produksi. Menyediakan jalan mengambil kembali key/config bila snapshot workspace kehilangan berkas baru tanpa meminta user mengulang key.
+- `tools/deploy-split-realms.mjs` + manifest24kode/aset: temukan ID lewat APIlist, preflightdrift, backupkodeprivat, readbackSHA256, rollbackwriteparsial, restart role berubah. Preflight24file terhadap kedua server lulus. Helper single-server lama dipagari opt-in, jangan digunakan untuk topology baru.
+
+### QA akhir
+- 46tes Realms/migrasi/proxy/native/wallet +116regresi lulus.
+- 10browser checks pada hostproduksiHTTPS lulus,0pageerrors; logininvalid,metadata3region,landingdesktop/mobile390,nooverflow,lobi dan navigasi website, recoveryguard. Screenshotdesktop diperiksa visual. **Bukan tes gameplay loginvalid/WA fisik**; tidak membuat akun sintetis produksi.
+- 10pemeriksaanHTTPakhir lulus: bot/game/meta200, state/logininvalid/guest401, CSRF403, trading/wallet503maintenance, market200. Ownerrelay200 danautoreadfalse.
+- Artefak `deploy-check/task49/`; log/rawconfig/data hanya `.secrets/task49/`. Panduan pemulihan dan batasan lengkap: `docs/PANEL-MIGRATION-TASK49.md`.

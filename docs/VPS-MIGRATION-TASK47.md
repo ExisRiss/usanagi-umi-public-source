@@ -1,5 +1,7 @@
 # Paket pindah VPS — Task47 · 18 Oktober 2026
 
+> **Task49 terbaru:** server bot/game sudah dipasang pada panel baru dengan dua role; website dan endpoint produksi aktif, tetapi auth WA/SQLite RPG lama/ledger belum pulih lengkap. Lihat [PANEL-MIGRATION-TASK49.md](PANEL-MIGRATION-TASK49.md). Bagian Task46/47 di bawah bersifat historis.
+
 ## Status yang harus dibedakan
 
 - **Arena:** proses preview sudah berjalan, guest tanpa WhatsApp, progres SQLite terisolasi. Gunakan kartu **Live Preview**, lalu **Mainkan versi tes**. Akses browser langsung tanpa konteks Arena ke URL e2b mentah menghasilkan 403 `Missing traffic access token`; ini gateway platform, bukan HTTP500 game. Pengujian browser gameplay dilakukan melalui localhost sandbox; akses pengguna melalui gateway Arena belum dikonfirmasi dari perangkat pengguna.

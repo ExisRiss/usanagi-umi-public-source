@@ -31,7 +31,15 @@ const NATIVE = [
 
 function canLoad(pkg) {
   try {
-    require(pkg)
+    const loaded = require(pkg)
+    // better-sqlite3 loads its native binding lazily, on construction.
+    // A successful require alone falsely passes after npm blocks install scripts.
+    if (pkg === 'better-sqlite3') {
+      const probe = new loaded(':memory:')
+      try { probe.prepare('SELECT 1 AS ok').get() } finally { probe.close() }
+    } else if (pkg === 'canvas') {
+      loaded.createCanvas(1, 1).getContext('2d')
+    }
     return true
   } catch {
     return false

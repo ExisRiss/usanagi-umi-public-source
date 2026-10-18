@@ -65,7 +65,7 @@ function draw(time){requestAnimationFrame(draw);if(!state||$('game').hidden||doc
  fx=fx.filter(f=>time-f.at<1400);for(const f of fx){const[x,y]=xy(f.x,f.y);ctx.globalAlpha=1-(time-f.at)/1400;ctx.fillStyle=f.color;ctx.font='bold 22px Georgia';ctx.textAlign='center';ctx.fillText(f.text,x,y-(time-f.at)/40)}ctx.globalAlpha=1;
  const mc=$('minimap').getContext('2d');if(bg.complete&&bg.naturalWidth)mc.drawImage(bg,0,0,150,92);for(const e of entities)oval(mc,e.position.x*1.5,e.position.y*.92,e.id===state.id?3:2,e.id===state.id?3:2,e.id===state.id?'#fff1af':'#a7d6c7');}
 requestAnimationFrame(draw);
-(async()=>{try{meta=await api('meta');if(meta.preview){$('previewNotice').hidden=false;text('connectionText','Preview · dunia uji');text('playButton','Mainkan versi tes ↗')}try{const r=await api('state');setState(r.state);enter()}catch(e){if(e.status!==401)notify(e.message)}}catch(e){text('bootError',e.message+' Muat ulang halaman untuk mencoba kembali.');$('bootError').hidden=false;$('playButton').disabled=true}})();
+(async()=>{try{meta=await api('meta');if(meta.preview){$('previewNotice').hidden=false;text('connectionText','Preview · dunia uji');text('playButton','Mainkan versi tes ↗')}else if(meta.recoveryNotice){$('previewNotice').hidden=false;text('previewNotice',meta.recoveryNotice)}try{const r=await api('state');setState(r.state);enter()}catch(e){if(e.status!==401)notify(e.message)}}catch(e){text('bootError',e.message+' Muat ulang halaman untuk mencoba kembali.');$('bootError').hidden=false;$('playButton').disabled=true}})();
 window.addEventListener('pagehide',()=>events?.close());
 
 $('panelDialog').addEventListener('close',()=>{currentPanel=''})
