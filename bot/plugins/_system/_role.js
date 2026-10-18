@@ -1,9 +1,11 @@
+import { unifiedRpg } from '../../lib/rpg/unified-store.js';
 import { canLevelUp } from '../../lib/levelling.js';
 
 let handler = (m) => m;
 
 handler.before = function (m) {
 	let user = global.db.data.users[m.sender];
+	if (unifiedRpg() && !user.__unifiedRpg) return false;
 	let before = user.level * 1;
 	if (user.autolevelup) {
 		while (canLevelUp(user.level, user.exp, global.multiplier)) user.level++;

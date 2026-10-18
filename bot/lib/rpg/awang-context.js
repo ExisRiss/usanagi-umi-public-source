@@ -1,3 +1,4 @@
+import { unifiedRpg } from './unified-store.js'
 /* By AlzRiss - Usanagi Umi AI */
 
 import { settings } from '../../config/settings.js'
@@ -21,6 +22,14 @@ function buildRpgContext(m, { conn, usedPrefix }) {
       ? { sender: getQuotedSender(m), message: null }
       : null
   enriched.targetJid = resolveTarget(m)
+  const store = unifiedRpg()
+  if (store) {
+    const sender = store.identity(m.sender)
+    if (!sender) store.reject('Identitas RPG belum terverifikasi.')
+    Object.defineProperty(enriched, 'sender', { value: sender + '@s.whatsapp.net', writable: true, configurable: true, enumerable: true })
+    const target = store.identity(enriched.targetJid)
+    if (target) enriched.targetJid = target + '@s.whatsapp.net'
+  }
 
   enriched.rpgFeatureKey = String(m.command || 'reward').toLowerCase()
   enriched.reply = async (text, extra = {}) => {

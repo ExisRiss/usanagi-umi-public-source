@@ -3,8 +3,22 @@
     "bot": "serverjadibotVip",
     "game": "servergameVip"
   },
-  "note": "Task50: owner-only read-only RPG audit added; live currency/progress conversion remains disabled. Runtime data, credentials and sessions are excluded.",
+  "note": "Task51: guarded unified RPG runtime update; no runtime database, credential or auth upload. Opt-in migration runs on server with consistent pre-migration backup; unresolved identities remain held.",
   "files": [
+    {
+      "role": "bot",
+      "source": "bot/lib/rpg/unified-store.js",
+      "remote": "/lib/rpg/unified-store.js",
+      "beforeSha256": "b4d3fd620d086efebde617531329c0ce9c97d43f7f53d7fc5d6a745376064791",
+      "sourceSha256": "5fb910f0db4aed609b3c09658430bd5c117684364acd97748ebe18f3164c7bdd"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/rpg/unified-runtime.js",
+      "remote": "/lib/rpg/unified-runtime.js",
+      "beforeSha256": null,
+      "sourceSha256": "669f65434a7f2c4e7a3606545fcb82fa75b2d4737103eb0838de7a54e38a415c"
+    },
     {
       "role": "game",
       "source": "deploy/panel/role-start.mjs",
@@ -59,14 +73,14 @@
       "source": "bot/lib/realms/service.js",
       "remote": "/lib/realms/service.js",
       "beforeSha256": "9a430d887c164668978f059c8621f2116568ed1f88a84d2309b47ccea8fc6b2b",
-      "sourceSha256": "9a430d887c164668978f059c8621f2116568ed1f88a84d2309b47ccea8fc6b2b"
+      "sourceSha256": "cdfaf9a9aee6bdb2484b80ea6f4624b7f6e8209bc07bd4295597ad38b9ea08bf"
     },
     {
       "role": "bot",
       "source": "bot/lib/realms/gate.js",
       "remote": "/lib/realms/gate.js",
       "beforeSha256": "a9cdcc8d3b848477ebbe0357b60671d8ff1632b5cd9d8702bb7369b6e0e3eb32",
-      "sourceSha256": "a9cdcc8d3b848477ebbe0357b60671d8ff1632b5cd9d8702bb7369b6e0e3eb32"
+      "sourceSha256": "c6906440e9108943533e6367198696b7a18c18cbf89529581ffa2b8f1e4c5ff6"
     },
     {
       "role": "bot",
@@ -147,17 +161,10 @@
     },
     {
       "role": "bot",
-      "source": "bot/handler.js",
-      "remote": "/handler.js",
-      "beforeSha256": "2ac62d93fdec21c6e7679afbafcce072aaab7dabaf045169ac01789f015892e7",
-      "sourceSha256": "2ac62d93fdec21c6e7679afbafcce072aaab7dabaf045169ac01789f015892e7"
-    },
-    {
-      "role": "bot",
       "source": "bot/lib/jadibot-platform-api.js",
       "remote": "/lib/jadibot-platform-api.js",
-      "beforeSha256": "6332f195a11a9192a8f366b71cfaa32117397cb9d483aee9f38a28346186291a",
-      "sourceSha256": "59e687d05ffa946937610f76ffa44ff30ef274804a88c50b0e11e23677fc9808"
+      "beforeSha256": "59e687d05ffa946937610f76ffa44ff30ef274804a88c50b0e11e23677fc9808",
+      "sourceSha256": "27df790da0f97b2ca21dc57605e00cacbae5d390e1241f443ca6291e74e82cd1"
     },
     {
       "role": "game",
@@ -179,6 +186,104 @@
       "remote": "/lib/rpg/legacy-migration-plan.js",
       "beforeSha256": null,
       "sourceSha256": "f510a76669882a24662d3bb1f121f680d080fec6deb2e09ac7d4983735d4a2a3"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/imported-compat.js",
+      "remote": "/lib/imported-compat.js",
+      "beforeSha256": "fdcc314f3b3b29a09f4196bc956c8d2b6ba5ca7cce25212b2c163781210539aa",
+      "sourceSha256": "07d799306bafc0019d76314de9e03fcdb7654d937bd9c68668a2c22eb20e2f23"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/levelling.js",
+      "remote": "/lib/levelling.js",
+      "beforeSha256": "105b5bff7ba786a17981a2e5d09fcc056c53a3403dcfe1e5ae894b34cede180e",
+      "sourceSha256": "f83deeb62286d883a688becb5c9503d47963877c4268b45293bad4c6c1035e10"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/rpg/awang-context.js",
+      "remote": "/lib/rpg/awang-context.js",
+      "beforeSha256": "82d07e0fdb39681e573be115a4b1580ef682045a4a17245da3f952c743aaf59f",
+      "sourceSha256": "b626633776f3b6f838c9914e7e062ea698a11dab15c94df45378aae44f488d80"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/rpg/awang-db.js",
+      "remote": "/lib/rpg/awang-db.js",
+      "beforeSha256": "7034fb802067b85d5ca17d763b0ecdf09d2e019d6720a2278e59d9b00396f857",
+      "sourceSha256": "b4c4ee80c194389594a2d0ae3519a8a33027718250042d1ed5c08c7637175844"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/rpg/awang-format.js",
+      "remote": "/lib/rpg/awang-format.js",
+      "beforeSha256": "665ffc614ee759cde299d6ced954f1af7f6b11985fe5cad0ee8f8af0afdef013",
+      "sourceSha256": "d4508b756dd1d4b7f5be4679e1a605f223435ca1ddff8e5f6da057d992ce3207"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/user-identity.js",
+      "remote": "/lib/user-identity.js",
+      "beforeSha256": "1ff9db7f2bd8c08ab9b8e1b26a624366c48e5d7530c6bb9fc88bd30ffa6d3fd9",
+      "sourceSha256": "35b2521e53648257806fec56ae75b93451ee22ce93cacf5e97fead1fb71ad7b1"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/_system/_role.js",
+      "remote": "/plugins/_system/_role.js",
+      "beforeSha256": "a31d9497aa128cda27a99496260ed3179b69cc1442c009ea07d26991f741e6ab",
+      "sourceSha256": "c7197552d8b7323d02d181d4bac59ddb92db4889504263d18db54fca4f3e7dba"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/economy/rpg-activity.js",
+      "remote": "/plugins/economy/rpg-activity.js",
+      "beforeSha256": "ab1638886dce4833150ac874d2416eb6137d4bc0ff772d06536b2041f060268f",
+      "sourceSha256": "34eb7a2ec90ad2b8499e6cd977c6502af9ec391dd9af8b42aa63e5785bdf8485"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/economy/xp-levelup.js",
+      "remote": "/plugins/economy/xp-levelup.js",
+      "beforeSha256": "76079176d8fc0e6ddbfaa6e2498856092dbfec0b7c568f98895e829f6ef6bc8d",
+      "sourceSha256": "28de44ed60176c73a65dc245c03961b6e53976bc0addeaedc1d112408c29fccc"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/rpg/rpg-berdagang.js",
+      "remote": "/plugins/rpg/rpg-berdagang.js",
+      "beforeSha256": "32f06c4f1d6fe6cf0fe54843d53006a1e9e804c9ca9b26b83ded4cafd4a80136",
+      "sourceSha256": "45898984fe2610d6efbe93aefbacc3651466e70fe66ae8a8d72120f92adf20f1"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/rpg/rpg-warnet.js",
+      "remote": "/plugins/rpg/rpg-warnet.js",
+      "beforeSha256": "bd27920354daa7adad3cc74648a66e9cb788943b248cffec80e575ad0a4c204d",
+      "sourceSha256": "b3f0b3f3623b7c99f654c55b563b01a3d7663023ddf02d7c4b5e0cdb8f0e37b9"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/rpg/usanagi-transfer.js",
+      "remote": "/plugins/rpg/usanagi-transfer.js",
+      "beforeSha256": "96ea848309ff0ecf696b4516ca06bab267e9686d99e0b2c2a829cddcafe6520c",
+      "sourceSha256": "7b729329f1bcf45e8f0b4354773b176c9926b339dc53b9776fe02506f04b21a1"
+    },
+    {
+      "role": "bot",
+      "source": "bot/handler.js",
+      "remote": "/handler.js",
+      "beforeSha256": "2ac62d93fdec21c6e7679afbafcce072aaab7dabaf045169ac01789f015892e7",
+      "sourceSha256": "b5e3335be1671fce1fd3f27a3ea04a69c4fc6ff6fb9c3cc9098d54f83c8dc6a1"
+    },
+    {
+      "role": "bot",
+      "source": "bot/main.js",
+      "remote": "/main.js",
+      "beforeSha256": "de51295712b6cf003943a9a97779e0415dc73101a293c28e1e40fc1043dae70d",
+      "sourceSha256": "33138454f99d7acac6455d2ad9cd8dd037f8e20d81178a4f31c051f6d12abbf9"
     }
   ]
 }

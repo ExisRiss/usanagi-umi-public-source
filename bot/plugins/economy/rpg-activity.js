@@ -1,3 +1,5 @@
+import crypto from 'node:crypto'
+import { unifiedRpg } from '../../lib/rpg/unified-store.js'
 /**
  * RPG Activity System - Work, Hunt, Mine, Farm, Daily
  * Sistem aktivitas RPG untuk earning balance
@@ -104,7 +106,7 @@ function pickWeighted(arr) {
   return arr[arr.length - 1]
 }
 
-function fmtRp(n) { return 'Rp ' + Number(n).toLocaleString('id-ID') }
+function fmtRp(n) { return Number(n).toLocaleString('id-ID') + ' koin' }
 function fmtTime(ms) {
   const s = Math.ceil(ms / 1000)
   if (s < 60) return `${s} detik`
@@ -132,11 +134,19 @@ function getUser(sender) {
   if (u.lastFish === undefined) u.lastFish = 0
   if (u.lastRob === undefined) u.lastRob = 0
   if (u.lastAdventure === undefined) u.lastAdventure = 0
-  if (!Array.isArray(u.inventory)) u.inventory = []
+  if (!u.__unifiedRpg && !Array.isArray(u.inventory)) u.inventory = []
   return u
 }
 
+function addDrop(user, label) {
+  if (!user.__unifiedRpg) { if (!Array.isArray(user.inventory)) user.inventory = []; user.inventory.push(label); return }
+  const ids = { 'Batu Bara': 'coal', Besi: 'iron', Diamond: 'diamond', Emerald: 'emerald' }
+  const key = ids[label] || 'legacy_' + crypto.createHash('sha256').update(String(label)).digest('hex').slice(0,16)
+  user.inventory[key] = (user.inventory[key] || 0) + 1
+}
+
 function addExp(user, amount) {
+  if (user.__unifiedRpg) { const before = user.level; user.exp += amount; return user.level > before }
   user.exp = (user.exp || 0) + amount
   // Auto level up
   const nextLevel = (user.level || 1) * 100
@@ -168,8 +178,9 @@ const handler = async (m, { conn, command, usedPrefix, text }) => {
     const total = baseReward + streakBonus + levelBonus
     
     user.balance = (user.balance || 0) + total
+    const previousDaily = user.lastDaily || 0
     user.lastDaily = now
-    user.dailyStreak = (now - (user.lastDaily || 0) < 48 * 60 * 60 * 1000) ? streak + 1 : 1
+    user.dailyStreak = (now - previousDaily < 48 * 60 * 60 * 1000) ? streak + 1 : 1
     
     const leveled = addExp(user, 20)
     
@@ -231,8 +242,7 @@ const handler = async (m, { conn, command, usedPrefix, text }) => {
     
     user.balance = (user.balance || 0) + reward
     user.lastHunt = now
-    if (!Array.isArray(user.inventory)) user.inventory = []
-    user.inventory.push(monster.drop)
+    addDrop(user, monster.drop)
     const leveled = addExp(user, xp)
     
     let txt = `⚔️ *BERBURU BERHASIL!*\n\n`
@@ -260,8 +270,7 @@ const handler = async (m, { conn, command, usedPrefix, text }) => {
     
     user.balance = (user.balance || 0) + total
     user.lastMine = now
-    if (!Array.isArray(user.inventory)) user.inventory = []
-    user.inventory.push(mineral.name)
+    addDrop(user, mineral.name)
     const leveled = addExp(user, rand(8, 20))
     
     let txt = `⛏️ *MENAMBANG*\n\n`
@@ -287,8 +296,7 @@ const handler = async (m, { conn, command, usedPrefix, text }) => {
     
     user.balance = (user.balance || 0) + total
     user.lastFarm = now
-    if (!Array.isArray(user.inventory)) user.inventory = []
-    user.inventory.push(crop.name)
+    addDrop(user, crop.name)
     const leveled = addExp(user, rand(10, 25))
     
     let txt = `🌾 *PANEN BERHASIL!*\n\n`
@@ -313,8 +321,7 @@ const handler = async (m, { conn, command, usedPrefix, text }) => {
     
     user.balance = (user.balance || 0) + reward
     user.lastFish = now
-    if (!Array.isArray(user.inventory)) user.inventory = []
-    user.inventory.push(`${fish.name} (${fish.weight})`)
+    addDrop(user, `${fish.name} (${fish.weight})`)
     const leveled = addExp(user, rand(5, 18))
     
     let txt = `🎣 *MEMANCING*\n\n`
@@ -337,7 +344,7 @@ const handler = async (m, { conn, command, usedPrefix, text }) => {
     // Need target
     const target = m.mentionedJid?.[0]
     if (!target) return m.reply(`Format: *${usedPrefix}rob @user*\n⚠️ Merampok berisiko!`)
-    if (target === sender) return m.reply('❌ Tidak bisa merampok diri sendiri!')
+    if (target === sender || (unifiedRpg() && unifiedRpg().identity(target) === unifiedRpg().identity(sender))) return m.reply('❌ Tidak bisa merampok diri sendiri!')
     
     const targetUser = getUser(target)
     const targetBalance = targetUser.balance || 0
@@ -409,10 +416,11 @@ const handler = async (m, { conn, command, usedPrefix, text }) => {
   if (cmd === 'give' || cmd === 'tf' || cmd === 'transfer') {
     const target = m.mentionedJid?.[0]
     if (!target) return m.reply(`Format: *${usedPrefix}give @user <jumlah>*`)
-    if (target === sender) return m.reply('❌ Tidak bisa transfer ke diri sendiri!')
+    if (target === sender || (unifiedRpg() && unifiedRpg().identity(target) === unifiedRpg().identity(sender))) return m.reply('❌ Tidak bisa transfer ke diri sendiri!')
     
-    const amount = parseInt(text?.replace(/[^0-9]/g, ''))
-    if (!amount || amount <= 0) return m.reply('❌ Jumlah tidak valid!')
+    const amountText = String(text || '').trim().split(/\s+/).filter(x => !/^@\d+$/.test(x)).join(' ')
+    const amount = /^\d+$/.test(amountText) ? Number(amountText) : NaN
+    if (!Number.isSafeInteger(amount) || amount <= 0) return m.reply('❌ Jumlah tidak valid!')
     
     if ((user.balance || 0) < amount) return m.reply(`❌ Saldo tidak cukup! Balance: ${fmtRp(user.balance || 0)}`)
     
@@ -426,7 +434,9 @@ const handler = async (m, { conn, command, usedPrefix, text }) => {
   // === LEADERBOARD ===
   if (cmd === 'leaderboard' || cmd === 'lb' || cmd === 'top') {
     const users = global.db.data.users || {}
+    const seen = new Set()
     const sorted = Object.entries(users)
+      .filter(([jid]) => { const id = unifiedRpg() ? unifiedRpg().identity(jid) : jid; if (!id || seen.has(id) || !/@(s\.whatsapp\.net|lid)$/.test(jid)) return false; seen.add(id); return true })
       .map(([jid, u]) => ({ jid, balance: u.balance || 0, level: u.level || 1 }))
       .sort((a, b) => b.balance - a.balance)
       .slice(0, 10)

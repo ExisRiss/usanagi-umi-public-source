@@ -1,3 +1,4 @@
+import { unifiedRpg } from './rpg/unified-store.js'
 import fs from 'node:fs'
 /* Audited compatibility boundary for Usanagi plugins. No vendor accounts/keys. */
 import { AsyncLocalStorage } from 'node:async_hooks'
@@ -32,7 +33,7 @@ export function createVendorConfig(source) {
 }
 function currentData() { return global.db?.data || {users:{},chats:{},settings:{},stats:{}} }
 function userDefaults(jid) {
-  const data = currentData(); data.users ||= {}; const user = data.users[jid] ||= {}
+  const data = currentData(); data.users ||= {}; if (!data.users[jid]) data.users[jid] = {}; const user = data.users[jid]
   for (const [k,v] of Object.entries({exp:0,level:0,money:0,limit:50,registered:false,health:100,stamina:100,hunger:100})) user[k] ??= v
   return new Proxy(user, { get(t,k) {
     if (k==='koin'||k==='balance') return t.money
@@ -55,9 +56,9 @@ const dbBridge = {
   updateSaldo(jid,amount) { const u=userDefaults(jid);u.saldo=Math.max(0,Number(u.saldo||0)+Number(amount||0));return u.saldo },
   updateExp(jid,amount) { const u=userDefaults(jid);u.exp=Math.max(0,Number(u.exp||0)+Number(amount||0));return u.exp },
   updateEnergi(jid,amount) { const u=userDefaults(jid);u.energi=Math.max(0,Number(u.energi||0)+Number(amount||0));return u.energi },
-  checkCooldown(jid,key,seconds=0) { return Math.max(0,(cooldowns.get(jid+':'+key)||0)+Number(seconds)*1000-Date.now()) },
-  setCooldown(jid,key) { cooldowns.set(jid+':'+key,Date.now()) },
-  getTopUsers(field='exp',limit=10) {return Object.entries(this.getAllUsers()).sort((a,b)=>Number(b[1][field]||0)-Number(a[1][field]||0)).slice(0,limit).map(([jid,u])=>({jid,...u}))},
+  checkCooldown(jid,key,seconds=0) { const store=unifiedRpg(),id=store?.identity(jid); const last=id?store.read(id).legacy?.importedCooldowns?.[key]:cooldowns.get(jid+':'+key); return Math.max(0,(last||0)+Number(seconds)*1000-Date.now()) },
+  setCooldown(jid,key) { const store=unifiedRpg(),id=store?.identity(jid); if(store&&!id)store.reject('Identitas RPG belum terverifikasi.');if(id){const u=store.read(id);u.legacy=u.legacy||{};u.legacy.importedCooldowns=u.legacy.importedCooldowns||{};Object.defineProperty(u.legacy.importedCooldowns,key,{value:Date.now(),enumerable:true,writable:true,configurable:true});store.write(id,u)}else cooldowns.set(jid+':'+key,Date.now()) },
+  getTopUsers(field='exp',limit=10) {const seen=new Set();return Object.entries(this.getAllUsers()).filter(([jid])=>{if(!unifiedRpg())return true;const id=unifiedRpg().identity(jid);if(!id||seen.has(id))return false;seen.add(id);return true}).sort((a,b)=>Number(b[1][field]||0)-Number(a[1][field]||0)).slice(0,limit).map(([jid,u])=>({jid,...u}))},
   incrementStat(key) { const d=currentData();d.importedStats ||= {};d.importedStats[key]=(d.importedStats[key]||0)+1 },
   getStats() {return currentData().importedStats || {}},
   save() { global.db?.write?.()?.catch?.(()=>{});return true },write() {return this.save()},markDirty() {return true},flushAll() {return this.save()},readAll() {return true},

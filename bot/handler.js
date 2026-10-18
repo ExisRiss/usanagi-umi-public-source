@@ -1,3 +1,5 @@
+import { runUnifiedCommand, awardMessageExp } from './lib/rpg/unified-runtime.js';
+import { unifiedRpg } from './lib/rpg/unified-store.js';
 import { withRealmGate } from './lib/realms/gate.js';
 import { withMessageResponses, bindResponseMessage, maySuggestCommand } from './lib/command-response.js';
 import { planAutoAI, shouldAutoAITrigger } from './lib/auto-ai.js';
@@ -532,11 +534,11 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 
 			if (typeof plugin.all === 'function') {
 				try {
-					await plugin.all.call(this, m, {
+					await runUnifiedCommand(`hook-all:${this.user?.id}:${m.chat}:${m.sender}:${m.key?.id || m.id}:${name}`, () => plugin.all.call(this, m, {
 						chatUpdate,
 						__dirname,
 						__filename,
-					});
+					}), this, m);
 				} catch (e) {
 					// if (typeof e === 'string') continue
 					console.error(e);
@@ -563,7 +565,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 			let match = matches.find(([result]) => result) || [null, null];
 			if (typeof plugin.before === 'function') {
 				if (
-					await plugin.before.call(this, m, {
+					await runUnifiedCommand(`hook-before:${this.user?.id}:${m.chat}:${m.sender}:${m.key?.id || m.id}:${name}`, () => plugin.before.call(this, m, {
 						match,
 						conn: this,
 						participants,
@@ -579,7 +581,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 						chatUpdate,
 						__dirname,
 						__filename,
-					})
+					}), this, m)
 				)
 					continue;
 			}
@@ -832,7 +834,10 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
                     }
                     const executePlugin = () => plugin.call(this, pluginMessage, extra);
                     const isRpgMutation = name.startsWith('rpg/') || (Array.isArray(plugin.tags) && plugin.tags.includes('rpg'));
-                    const pluginResult = await (isRpgMutation ? withRealmGate(executePlugin) : executePlugin());
+                    const messageId = m.key?.id || m.id;
+                    const pluginResult = await (unifiedRpg()
+                      ? runUnifiedCommand(`${this.user?.id}:${m.chat}:${m.sender}:${messageId}:${name}:${command}`, executePlugin, this, pluginMessage)
+                      : isRpgMutation ? withRealmGate(executePlugin) : executePlugin());
                     // Kirim audio setelah renderer menu selesai agar video/menu dan
                     // audio tampil berurutan pada pemanggilan yang sama.
                     if ((command === 'menu' || command === 'allmenu') && botConfig?.values?.brandingAssets?.menuAudioEnabled !== false) {
@@ -903,7 +908,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 					// m.reply(util.format(_user))
 					if (typeof plugin.after === 'function') {
 						try {
-							await plugin.after.call(this, m, extra);
+							await runUnifiedCommand(`hook-after:${this.user?.id}:${m.chat}:${m.sender}:${m.key?.id || m.id}:${name}`, () => plugin.after.call(this, m, extra), this, m);
 						} catch (e) {
 							console.error(e);
 						}
@@ -944,7 +949,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
     const exp = Number(m.exp) || 0
     const cost = Number(m.limit)
 
-    user.exp += exp
+    if (!await awardMessageExp(m.sender, exp, m.key?.id || m.id)) user.exp += exp
 
     const unlimitedLimit = Number(user.limit) === -1 || user.isUnlimitedLimit === true
     if (!unlimitedLimit && Number.isFinite(cost) && cost > 0) {

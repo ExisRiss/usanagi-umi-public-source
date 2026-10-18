@@ -57,3 +57,7 @@ bot/lib/trading-links.json
 **/test-results/
 *.sqlite-wal
 *.sqlite-shm
+
+# Private, irreversible RPG activation and runtime snapshots
+.rpg-unification.enabled
+unification-backups/

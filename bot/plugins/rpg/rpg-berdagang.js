@@ -1,10 +1,13 @@
-let handler = async (m) => {
+import { scheduleRpgReward } from '../../lib/rpg/unified-runtime.js'
+import { unifiedRpg } from '../../lib/rpg/unified-store.js'
+let handler = async (m, { conn }) => {
 	const dapat = Math.floor(Math.random() * 5000);
 	const who = m.mentionedJid[0];
 	if (!who) throw 'Tag salah satu lah, yang kamu ingin berdagang bareng';
 
 	if (!global.db.data.users[who]) return m.reply('Pengguna tidak ada didalam data base');
 
+	if (who === m.sender || (unifiedRpg() && unifiedRpg().identity(who) === unifiedRpg().identity(m.sender))) return m.reply('Pilih peserta lain, bukan alias akun sendiri.');
 	const user = global.db.data.users[m.sender];
 	const partner = global.db.data.users[who];
 
@@ -22,6 +25,8 @@ let handler = async (m) => {
 	partner.lastdagang = now;
 	user.lastdagang = now;
 
+	const pending = scheduleRpgReward(m, 'dagang-1', 3600000, [{jid:m.sender,koin:15000},{jid:who,koin:15000}], conn, 'Hasil dagang pertama sudah masuk: +15.000 koin per peserta.');
+	if (pending) scheduleRpgReward(m, 'dagang-2', 7200000, [{jid:m.sender,koin:15000},{jid:who,koin:15000}], conn, 'Hasil dagang kedua sudah masuk: +15.000 koin per peserta.');
 	m.reply(
 		`
 Mohon tunggu kak..
@@ -29,6 +34,8 @@ Kamu dan @${who.split('@')[0]} sedang berdagang...
 Kedua pihak meletakkan modal: -${dapat}
         `.trim()
 	);
+
+	if (pending) return;
 
 	setTimeout(() => {
 		user.money += 15000;

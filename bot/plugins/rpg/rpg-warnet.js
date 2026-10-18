@@ -1,3 +1,4 @@
+import { scheduleRpgReward } from '../../lib/rpg/unified-runtime.js'
 const games = [
 { name:'Game Snake', cost:1000, time:3*60*1000 },
 { name:'Game Tetris', cost:2000, time:4*60*1000 },
@@ -30,7 +31,7 @@ if(num >= 1000) return (num/1000).toFixed(1)+'k'
 return num.toString()
 }
 
-let handler = async (m,{conn,args}) => {
+let handler = async (m,{conn,args,usedPrefix}) => {
 
 let user = global.db.data.users[m.sender]
 
@@ -42,8 +43,8 @@ let txt = `
 Daftar game yang bisa dimainkan:
 
 Contoh bermain:
-.warnet game horor
-.warnet game snake
+${usedPrefix}warnet game horor
+${usedPrefix}warnet game snake
 `.trim()
 
 games.forEach((g,i)=>{
@@ -60,7 +61,7 @@ return conn.reply(m.chat,txt,m)
 let gameName = args.join(' ').toLowerCase()
 let game = games.find(v=>v.name.toLowerCase()==gameName)
 
-if(!game) return m.reply('Game tidak ditemukan.\nCek daftar dengan *.warnet*')
+if(!game) return m.reply(`Game tidak ditemukan.\nCek daftar dengan *${usedPrefix}warnet*`)
 
 if(user.money < game.cost)
 return m.reply(`Uang kamu tidak cukup.\nButuh ${formatNumber(game.cost-user.money)} lagi`)
@@ -90,6 +91,8 @@ let teks = `
 
 Sedang bermain...
 `.trim()
+
+if (scheduleRpgReward(m, 'warnet', game.time, [{jid:m.sender,koin:uang,exp}], conn, `Hadiah warnet ${game.name} sudah masuk: +${uang} koin, +${exp} EXP.`)) return conn.reply(m.chat,teks,m)
 
 await conn.reply(m.chat,teks,m)
 

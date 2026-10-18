@@ -1,6 +1,6 @@
 /* By AlzRiss - Usanagi Umi AI */
 
-import { getUser, saveUser } from '../../lib/rpg/awang-db.js'
+import { getUser, saveUser, cleanJid } from '../../lib/rpg/awang-db.js'
 import { buildRpgContext } from '../../lib/rpg/awang-context.js'
 import { rupiah } from '../../lib/rpg/awang-format.js'
 
@@ -17,18 +17,18 @@ const handler = async (rawM, tools) => {
   }
 
   const type = args[0].toLowerCase()
-  const amount = parseInt(args[1])
+  const amount = /^\d+$/.test(args[1]) ? Number(args[1]) : NaN
   const target = m.targetJid
 
   if (!target) {
     return m.reply(`Tag atau reply user yang mau dikirimi.`)
   }
 
-  if (target === m.sender) {
+  if (cleanJid(target) === cleanJid(m.sender)) {
     return m.reply(`Tidak bisa transfer ke diri sendiri.`)
   }
 
-  if (!amount || amount <= 0) {
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
     return m.reply(`Jumlah harus lebih dari 0.`)
   }
 

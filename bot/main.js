@@ -1,3 +1,4 @@
+import { initializeUnifiedRpg } from './lib/rpg/unified-runtime.js';
 import fs from 'fs';
 import { spawn } from 'child_process';
 import { tmpdir } from 'os';
@@ -139,6 +140,7 @@ global.loadDatabase = async function loadDatabase() {
 };
 
 await global.loadDatabase();
+initializeUnifiedRpg();
 
 // /welcome on is stored in SQLite, whereas the long-running participant
 // listener reads the established chat.welcome flag. Reconcile explicit modern

@@ -4,6 +4,14 @@ This repository contains the **sanitized source template** for the Usanagi Umi W
 
 > **Security notice:** This is intentionally not a production backup. WhatsApp sessions, phone numbers, pairing codes, database/runtime data, Pterodactyl/GitHub/Vercel credentials, API keys, environment files, deployment archives, and owner-specific configuration have been removed or replaced with placeholders.
 
+## Status layanan — 18 Oktober 2026 (Task51)
+
+- AutoAI Groq aktif memakai konfigurasi privat owner; tes provider dan planner nyata berhasil.
+- Authority RPG terverifikasi sudah live: 235 catatan → 220 profil, EXP/item/pet dan koin dibaca melalui bridge SQLite bersama bot/Realms. 205 LID lama masih ditahan, bukan digabung berdasarkan tebakan.
+- Bot utama **OFF, tanpa pairing**, autoread OFF; API/game aktif dan satu jadibot reconnect. Wallet/trading masih dilindungi mode pemulihan.
+- 237 tes, 19 pemeriksaan live, 40 hash source live cocok; backup konsisten dan vault terenkripsi terverifikasi. Bukan klaim acceptance seluruh gameplay/WhatsApp fisik atau seluruh fitur master MMORPG.
+- Baca [hasil dan batasan Task51](docs/RPG-UNIFICATION-TASK51.md) sebelum deploy/restore. Jangan menimpa database live atau rollback ke adapter legacy-only setelah aktivasi.
+
 ## Structure
 
 - `bot/` — WhatsApp main-bot and Jadibot source.
@@ -32,8 +40,8 @@ Copyright © 2026 Usanagi Umi contributors. All rights reserved. Public visibili
 
 - Auto-AI Groq pada mention/reply, melalui dispatcher native dengan izin, registrasi, premium dan kuota yang sama.
 - Isolasi koneksi main/Jadibot dan hook moderasi tetap dijalankan.
-- 1.091 handler pelengkap Rimuru/OURIN berhasil dimuat; 6.793 alias tambahan unik. Jumlah alias bukan jumlah fitur.
-- Rimuru adalah turunan/rename OURIN; fitur duplikat tidak dijumlahkan dua kali. Kredit asli tetap dipertahankan.
+- 1.091 handler pelengkap Umi/OURIN berhasil dimuat; 6.793 alias tambahan unik. Jumlah alias bukan jumlah fitur.
+- Umi menggunakan handler kompatibilitas OURIN; fitur duplikat tidak dijumlahkan dua kali. Kredit asli tetap dipertahankan.
 - Provider Groq/OpenRouter website, penyimpanan key terenkripsi, UI responsif dan perbaikan 11 syntax error template lama.
 - Baca [panduan Groq](bot/AUTO_AI_GROQ.md), [kredit](bot/CREDITS_PELENGKAP.md) dan [audit lengkap](bot/FEATURE_MIGRATION_REPORT.json).
 - Private config, API key, database, session WhatsApp dan state produksi **tidak ada di repo ini**. Jangan menimpa server produksi dengan template sanitasi secara wholesale.

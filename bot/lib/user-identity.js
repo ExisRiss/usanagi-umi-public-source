@@ -1,3 +1,4 @@
+import { unifiedRpg } from './rpg/unified-store.js'
 /* By AlzRiss - Usanagi Umi AI */
 
 function isUserJid(value) {
@@ -19,6 +20,8 @@ export function mergeUserIdentityRecords(users, keys) {
   if (!users || typeof users !== 'object') throw new TypeError('users database tidak valid')
   const validKeys = [...new Set((keys || []).map(String).filter(isUserJid))]
   if (!validKeys.length) return {}
+  const unified = unifiedRpg()?.bind(validKeys)
+  if (unified) return unified
 
   // Record terdaftar ditempatkan paling akhir agar status, nama, usia, dan
   // regTime tidak ditimpa record alias LID yang baru dibuat.

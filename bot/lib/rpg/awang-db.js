@@ -1,5 +1,8 @@
 /* By AlzRiss - Usanagi Umi AI */
 
+import { unifiedRpg } from './unified-store.js'
+const versions = new WeakMap()
+
 import { getDb } from '../../core/awang-sqlite.js'
 
 let schemaReady = false
@@ -31,6 +34,12 @@ function ensureSchema() {
 }
 
 function cleanJid(jid = '') {
+  const store = unifiedRpg()
+  if (store) {
+    const key = store.identity(jid)
+    if (!key) store.reject('Identitas RPG belum terverifikasi.')
+    return key
+  }
   return String(jid).split('@')[0]
 }
 
@@ -157,6 +166,14 @@ function getUser(jid) {
   ensureSchema()
   const db = getDb()
   const key = cleanJid(jid)
+  const store = unifiedRpg()
+  if (store) {
+    const saved = store.read(key)
+    const user = normalizeUser(applyPassiveStaminaRegen(mergeDefaults(defaultUser(key), saved)))
+    if (JSON.stringify(user) !== JSON.stringify(saved)) store.write(key, user, JSON.stringify(saved))
+    versions.set(user, JSON.stringify(store.read(key)))
+    return user
+  }
   const row = db.prepare('SELECT data FROM rpg_users WHERE jid = ?').get(key)
 
   if (!row) {
@@ -180,6 +197,14 @@ function saveUser(jid, userData) {
   ensureSchema()
   const db = getDb()
   const key = cleanJid(jid)
+  const store = unifiedRpg()
+  if (store) {
+    const before = versions.get(userData)
+    if (before) store.patch(key, JSON.parse(before), userData)
+    else store.write(key, userData)
+    versions.set(userData, JSON.stringify(userData))
+    return
+  }
   const payload = JSON.stringify(userData)
 
   db.prepare(
@@ -219,6 +244,7 @@ function recordRpgActivity(jid, user, command, messageId = '') {
 
 function getGuild(guildId) {
   ensureSchema()
+  if (unifiedRpg()) return unifiedRpg().document('rpg_guilds', guildId)
   const db = getDb()
   const row = db.prepare('SELECT data FROM rpg_guilds WHERE id = ?').get(guildId)
   if (!row) return null
@@ -231,6 +257,7 @@ function getGuild(guildId) {
 
 function saveGuild(guildId, guildData) {
   ensureSchema()
+  if (unifiedRpg()) return unifiedRpg().document('rpg_guilds', guildId, guildData)
   const db = getDb()
   const payload = JSON.stringify(guildData)
   db.prepare(
@@ -241,12 +268,14 @@ function saveGuild(guildId, guildData) {
 
 function deleteGuild(guildId) {
   ensureSchema()
+  if (unifiedRpg()) return unifiedRpg().document('rpg_guilds', guildId, null)
   const db = getDb()
   db.prepare('DELETE FROM rpg_guilds WHERE id = ?').run(guildId)
 }
 
 function getAllUsers() {
   ensureSchema()
+  if (unifiedRpg()) return unifiedRpg().allUsers().map(user => normalizeUser(mergeDefaults(defaultUser(user.jid), user)))
   const db = getDb()
   return db.prepare('SELECT jid, data FROM rpg_users').all().map((row) => {
     try {
@@ -264,6 +293,7 @@ function cleanupExpiredCooldowns() {
 
 function getAllGuilds() {
   ensureSchema()
+  if (unifiedRpg()) return unifiedRpg().documents('rpg_guilds')
   const db = getDb()
   const rows = db.prepare('SELECT data FROM rpg_guilds').all()
   return rows
@@ -285,6 +315,13 @@ function checkCooldown(jid, commandName) {
   ensureSchema()
   const db = getDb()
   const key = cleanJid(jid)
+  const store = unifiedRpg()
+  if (store) {
+    const legacy = db.prepare('SELECT expiresAt FROM rpg_cooldowns WHERE jid=? AND command=?').get(key, commandName)?.expiresAt || 0
+    const expires = Math.max(legacy, Number(store.read(key).cooldowns?.[commandName]) || 0)
+    const remaining = Math.max(0, expires - Date.now())
+    return { onCooldown: remaining > 0, remaining }
+  }
   const row = db
     .prepare('SELECT expiresAt FROM rpg_cooldowns WHERE jid = ? AND command = ?')
     .get(key, commandName)
@@ -305,6 +342,12 @@ function setCooldown(jid, commandName, durationMs) {
   const db = getDb()
   const key = cleanJid(jid)
   const expiresAt = Date.now() + durationMs
+  const store = unifiedRpg()
+  if (store) {
+    const user = store.read(key); user.cooldowns = user.cooldowns || {}
+    Object.defineProperty(user.cooldowns, commandName, { value: expiresAt, enumerable: true, configurable: true, writable: true })
+    store.write(key, user); return
+  }
 
   db.prepare(
     `INSERT INTO rpg_cooldowns (jid, command, expiresAt) VALUES (?, ?, ?)
@@ -319,6 +362,12 @@ function extendCooldown(jid, commandName, extraMs) {
   const db = getDb()
   const key = cleanJid(jid)
   const expiresAt = base + extraMs
+  const store = unifiedRpg()
+  if (store) {
+    const user = store.read(key); user.cooldowns = user.cooldowns || {}
+    Object.defineProperty(user.cooldowns, commandName, { value: expiresAt, enumerable: true, configurable: true, writable: true })
+    store.write(key, user); return
+  }
 
   db.prepare(
     `INSERT INTO rpg_cooldowns (jid, command, expiresAt) VALUES (?, ?, ?)

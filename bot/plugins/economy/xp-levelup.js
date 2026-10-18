@@ -1,8 +1,10 @@
+import { unifiedRpg } from '../../lib/rpg/unified-store.js';
 import { canLevelUp, xpRange } from '../../lib/levelling.js';
 
-let handler = async (m) => {
-	const name = conn.getName(m.sender);
+let handler = async (m, { conn }) => {
+	const name = await conn.getName(m.sender);
 	const user = global.db.data.users[m.sender];
+	if (unifiedRpg() && !user.__unifiedRpg) return m.reply('Identitas RPG belum terverifikasi.');
 	const { min, xp, max } = xpRange(user.level, global.multiplier);
 
 	if (!canLevelUp(user.level, user.exp, global.multiplier)) {
