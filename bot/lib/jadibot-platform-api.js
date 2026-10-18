@@ -568,7 +568,8 @@ function statusFor(number) {
 }
 
 function publicSession(row) {
-  return { ...row, ...statusFor(row.sessionId) }
+  const profile = getSubBot(row.sessionId)?.botConfig || loadJadibotConfig(row.sessionId, path.join(SESSION_DIR, row.sessionId), { create: false })
+  return { ...row, ...statusFor(row.sessionId), auto_ai: profile.values?.autoAI?.enabled !== false }
 }
 
 function uploadChannelRole(metadata) {
@@ -679,6 +680,7 @@ function profileSettings(profile) {
     owner_number: (profile.ownerNumbers || []).find(number => number !== lockedJadibotOwnerNumber()) || '',
     owner_numbers: normalizeJadibotOwners(profile.ownerNumbers || []),
     locked_owner_number: lockedJadibotOwnerNumber(),
+    auto_ai: v.autoAI?.enabled !== false,
     auto_typing: v.autoTyping?.enabled !== false,
     auto_typing_config: v.autoTyping,
     auto_translate: v.autoTranslate?.enabled !== false,
@@ -700,6 +702,7 @@ function profileSettings(profile) {
 }
 
 function applySettings(profile, input) {
+  if (input.auto_ai !== undefined && typeof input.auto_ai !== 'boolean') throw Object.assign(new Error('AutoAI harus true atau false.'), { status: 400 })
   const v = profile.values
   if (input.bot_name !== undefined) {
     v.namebot = safeText(input.bot_name, 80) || 'Usanagi Umi Jadibot'
@@ -791,6 +794,7 @@ function applySettings(profile, input) {
     v.scriptUrl = v.links.websiteUrl
     v.backupGroupLink = v.links.groupUrl
   }
+  if (input.auto_ai !== undefined) v.autoAI = { enabled: input.auto_ai }
   saveJadibotConfig(profile)
   return profileSettings(profile)
 }
@@ -1119,7 +1123,8 @@ async function route(req, res) {
     const credsFile = path.join(sessionPath, 'creds.json')
     let registered = false
     try { registered = Boolean(JSON.parse(fs.readFileSync(credsFile, 'utf8'))?.registered) } catch {}
-    if (registered) {
+    const autoAIOnly = Object.keys(input).every(key => ['session_id', 'auto_ai'].includes(key)) && typeof input.auto_ai === 'boolean'
+    if (registered && !autoAIOnly) {
       await restartSubBot(number, global.conn)
       restarted = true
     }

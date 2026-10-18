@@ -3,7 +3,7 @@
     "bot": "serverjadibotVip",
     "game": "servergameVip"
   },
-  "note": "Task59: authoritative timed monster combat, NPC dialogue and actual desktop/mobile interaction fixes. Code-only six runtime files; preserve keys, sessions, player progression, Task55-58, main/autoread OFF. No preview server or QA data deployed.",
+  "note": "Task60: per-session persisted AutoAI toggles (no restart for toggle-only); bounded avatar download/text fallback; exact idempotent boot patch retaining unmapped PN/device session-key recipients. Preserve Task59 RPG, sessions, keys, main/autoread OFF. Website deployed separately.",
   "files": [
     {
       "role": "bot",
@@ -150,7 +150,7 @@
       "source": "bot/scripts/boot.js",
       "remote": "/scripts/boot.js",
       "beforeSha256": "aa45c8039e7394f19d74aed1dbd2874f2a52963c4a1084613829560d1b936edc",
-      "sourceSha256": "aa45c8039e7394f19d74aed1dbd2874f2a52963c4a1084613829560d1b936edc"
+      "sourceSha256": "72c19f8b8908cf860e562c3eb6bc0c51919834176b7db4d8dda259562af1080a"
     },
     {
       "role": "game",
@@ -170,14 +170,14 @@
       "role": "bot",
       "source": "bot/lib/realms/catalog.js",
       "remote": "/lib/realms/catalog.js",
-      "beforeSha256": "4cb233647b74bb7e4396cb49042de69316366460fbbd4363b642c9eff33dde8d",
+      "beforeSha256": "434245d12098500e0652d09a5e01cbcdbf36e2e1b0414b20ccc4124016029f01",
       "sourceSha256": "434245d12098500e0652d09a5e01cbcdbf36e2e1b0414b20ccc4124016029f01"
     },
     {
       "role": "bot",
       "source": "bot/lib/realms/service.js",
       "remote": "/lib/realms/service.js",
-      "beforeSha256": "764bc0dda27e5cbe07e2eb6621b77cfd3a471ea28ba94618bb08c07347e027d2",
+      "beforeSha256": "bd9c5cedc16cc4d6c0f5fe6cef3265443da16faa918b144ebd5538590b622ac8",
       "sourceSha256": "bd9c5cedc16cc4d6c0f5fe6cef3265443da16faa918b144ebd5538590b622ac8"
     },
     {
@@ -198,28 +198,28 @@
       "role": "bot",
       "source": "bot/lib/realms/http.js",
       "remote": "/lib/realms/http.js",
-      "beforeSha256": "becba779e77e7858019fda64917b0fdbfeca0ca33d5a330549f9011f2000cb74",
+      "beforeSha256": "dad05da3512501ef75f9f06232965d41441f47ff7dbdc97bf89c7aad5ad2a98b",
       "sourceSha256": "dad05da3512501ef75f9f06232965d41441f47ff7dbdc97bf89c7aad5ad2a98b"
     },
     {
       "role": "bot",
       "source": "bot/public/realms/index.html",
       "remote": "/public/realms/index.html",
-      "beforeSha256": "e00dab77c84cbaad577d76abb8949657d628d037bcf68be601e911ded156a340",
+      "beforeSha256": "6983c7a43c291132f0327b394088b11521cd8da8fe3a0fc682b6cc73011389db",
       "sourceSha256": "6983c7a43c291132f0327b394088b11521cd8da8fe3a0fc682b6cc73011389db"
     },
     {
       "role": "bot",
       "source": "bot/public/realms/app.js",
       "remote": "/public/realms/app.js",
-      "beforeSha256": "8fae075f21486287e52cf4e7ba8f4482e1c4344d8b5f423bd2f0b4385b997e7d",
+      "beforeSha256": "dd6fa80c326b3ecb3d51ad6664d0a0b0662599ecfe1af584568edf66fdfcc3e7",
       "sourceSha256": "dd6fa80c326b3ecb3d51ad6664d0a0b0662599ecfe1af584568edf66fdfcc3e7"
     },
     {
       "role": "bot",
       "source": "bot/public/realms/style.css",
       "remote": "/public/realms/style.css",
-      "beforeSha256": "e9d8e15cc0ba339d059154d40f7f82dfe19bf7c61218c69c64cc6c1268cc9bb9",
+      "beforeSha256": "95177a1b6482821440d4cd410ccfa61028817fa2e03fb0d2610a55b0033a7c60",
       "sourceSha256": "95177a1b6482821440d4cd410ccfa61028817fa2e03fb0d2610a55b0033a7c60"
     },
     {
@@ -269,7 +269,7 @@
       "source": "bot/lib/jadibot-platform-api.js",
       "remote": "/lib/jadibot-platform-api.js",
       "beforeSha256": "d914ae224a30b16d55a4a3d31df037c8cb7c4a7eae2d2768b7dc47c61b39f1f9",
-      "sourceSha256": "d914ae224a30b16d55a4a3d31df037c8cb7c4a7eae2d2768b7dc47c61b39f1f9"
+      "sourceSha256": "796e3fc26f03e4966b34d1c299234cb334d1f32d087cbe4c6d2367148eeef43a"
     },
     {
       "role": "game",
@@ -438,6 +438,34 @@
       "remote": "/tools/check-amfind.mjs",
       "beforeSha256": "85540f1c3cb4321dfc12f18eff2fd0a04d3052d284a5cc6fad446f18173ae771",
       "sourceSha256": "85540f1c3cb4321dfc12f18eff2fd0a04d3052d284a5cc6fad446f18173ae771"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/bot-config.js",
+      "remote": "/lib/bot-config.js",
+      "beforeSha256": "34dae2d8ed3e5f58d7cdf4873d484aab06f6075fdf4a0c16cd8e0a65d90343d2",
+      "sourceSha256": "2436a99bb7315eb89b4d6b81cff941e6869d8cc2c16f6be72a46cfa0b30e917c"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/baileys-session-compat.js",
+      "remote": "/lib/baileys-session-compat.js",
+      "beforeSha256": null,
+      "sourceSha256": "1c30fcf275397008ed5bb65ea553171311dbfecfce77f14157e81f125e2bf1f6"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/profile-photo.js",
+      "remote": "/lib/profile-photo.js",
+      "beforeSha256": null,
+      "sourceSha256": "c9bef272f8b6630b88de17d1c3aa5993d67fed424ab37f9bc4f25667f964492f"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/economy/xp-profile.js",
+      "remote": "/plugins/economy/xp-profile.js",
+      "beforeSha256": "b3b6de1901f263337915739d3c766839c2fb738891c9269379510948f57598d9",
+      "sourceSha256": "71131cd375c9ce90f887d86c189e5a0a24f3ab1a66da8f358c9ee12003e63eca"
     }
   ]
 }

@@ -124,6 +124,7 @@ function defaults() {
     onlyGroup: configured.onlyGroup === true,
     registrationRequired: configured.registrationRequired !== false,
     stickpack: String(configured.stickpack || namebot),
+    autoAI: { enabled: configured.autoAI?.enabled !== false },
     autoTyping: merge(mainValues.autoTyping || {}, configured.autoTyping || {}),
     autoTranslate: merge(mainValues.autoTranslate || {}, configured.autoTranslate || {}),
     runtimePerformance: merge(mainValues.runtimePerformance || {}, configured.runtimePerformance || {}),
@@ -152,6 +153,7 @@ function sanitize(raw = {}) {
   output.namebot = String(output.namebot || base.namebot).slice(0, 80)
   output.defaultPrefix = String(output.defaultPrefix || '.').slice(0, 3) || '.'
   output.defaultLimit = normalizeDefaultLimit(output.defaultLimit, base.defaultLimit)
+  output.autoAI = { enabled: raw.autoAIEnabled === false ? false : output.autoAI?.enabled !== false }
   output.public = output.public !== false
   output.onlyGroup = output.onlyGroup === true
   output.registrationRequired = output.registrationRequired !== false
@@ -192,6 +194,7 @@ export function loadJadibotConfig(number, sessionPath = '', { create = true } = 
     file,
     values: {
       namebot: values.namebot,
+      autoAI: values.autoAI,
       autoTyping: values.autoTyping,
       autoTranslate: values.autoTranslate,
       runtimePerformance: values.runtimePerformance,
@@ -225,6 +228,7 @@ export function saveJadibotConfig(profile) {
     registrationRequired: profile.registrationRequired !== false,
     ownerNumbers: profile.ownerNumbers,
     stickpack: profile.values?.stickpack,
+    autoAI: profile.values?.autoAI,
     autoTyping: profile.values?.autoTyping,
     autoTranslate: profile.values?.autoTranslate,
     runtimePerformance: profile.values?.runtimePerformance,

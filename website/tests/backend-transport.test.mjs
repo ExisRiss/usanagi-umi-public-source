@@ -30,5 +30,5 @@ test('owner controls have access to the private application scope, not missing g
  assert.equal(node('mainBotToggleState').textContent,'NONAKTIF');assert.equal(node('autoreadState').textContent,'NONAKTIF');assert.equal(context.ui.mainConnectionLabel({main_bot_enabled:false}),'NONAKTIF')
 })
 test('HTML uses versioned external scripts/styles compatible with strict CSP',()=>{
- const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');assert.doesNotMatch(html,/<script(?![^>]*\bsrc=)[^>]*>/);assert.doesNotMatch(html,/\sstyle="/);assert.match(html,/auth-controls\.js\?v=20261018-backend52/);assert.match(html,/layout-compat\.css/);assert.equal(html,fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8'))
+ const html=fs.readFileSync(new URL('../index.html',import.meta.url),'utf8');assert.doesNotMatch(html,/<script(?![^>]*\bsrc=)[^>]*>/);assert.doesNotMatch(html,/\sstyle="/);assert.match(html,/auth-controls\.js\?v=20261018-session60/);assert.match(html,/layout-compat\.css/);assert.equal(html,fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8'))
 })

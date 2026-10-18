@@ -11,6 +11,7 @@
  * Skrip ini memeriksa hal-hal itu dan hanya memperbaiki yang memang rusak,
  * jadi aman dijalankan setiap kali server dinyalakan.
  */
+import { repairBaileysSessions } from '../lib/baileys-session-compat.js'
 import { spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -145,5 +146,8 @@ for (const dir of ['sessions', 'tmp', 'jadibot']) {
   fs.mkdirSync(path.join(ROOT, dir), { recursive: true })
 }
 
+// Patch dependency source before its first ESM import; idempotent after npm reinstalls.
+try { log('Baileys session wire:', repairBaileysSessions(ROOT)) }
+catch (error) { log('Baileys session compatibility needs review:', error.message) }
 log('menyerahkan ke main.js...')
 await import(path.join(ROOT, 'main.js'))

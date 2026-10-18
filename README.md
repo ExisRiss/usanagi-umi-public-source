@@ -4,6 +4,13 @@ This repository contains the **sanitized source template** for the Usanagi Umi W
 
 > **Security notice:** This is intentionally not a production backup. WhatsApp sessions, phone numbers, pairing codes, database/runtime data, Pterodactyl/GitHub/Vercel credentials, API keys, environment files, deployment archives, and owner-specific configuration have been removed or replaced with placeholders.
 
+## AutoAI per session, menu dan profil — Task60 (18 Oktober 2026)
+
+- Tombol **AutoAI ON/OFF** di setiap kartu Sessions dan checkbox Settings. Pengaturan tersimpan per sesi, tidak mengubah sesi lain; toggle kartu berlaku tanpa restart. Command manual tetap tersedia saat AutoAI OFF.
+- Perbaiki key-query `.menu` yang membuang PN tanpa mapping LID dan bisa mengirim IQ kosong. Boot compatibility patch exact-match mempertahankan identitas/device asli, tanpa hapus auth atau blind retry pesan.
+- `.me` tidak lagi memakai URL foto placeholder 404. Avatar didownload dengan batas waktu/ukuran; bila tidak tersedia, profil lengkap tetap dikirim sebagai teks.
+- 419 tes +15 pemeriksaan browser desktop/mobile PASS; 66/66 SHA produksi cocok dan dua domain website menyajikan versi baru. Main/autoread OFF, sesi/progres tidak direset. Penerimaan command di perangkat WhatsApp pelapor belum diverifikasi. [Detail Task60](docs/SESSION-AUTOAI-MENU-PROFILE-TASK60.md).
+
 ## Combat dan NPC website RPG — Task59 (18 Oktober 2026)
 
 - Klik/tap monster sekarang berjalan mendekat, memulai encounter dan menyerang. Monster punya jadwal serangan server sendiri; multi-tab tidak menggandakan damage. NPC bisa diajak bicara lewat kepala/badan/label atau tombol Target sekitar.

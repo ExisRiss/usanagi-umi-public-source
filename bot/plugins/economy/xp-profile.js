@@ -1,5 +1,6 @@
 /* By AlzRiss - Usanagi Umi AI */
 
+import { profilePhoto } from '../../lib/profile-photo.js'
 import PhoneNumber from 'awesome-phonenumber'
 import moment from 'moment-timezone'
 import { isOwner as checkOwner, resolveTargetPhoneNumber } from '../../lib/awang-cekakses.js'
@@ -30,9 +31,7 @@ const handler = async (m, { conn, usedPrefix }) => {
   let number = `+${rawNumber}`
   try { number = PhoneNumber('+' + rawNumber).getNumber('international') || number } catch {}
 
-  let pp
-  try { pp = await conn.profilePictureUrl(requestedJid, 'image') }
-  catch { pp = 'https://i.ibb.co/profile.jpg' }
+  const pp = await profilePhoto(conn, requestedJid)
 
   let bio
   try { bio = (await conn.fetchStatus(requestedJid))?.status || 'Tidak ada bio' }
@@ -84,12 +83,10 @@ ${birthday ? '' : `Atur tanggal lahir: ${usedPrefix}setbirthday DD-MM-YYYY\n`}
 🥜 *Waku waku~*
 `.trim()
 
-  const imagePayload = Buffer.isBuffer(pp) ? { image: pp } : { image: { url: pp } }
   await conn.sendMessage(m.chat, {
-    ...imagePayload,
-    caption: text,
+    ...(pp ? { image: pp, caption: text } : { text }),
     mentions: [requestedJid]
-  }, { quoted: m })
+  }, { quoted: m.raw || m })
 }
 
 handler.help = ['profile', 'profil', 'me', 'my']
