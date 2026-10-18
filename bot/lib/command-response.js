@@ -4,6 +4,18 @@ import { AsyncLocalStorage } from 'node:async_hooks'
 const key = Symbol.for('umi.message.response.v1')
 if (!global[key]) global[key] = { context:new AsyncLocalStorage(), sockets:new WeakMap() }
 const state = global[key]
+if (!state.outbound) state.outbound = new WeakMap()
+function rememberOutbound(conn, id) {
+  if (typeof id !== 'string' || !id) return
+  let ids=state.outbound.get(conn)
+  if(!ids){ids=new Map();state.outbound.set(conn,ids)}
+  const now=Date.now();ids.set(id,now)
+  for(const [key,at] of ids){if(at<now-600000||ids.size>2048)ids.delete(key);else break}
+}
+export function isOwnOutboundEcho(conn,m) {
+  const at=conn&&state.outbound.get(conn)?.get(m?.key?.id||m?.id)
+  return Boolean((m?.fromMe||m?.key?.fromMe)&&at&&Date.now()-at<600000)
+}
 const META = new Set(['messageContextInfo','contextInfo','protocolMessage','reactionMessage','senderKeyDistributionMessage'])
 function meaningful(method, value) {
   if (method === 'reply') return typeof value === 'string' ? Boolean(value.trim()) : Boolean(value)
@@ -25,12 +37,23 @@ function install(conn) {
   for(const method of ['sendMessage','relayMessage','reply']) {
     const original=conn[method]
     if(typeof original!=='function' || original===record[method])continue
+    // The RPG flush wrapper may sit above our wrapper; do not grow a chain per message.
+    let inner=original,installed=false
+    for(let depth=0;inner&&depth<8;depth++){if(inner===record[method]){installed=true;break}inner=inner[Symbol.for('umi.rpg.outbound.original.v1')]}
+    if(installed)continue
     const wrapper=function(...args) {
       const ctx=state.context.getStore()
       const eligible=Boolean(ctx && ctx.conn===conn && ctx.chat && args[0]===ctx.chat && meaningful(method,args[1]))
       // Keep the original return semantics when outside a handled request.
-      if(!eligible)return original.apply(this,args)
-      return track(ctx,true,()=>original.apply(this,args))
+      const send=()=>{
+        // Remember explicit relay IDs before send, and actual transport result IDs.
+        rememberOutbound(conn,args[2]?.messageId)
+        const remember=result=>{rememberOutbound(conn,result?.key?.id);return result}
+        const result=original.apply(this,args)
+        return result&&typeof result.then==='function'?result.then(remember):remember(result)
+      }
+      if(!eligible)return send()
+      return track(ctx,true,send)
     }
     try { conn[method]=wrapper; if(conn[method]===wrapper)record[method]=wrapper } catch {}
   }

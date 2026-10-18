@@ -1,3 +1,4 @@
+import { isOwnOutboundEcho } from './command-response.js'
 import { chatGroq, getGroqSettings, groqBudget, redactProviderSecrets } from './groq-client.js'
 import { AUTO_AI_SYSTEM_PROMPT } from './auto-ai-prompt.js'
 
@@ -7,7 +8,7 @@ const DANGEROUS = /(?:^|[-_])(?:eval|exec|shell|bash|terminal|restartall|logout|
 // tidak menyebut antrean/tool/katalog, memakai format WhatsApp (satu bintang),
 // dan membuang pembuka kaku khas model.
 export function humanizeReply(input) {
-  let text = String(input || '').trim()
+  let text = String(input || '').trim().replace(/^!!+\s*/, '')
   if (!text) return ''
   text = text.replace(/^(?:auto-?ai|umi|bot)\s*[:\-]\s*/i, '')
   text = text.replace(/^(?:\*{0,2})(?:berhasil|sukses)(?:\*{0,2})[\s,:!-]+/i, '')
@@ -28,10 +29,14 @@ function jidId(value) { return String(value || '').replace(/:\d+(?=@)/, '').spli
 export function botIdentities(conn, bot = {}) {
   return [...new Set([conn?.user?.id, conn?.user?.jid, conn?.user?.lid, conn?.authState?.creds?.me?.id, conn?.authState?.creds?.me?.lid, bot.id, bot.jid, bot.lid, bot.phoneNumber].filter(Boolean).map(jidId))]
 }
+export function isSelfAIRequest(m, botConfig = {}) {
+  return botConfig.type === 'jadibot' && Boolean(m?.fromMe || m?.key?.fromMe) && !m?.isBaileys && !m?.__autoAIHandled && /^!!\S|^!!\s+\S/.test(String(m?.text || ''))
+}
 export function shouldAutoAITrigger(m, conn, botConfig = {}, bot = {}) {
-  if (!m || m.fromMe || m.key?.fromMe || m.isBaileys || m.__autoAIHandled || !String(m.text || '').trim()) return false
+  if (!m || m.isBaileys || isOwnOutboundEcho(conn, m) || m.__autoAIHandled || !String(m.text || '').trim()) return false
   if (/broadcast|newsletter/.test(String(m.chat || ''))) return false
   if (global.umiAutoAI?.enabled === false || botConfig.autoAIEnabled === false || botConfig.values?.autoAI?.enabled === false) return false
+  if (m.fromMe || m.key?.fromMe) return isSelfAIRequest(m, botConfig)
   const identities = botIdentities(conn, bot)
   const mentioned = (m.mentionedJid || []).some(jid => identities.includes(jidId(jid)))
   const replied = Boolean(m.quoted && (m.quoted.fromMe === true || m.quoted.key?.fromMe === true || identities.includes(jidId(m.quoted.sender))))
@@ -129,6 +134,7 @@ export function searchCatalog(catalog, query, limit = 12) {
 }
 function cleanInput(m, identities) {
   let text = String(m.text || '')
+  if ((m.fromMe || m.key?.fromMe) && text.startsWith('!!')) text = text.slice(2)
   for (const id of identities) text = text.replace(new RegExp('@' + id.replace(/[^0-9]/g, '') + '\\b', 'g'), '')
   return text.trim().slice(0, 6000)
 }
@@ -274,7 +280,7 @@ function clampDelay(value) {
 export async function planAutoAI(context, options = {}) {
   const { m, conn, botConfig = {}, activePrefix = '/' } = context
   if (!shouldAutoAITrigger(m, conn, botConfig, context.bot)) return { kind: 'skip' }
-  if (String(m.text || '').startsWith(String(activePrefix))) return { kind: 'skip' }
+  if (!isSelfAIRequest(m, botConfig) && String(m.text || '').startsWith(String(activePrefix))) return { kind: 'skip' }
   const key = `${botConfig.scope || conn?.user?.id}:${m.chat}:${m.sender}`
   const messageId = m.key?.id || m.id
   const seenKey = messageId && `${botConfig.scope || conn?.user?.id}:${m.chat}:${messageId}`
@@ -296,6 +302,7 @@ export async function planAutoAI(context, options = {}) {
     if (!getGroqSettings().enabled) return { kind: 'skip' }
     const catalog = buildCommandCatalog(context.plugins || global.plugins, context)
     const input = redactProviderSecrets(cleanInput(m, botIdentities(conn, context.bot)))
+    if (/^siapa(?:kah)?\s+(?:developer|pengembang|pembuat)(?:\s+(?:lu|lo|kamu|mu|bot(?: ini)?))?[?!.,\s]*$/i.test(input)) return { kind: 'answer', answer: 'Developerku AlzRiss, yang mengembangkan Umi dan platform Jadibot ini.' }
     const roles = { group: Boolean(m.isGroup), owner: Boolean(context.isOwner), admin: Boolean(context.isAdmin), botAdmin: Boolean(context.isBotAdmin), premium: Boolean(context.isPrems) }
     const caller = options.callModel || chatGroq
     // Satu panggilan model saja: kandidat fitur sudah dicari lokal, jawaban dan

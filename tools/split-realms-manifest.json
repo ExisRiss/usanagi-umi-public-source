@@ -3,8 +3,43 @@
     "bot": "serverjadibotVip",
     "game": "servergameVip"
   },
-  "note": "Task53: descriptor-safe RPG replies; authority-aware boot, message defaults and finalizer. Held identities may use non-RPG commands without bypassing progression guards. Preserve data, keys, sessions and main OFF.",
+  "note": "Task54: Realms private login access, verified Jadibot token to WA-proven account linking, own-message AutoAI only with !! and outbound echo guards. Code only; preserve keys, sessions and main OFF.",
   "files": [
+    {
+      "role": "bot",
+      "source": "bot/lib/command-response.js",
+      "remote": "/lib/command-response.js",
+      "beforeSha256": "e55f7aeedc5197439fae3a393b9afa32982ef1299386d0344057ef160ad47673",
+      "sourceSha256": "73339cb73faae9406d9a50f06599fbc892061aae1b9b46fd1847f4e8a030e257"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/auto-ai-prompt.js",
+      "remote": "/lib/auto-ai-prompt.js",
+      "beforeSha256": "55317e4d244fcbcabf499ecdadbac4d80fe10570c24cc27ffe497dbf9ff822ce",
+      "sourceSha256": "c969b3551d702c4f0f3260c0078567dc7b43ed77d375fcce8b501fd0a5726c0f"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/auto-ai.js",
+      "remote": "/lib/auto-ai.js",
+      "beforeSha256": "06da43c272bc037c496599a6d49a0074a227db9f2c300eb62e7edd3e5968b74b",
+      "sourceSha256": "93b528141bbafd7e95c40933e8c883d024380e67ab61e6f6b55aa617debf2cea"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/realms/access.js",
+      "remote": "/lib/realms/access.js",
+      "beforeSha256": null,
+      "sourceSha256": "2bc8d255a7d50402bba88aebabc426efc0a59867916edee184a6cca8a56811b0"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/realms/platform-login.js",
+      "remote": "/lib/realms/platform-login.js",
+      "beforeSha256": null,
+      "sourceSha256": "f75e4589aa9270b22d573830e4eed16121d34c76d0045ba3cd77b2af739cea7f"
+    },
     {
       "role": "bot",
       "source": "bot/lib/group-metadata-cache.js",
@@ -44,8 +79,8 @@
       "role": "bot",
       "source": "bot/lib/rpg/unified-runtime.js",
       "remote": "/lib/rpg/unified-runtime.js",
-      "beforeSha256": "669f65434a7f2c4e7a3606545fcb82fa75b2d4737103eb0838de7a54e38a415c",
-      "sourceSha256": "6b5b9eb581bd5b53337d080c365ec723a977002025429b97eb9885d2f4b31184"
+      "beforeSha256": "6b5b9eb581bd5b53337d080c365ec723a977002025429b97eb9885d2f4b31184",
+      "sourceSha256": "e00be665b9521f4e6df0181e464a4e34e49bb9bd834d48946f56eb9ec6dbdc58"
     },
     {
       "role": "game",
@@ -100,8 +135,8 @@
       "role": "bot",
       "source": "bot/lib/realms/service.js",
       "remote": "/lib/realms/service.js",
-      "beforeSha256": "9a430d887c164668978f059c8621f2116568ed1f88a84d2309b47ccea8fc6b2b",
-      "sourceSha256": "cdfaf9a9aee6bdb2484b80ea6f4624b7f6e8209bc07bd4295597ad38b9ea08bf"
+      "beforeSha256": "cdfaf9a9aee6bdb2484b80ea6f4624b7f6e8209bc07bd4295597ad38b9ea08bf",
+      "sourceSha256": "764bc0dda27e5cbe07e2eb6621b77cfd3a471ea28ba94618bb08c07347e027d2"
     },
     {
       "role": "bot",
@@ -122,21 +157,21 @@
       "source": "bot/lib/realms/http.js",
       "remote": "/lib/realms/http.js",
       "beforeSha256": "1a9a37bc1cb9499ee5a0b07eba6cca19a1ecdd8c11be82031413f199ba969a22",
-      "sourceSha256": "1a9a37bc1cb9499ee5a0b07eba6cca19a1ecdd8c11be82031413f199ba969a22"
+      "sourceSha256": "becba779e77e7858019fda64917b0fdbfeca0ca33d5a330549f9011f2000cb74"
     },
     {
       "role": "bot",
       "source": "bot/public/realms/index.html",
       "remote": "/public/realms/index.html",
-      "beforeSha256": "12757be5fe6f745e4330499ca11290ea3162e5dc3ce25bdf2d132a0bd0bb7add",
-      "sourceSha256": "12757be5fe6f745e4330499ca11290ea3162e5dc3ce25bdf2d132a0bd0bb7add"
+      "beforeSha256": "bd9398c25c44c9d21548d17743e3cafc770337b5fcac627db754c9a767a9afcc",
+      "sourceSha256": "e00dab77c84cbaad577d76abb8949657d628d037bcf68be601e911ded156a340"
     },
     {
       "role": "bot",
       "source": "bot/public/realms/app.js",
       "remote": "/public/realms/app.js",
       "beforeSha256": "05edefafbb1cf98f568cc8a5f44a8ef7c3146ac3f3e61b4720afbbdeca2666dd",
-      "sourceSha256": "05edefafbb1cf98f568cc8a5f44a8ef7c3146ac3f3e61b4720afbbdeca2666dd"
+      "sourceSha256": "8fae075f21486287e52cf4e7ba8f4482e1c4344d8b5f423bd2f0b4385b997e7d"
     },
     {
       "role": "bot",
@@ -171,7 +206,7 @@
       "source": "bot/plugins/rpg/realms.js",
       "remote": "/plugins/rpg/realms.js",
       "beforeSha256": "001e862cad523d6dc45ab3d936f534daa1560668e31101d2c054828fd151ea87",
-      "sourceSha256": "001e862cad523d6dc45ab3d936f534daa1560668e31101d2c054828fd151ea87"
+      "sourceSha256": "82519c0651bf755b9ca92f93082a8fb5fb919f9daf3eea925a365d80fd9e8004"
     },
     {
       "role": "bot",
@@ -303,8 +338,8 @@
       "role": "bot",
       "source": "bot/handler.js",
       "remote": "/handler.js",
-      "beforeSha256": "b5e3335be1671fce1fd3f27a3ea04a69c4fc6ff6fb9c3cc9098d54f83c8dc6a1",
-      "sourceSha256": "995c93d73b5bc27fa27a7bc0061dbcd8c05ecdeae811d410c4793096e62a32ee"
+      "beforeSha256": "995c93d73b5bc27fa27a7bc0061dbcd8c05ecdeae811d410c4793096e62a32ee",
+      "sourceSha256": "16c308a2915f47842aeb691ce9a4b3be4845be81cbccd12cccc70a36686970ae"
     },
     {
       "role": "bot",

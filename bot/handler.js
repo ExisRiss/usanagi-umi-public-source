@@ -1,8 +1,9 @@
+import { isRealmAccessCommand } from './lib/realms/access.js';
 import { runUnifiedCommand, awardMessageExp } from './lib/rpg/unified-runtime.js';
 import { unifiedRpg } from './lib/rpg/unified-store.js';
 import { withRealmGate } from './lib/realms/gate.js';
 import { withMessageResponses, bindResponseMessage, maySuggestCommand } from './lib/command-response.js';
-import { planAutoAI, shouldAutoAITrigger } from './lib/auto-ai.js';
+import { planAutoAI, shouldAutoAITrigger, isSelfAIRequest } from './lib/auto-ai.js';
 import { schedulePluginCommand } from './lib/auto-ai-scheduler.js';
 import { runWithBotConnection } from './lib/bot-connection-context.js';
 import { smsg } from './lib/simple.js';
@@ -304,7 +305,10 @@ if (isStatus) return
 // ==================
 // 🚫 PRIVATE CHAT
 // ==================
-const prefix = /^[.!#/$]/
+const prefixKey = prefixStorageKey(this, m.chat)
+const activePrefix = await getActivePrefix(prefixKey, botConfig.defaultPrefix)
+const realmAccessCommand = isRealmAccessCommand(m.text, activePrefix)
+const prefix = { test: text => String(text || '').startsWith(activePrefix) }
 
 if (!isGroup) {
   const body = typeof m.text === 'string' ? m.text.trim() : ''
@@ -313,13 +317,13 @@ if (!isGroup) {
   if (!prefix.test(body) && !shouldAutoAITrigger(m, this, botConfig)) return
 
   // ambil command setelah prefix
-  const cmd = prefix.test(body) ? body.slice(1).trim() : body
+  const cmd = prefix.test(body) ? body.slice(activePrefix.length).trim() : body
 
   // kalau cuma "." atau "!" dll → skip
   if (!cmd) return
 
   // cek premium
-  if (!isPrems) {
+  if (!isPrems && !realmAccessCommand) {
     // if (!userData.lastWarn || Date.now() - userData.lastWarn > 10000) {
       // userData.lastWarn = Date.now()
       // await m.reply('🚫 Private chat hanya untuk user premium!')
@@ -347,7 +351,7 @@ m.limit = false;
 	// Mode akses per-session Jadibot:
 	// - onlyGroup: seluruh command ditolak di private chat.
 	// - self: hanya owner session, developer terkunci, atau bot sendiri.
-	if (botConfig.type === 'jadibot' && botConfig.onlyGroup === true && !m.isGroup) return;
+	if (botConfig.type === 'jadibot' && botConfig.onlyGroup === true && !m.isGroup && !realmAccessCommand) return;
 	const instancePublic = botConfig.type === 'jadibot'
 		? botConfig.public !== false
 		: global.db.data.settings[this.user.jid].public
@@ -359,8 +363,7 @@ m.exp += Math.ceil(Math.random() * 10);
 		// Resolve once per incoming message. Prefix changes are read directly from
 		// SQLite, so setprefix takes effect on the very next message without adding
 		// event listeners or retaining a stale global regex.
-		const prefixKey = prefixStorageKey(this, m.chat)
-		const activePrefix = await getActivePrefix(prefixKey, botConfig.defaultPrefix)
+
 		let _user = global.db.data && global.db.data.users && global.db.data.users[m.sender];
 
 		const groupMetadata = m.isGroup ? await conn.groupMetadata(m.chat).catch(() => ({})) : {}
@@ -419,6 +422,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 }
 
         // Auto-AI chooses a command; the native dispatcher below remains the only executor.
+        const selfAIRequest = isSelfAIRequest(m, botConfig);
         const aiPlan = await planAutoAI({
             m, conn: this, botConfig, activePrefix, bot, plugins: global.plugins,
             isROwner, isOwner, isMods, isAdmin, isBotAdmin, isPrems,
@@ -469,7 +473,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
                     : note;
             }
         }
-        const aiDispatchText = aiDispatchPlan ? `${activePrefix}${aiDispatchPlan.command}${aiDispatchPlan.args ? ' ' + aiDispatchPlan.args : ''}` : m.text;
+        const aiDispatchText = aiDispatchPlan ? `${activePrefix}${aiDispatchPlan.command}${aiDispatchPlan.args ? ' ' + aiDispatchPlan.args : ''}` : selfAIRequest ? '' : m.text;
         if (aiPlan.kind === 'answer') { m.__autoAIHandled = true; m.__autoAIAnswer = aiPlan.answer; }
         if (aiDispatchPlan) {
             m.__autoAITargetPlugin = aiDispatchPlan.plugin;
@@ -627,7 +631,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
                 // bot sendiri tidak dikunci agar administrasi tetap aman.
                 const registrationRequired = botConfig?.registrationRequired !== false;
                 const registered = _user?.registered === true;
-                if (registrationRequired && !registered && !isOwner && !m.fromMe && !registrationCommands.has(command)) {
+                if (registrationRequired && !registered && !isOwner && !m.fromMe && !registrationCommands.has(command) && !(realmAccessCommand && name === 'rpg/realms.js')) {
                     if (!m.__registrationPrompted) {
                         m.__registrationPrompted = true;
                         await m.reply(registrationRequiredMessage(usedPrefix));
@@ -720,7 +724,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 					fail('private', m, this);
 					continue;
 				}
-				if (plugin.register == true && _user.registered == false) {
+				if (plugin.register == true && _user.registered == false && !(realmAccessCommand && name === 'rpg/realms.js')) {
 					// Butuh daftar?
 					fail('unreg', m, this);
 					continue;

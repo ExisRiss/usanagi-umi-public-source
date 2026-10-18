@@ -49,6 +49,7 @@ export function wrapRpgOutbound(conn,m){
    const original=target[name];if(typeof original!=='function'||original[WRAPPED])continue
    const wrapped=function(...args){unifiedRpg()?.flush();return original.apply(this,args)}
    wrapped[WRAPPED]=true
+   wrapped[Symbol.for('umi.rpg.outbound.original.v1')]=original
    // Socket helpers may be immutable own properties; message helpers may be
    // inherited readonly methods. Never assign through either descriptor.
    const descriptor=Object.getOwnPropertyDescriptor(target,name)

@@ -72,3 +72,12 @@ test('configurable getter helpers are shadowed without invoking their setter',as
 test('direct rich-message relay is wrapped once and commits before transmission',async()=>{
  const f=fixture();try{let sends=0;const conn={relayMessage:async()=>{assert.equal(JSON.parse(db.prepare('SELECT data FROM rpg_users WHERE jid=?').get(f.id).data).koin,5009);sends++;return 'relayed'}};wrapRpgOutbound(conn);const first=conn.relayMessage;wrapRpgOutbound(conn);assert.equal(conn.relayMessage,first);assert.equal(await runUnifiedCommand('relay'+f.id,()=>{f.s.users[f.a].money+=9;return conn.relayMessage()},conn),'relayed');assert.equal(sends,1)}finally{f.finish()}
 })
+
+test('Jadibot token linking preserves canonical WhatsApp/Realms identity and shared currency',()=>{
+ const f=fixture();try{const subject=crypto.randomUUID(),linked=f.service.loginWithPlatform(subject,f.service.issueCode(f.lid).code);assert.equal(linked.state.id,f.account);f.service.act(f.account,{id:crypto.randomUUID(),op:'buy',item:'potion',quantity:1});const again=f.service.loginWithPlatform(subject);assert.equal(again.state.id,f.account);assert.equal(again.state.gold,4500);assert.equal(f.s.users[f.a].money,4500);assert.equal(f.s.users[f.lid].money,4500);f.service.revoke(f.lid);assert.throws(()=>f.service.loginWithPlatform(subject),/belum ditautkan/);assert.equal(f.s.users[f.a].money,4500)}finally{f.finish()}
+})
+
+test('response and RPG wrappers remain stable across repeated messages without transport chain growth',async()=>{
+ const {withMessageResponses,bindResponseMessage}=await import('../lib/command-response.js');const f=fixture();try{let sends=0;const conn={sendMessage:async()=>{sends++;return {key:{id:'sent-'+sends}}}};let first;
+ for(let i=0;i<100;i++){await withMessageResponses(conn,()=>{const m={chat:'test',reply:()=>conn.sendMessage('test',{text:'ok'})};bindResponseMessage(m);return runUnifiedCommand('wrap-stability:'+f.id+':'+i,()=>m.reply(),conn,m)});if(!first)first=conn.sendMessage;assert.equal(conn.sendMessage,first)}assert.equal(sends,100)}finally{f.finish()}
+})

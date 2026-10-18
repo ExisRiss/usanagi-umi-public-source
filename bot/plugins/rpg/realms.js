@@ -8,9 +8,9 @@ const handler=async(m,{args=[],usedPrefix='/'})=>withRealmGate(async()=>{
   if(['login','link'].includes(sub)){
    if(m.isGroup)return m.reply(`Kode masuk bersifat pribadi. Kirim ${usedPrefix}realms login di chat pribadi bot ini.`)
    const {code}=service.issueCode(m.sender)
-   return m.reply(`ECLIPSE REALMS\n\nWebsite: ${WEB}\nKode masuk sekali pakai: ${code}\nBerlaku 5 menit. Jangan bagikan kode ini. Kode ini bukan OTP WhatsApp.\n\nProgres memakai RPG Usanagi (SQLite): EXP, koin, inventory, quest, pet.\nKeluar dari semua sesi web: ${usedPrefix}realms putus`)
+   return m.reply(`ECLIPSE REALMS\n\nWebsite: ${WEB}\nKode masuk sekali pakai: ${code}\nBerlaku 5 menit. Di halaman masuk MMORPG, kode ini juga bisa dipakai bersama token akun dari Profil website Jadibot untuk menautkan akun sekali. Setelah ditautkan, cukup login memakai token Jadibot. Jangan bagikan kode atau token. Kode ini bukan OTP WhatsApp.\n\nProgres memakai RPG Usanagi (SQLite): EXP, koin, inventory, quest, pet.\nKeluar dari semua sesi web: ${usedPrefix}realms putus`)
   }
-  if(sub==='putus'){service.revoke(m.sender);return m.reply('Semua sesi website Realms dan kode login dicabut. Progres tetap tersimpan.')}
+  if(sub==='putus'){service.revoke(m.sender);return m.reply('Semua sesi website Realms, kode login, dan tautan akun Jadibot dicabut. Progres tetap tersimpan.')}
   const state=service.botState(m.sender)
   if(sub==='status'){
    if(!state)return m.reply(`Belum terhubung. Kirim ${usedPrefix}realms login di chat pribadi.`)

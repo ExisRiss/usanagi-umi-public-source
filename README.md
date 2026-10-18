@@ -4,6 +4,13 @@ This repository contains the **sanitized source template** for the Usanagi Umi W
 
 > **Security notice:** This is intentionally not a production backup. WhatsApp sessions, phone numbers, pairing codes, database/runtime data, Pterodactyl/GitHub/Vercel credentials, API keys, environment files, deployment archives, and owner-specific configuration have been removed or replaced with placeholders.
 
+## Login MMORPG & self-AutoAI — Task54 (18 Oktober 2026)
+
+- `{prefix}realms login` dapat dijalankan lewat chat pribadi Jadibot tanpa tertahan gate premium/gameplay. Kode tidak dikirim ke grup.
+- MMORPG menerima token akun dari Profil website Jadibot: pertama kali tautkan dengan kode WhatsApp, berikutnya cukup token. Satu akun/progres; tidak ada linking berdasarkan nomor diketik.
+- Pesan dari akun Jadibot sendiri hanya memicu AutoAI jika dimulai `!!`, misalnya `!!buka menu` atau `!!siapa developer lu`. Ada dedup dan penjagaan echo.
+- 198 tes otomatis +8 pemeriksaan browser fixture lulus; acceptance akun produksi/WhatsApp fisik terpisah. [Detail dan cara pakai Task54](docs/REALMS-LOGIN-SELF-AI-TASK54.md).
+
 ## Hotfix respons Jadibot — Task53 (18 Oktober 2026)
 
 - Wrapper RPG tidak lagi menulis langsung ke helper `reply` readonly; repair startup/default pesan/finalizer tidak lagi menulis progression ke identitas yang ditahan.

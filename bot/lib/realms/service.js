@@ -13,6 +13,7 @@ export const SCHEMA=`
 CREATE TABLE IF NOT EXISTS rpg_users(jid TEXT PRIMARY KEY,data TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS realm_accounts(id TEXT PRIMARY KEY,jid TEXT NOT NULL UNIQUE,name TEXT NOT NULL COLLATE NOCASE UNIQUE,created INTEGER NOT NULL,muted_until INTEGER NOT NULL DEFAULT 0);
 CREATE TABLE IF NOT EXISTS realm_codes(hash TEXT PRIMARY KEY,jid TEXT NOT NULL UNIQUE,expires INTEGER NOT NULL);
+CREATE TABLE IF NOT EXISTS realm_web_links(subject TEXT PRIMARY KEY,jid TEXT NOT NULL UNIQUE,created INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS realm_sessions(hash TEXT PRIMARY KEY,account TEXT NOT NULL,expires INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS realm_sessions_account ON realm_sessions(account);
 CREATE TABLE IF NOT EXISTS realm_actions(account TEXT NOT NULL,request TEXT NOT NULL,fingerprint TEXT NOT NULL,result TEXT NOT NULL,created INTEGER NOT NULL,PRIMARY KEY(account,request));
@@ -63,20 +64,41 @@ export function createRealmService({db,getUser,saveUser,now=Date.now,randomInt=c
   db.prepare('INSERT INTO realm_codes VALUES(?,?,?)').run(digest(code),jid,expires)
   return {code,expires}
  })
- const redeem=db.transaction(code=>{
+ function validCode(code){
   if(typeof code!=='string'||! /^[A-Fa-f0-9]{12}$/.test(code))fail('Kode salah atau sudah kedaluwarsa.',401)
   const row=db.prepare('SELECT * FROM realm_codes WHERE hash=? AND expires>?').get(digest(code.toUpperCase()),now())
   if(!row)fail('Kode salah atau sudah kedaluwarsa.',401)
-  db.prepare('DELETE FROM realm_codes WHERE hash=?').run(digest(code.toUpperCase()))
-  const a=ensureAccount(row.jid),u=load(a);saveUser(a.jid,u)
+  return row
+ }
+ function openSession(jid){
+  const a=ensureAccount(canonicalJid(jid)),u=load(a);saveUser(a.jid,u)
   const token=crypto.randomBytes(32).toString('base64url'),expires=now()+7*86400000
   db.prepare('DELETE FROM realm_sessions WHERE expires<?').run(now())
   db.prepare('INSERT INTO realm_sessions VALUES(?,?,?)').run(digest(token),a.id,expires)
   audit(a,'login',{});return {token,expires,state:view(a,u)}
+ }
+ const redeem=db.transaction(code=>{
+  const row=validCode(code)
+  db.prepare('DELETE FROM realm_codes WHERE hash=?').run(row.hash)
+  return openSession(row.jid)
+ })
+ // subject must come ONLY from server-side website token verification.
+ const loginWithPlatform=db.transaction((subject,code)=>{
+  if(typeof subject!=='string'||!/^[a-zA-Z0-9_-]{8,128}$/.test(subject))fail('Identitas akun tidak valid.',401)
+  const linked=db.prepare('SELECT jid FROM realm_web_links WHERE subject=?').get(subject)
+  if(code){
+   const row=validCode(code),other=db.prepare('SELECT subject FROM realm_web_links WHERE jid=?').get(row.jid)
+   if((linked&&linked.jid!==row.jid)||(other&&other.subject!==subject))fail('Akun sudah ditautkan ke akun lain. Cabut tautan lama melalui perintah realms putus dari WhatsApp pemilik.',409)
+   const result=redeem(code)
+   db.prepare('INSERT OR IGNORE INTO realm_web_links VALUES(?,?,?)').run(subject,row.jid,now())
+   return result
+  }
+  if(!linked)fail('Token valid, tetapi akun belum ditautkan. Isi kode dari {prefix}realms login sekali untuk menyambungkan progres WhatsApp.',409)
+  return openSession(linked.jid)
  })
  function authenticate(token){const s=db.prepare('SELECT account FROM realm_sessions WHERE hash=? AND expires>?').get(digest(token||''),now());if(!s)fail('Masuk dengan kode WhatsApp terlebih dahulu.',401);return account(s.account)}
  function logout(token){db.prepare('DELETE FROM realm_sessions WHERE hash=?').run(digest(token||''))}
- function revoke(jid){const a=db.prepare('SELECT * FROM realm_accounts WHERE jid=?').get(canonicalJid(jid));if(a){db.prepare('DELETE FROM realm_sessions WHERE account=?').run(a.id);presence.delete(a.id)}db.prepare('DELETE FROM realm_codes WHERE jid=?').run(canonicalJid(jid))}
+ function revoke(jid){const a=db.prepare('SELECT * FROM realm_accounts WHERE jid=?').get(canonicalJid(jid));if(a){db.prepare('DELETE FROM realm_sessions WHERE account=?').run(a.id);presence.delete(a.id)}db.prepare('DELETE FROM realm_codes WHERE jid=?').run(canonicalJid(jid));db.prepare('DELETE FROM realm_web_links WHERE jid=?').run(canonicalJid(jid))}
  function snapshot(id){const a=account(id);return view(a)}
  const act=db.transaction((id,input)=>{
   const a=account(id)
@@ -218,7 +240,7 @@ export function createRealmService({db,getUser,saveUser,now=Date.now,randomInt=c
  function leaderboard(){return db.prepare('SELECT id,name,jid FROM realm_accounts LIMIT 1000').all().map(a=>{const u=load(a);return{id:a.id,name:a.name,level:u.level,exp:u.exp}}).sort((a,b)=>b.exp-a.exp).slice(0,50)}
  function botState(jid){const a=db.prepare('SELECT * FROM realm_accounts WHERE jid=?').get(canonicalJid(jid));return a?view(a):null}
  function botAction(jid,input){const a=db.prepare('SELECT * FROM realm_accounts WHERE jid=?').get(canonicalJid(jid));if(!a)fail('Masuk website dengan kode terlebih dahulu.');return act(a.id,input)}
- const api={issueCode,redeem,authenticate,logout,revoke,snapshot,act,touch,online,chatHistory,chat,block,report,leaderboard,botState,botAction}
+ const api={issueCode,redeem,loginWithPlatform,authenticate,logout,revoke,snapshot,act,touch,online,chatHistory,chat,block,report,leaderboard,botState,botAction}
  // Existing synchronous SQLite transactions must retain player+receipt atomicity.
  return Object.fromEntries(Object.entries(api).map(([name,fn])=>[name,(...args)=>unifiedRpg()?unifiedRpg().direct(()=>fn(...args)):fn(...args)]))
 }
