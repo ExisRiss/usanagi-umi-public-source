@@ -275,8 +275,8 @@
       "role": "game",
       "source": "db-mirror/game.js",
       "remote": "/game.js",
-      "beforeSha256": "85e8e5c27575c173dd97db5e74ba54f50ece61de3c4ad14c96af8cbeeb248b3d",
-      "sourceSha256": "ca758fae918990416df18f3e65befb11ec3bb131570dbf56a7c88dee6b0db621"
+      "beforeSha256": "ca758fae918990416df18f3e65befb11ec3bb131570dbf56a7c88dee6b0db621",
+      "sourceSha256": "1f1f38f23d4a04ac53687633a336a2cab5457b322718cfef76fc7a88aa08853c"
     },
     {
       "role": "game",
@@ -478,8 +478,8 @@
       "role": "game",
       "source": "db-mirror/trading.html",
       "remote": "/trading.html",
-      "beforeSha256": "6f5c4241d25dc5e46a9290969640eb3b086a1a2851b96e846ed6999002e857a1",
-      "sourceSha256": "cd25e3a94472c8e8d03a8679312badaeb3a8b9878dfdb9956576457b92dae075"
+      "beforeSha256": "cd25e3a94472c8e8d03a8679312badaeb3a8b9878dfdb9956576457b92dae075",
+      "sourceSha256": "12c85703a9e7b92feb3ebf0d2f88194ba2f54949b552922194cc75daafe7a24f"
     },
     {
       "role": "game",
@@ -550,6 +550,34 @@
       "remote": "/plugins/economy/limit.js",
       "beforeSha256": "f8f18eeb540ee5d6326f0403377513a99d1d198a49ee5255c67435bd1aa23838",
       "sourceSha256": "46cc1c1b21cbd6dabe72d8b2f3ffac3155f7d2524753c3491f7815c94af951df"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/game/trading-wa-html.js",
+      "remote": "/plugins/game/trading-wa-html.js",
+      "beforeSha256": "fff6d632c42cd87471155e220ed5afa192899f27669860b6e6ee47e49bd7e8e0",
+      "sourceSha256": "aa745daa4153c7f4401e274a7213a87ce05e29a917c89462916878be39869819"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/owner/usanagi-boost.js",
+      "remote": "/plugins/owner/usanagi-boost.js",
+      "beforeSha256": "deed13fe6360e6bf937daec4ff906fbfe5c6beb4261f896a37e81e14b7678032",
+      "sourceSha256": "461897a86a0f8507e7f947a399b3393f5bfde22cd45cb12b0a5746bc9edb309b"
+    },
+    {
+      "role": "game",
+      "source": "db-mirror/assets/trading-offline.bot.html",
+      "remote": "/assets/trading-offline.bot.html",
+      "beforeSha256": "137fe42288b18e7292c27a3c2822a0482b0d58a610c896977b55c541781fa9a1",
+      "sourceSha256": "4a2ae531945996f286015b7071d82c279bf78f7d23171460125c8485bd14c6a6"
+    },
+    {
+      "role": "game",
+      "source": "db-mirror/trading-offline.html",
+      "remote": "/trading-offline.html",
+      "beforeSha256": "9a24653e5780c5e0a88ddac7013728a8675a74f2ce76c6473d9a447dc03db533",
+      "sourceSha256": "70011f3c31c06342a49d7b7413d5b6df5d8ec4463f92238a34fc6dd03e05ac6a"
     }
   ]
 }

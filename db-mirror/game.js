@@ -1300,20 +1300,55 @@ export async function gameHandler(req, res) {
  * ═══════════════════════════════════════════════════════════════════════════ */
 const TICK_MS = 3000
 const TICKS_PER_DAY = Math.round(86400000 / TICK_MS)
-/* Harga dasar sengaja di kisaran $AS 0,40–3,20 supaya ekonomi tetap sama
- * dengan versi lama (saldo awal $AS 100, bonus harian 10) — pemain bisa beli
- * puluhan lot tanpa harus menunggu top up besar. */
+/* 45 emiten Bursa Efek Indonesia (kode & nama asli). Harga acuan = harga IDX
+ * dibagi 2.000 lalu dibulatkan 2 desimal, jadi tetap sebanding antar emiten dan
+ * masih terjangkau dengan saldo $AS 100 (bonus harian 10). */
 const MARKETS = [
-    { sym: 'UMI', name: 'Usanagi Umi Corp',   sector: 'Teknologi',     base: 1.24 },
-    { sym: 'JDB', name: 'Jadibot Studio',     sector: 'Teknologi',     base: 2.05 },
-    { sym: 'WAG', name: 'WhatsApp Group Inc', sector: 'Komunikasi',    base: 0.86 },
-    { sym: 'PNL', name: 'Panel Hosting',      sector: 'Infrastruktur', base: 1.62 },
-    { sym: 'GME', name: 'Umi Games',          sector: 'Hiburan',       base: 0.54 },
-    { sym: 'DAN', name: 'DANA Finance',       sector: 'Keuangan',      base: 3.10 },
-    { sym: 'SRV', name: 'Server VPS',         sector: 'Infrastruktur', base: 0.94 },
-    { sym: 'BOT', name: 'Bot AI',             sector: 'Teknologi',     base: 1.78 },
-    { sym: 'TRD', name: 'Trader $AS',         sector: 'Keuangan',      base: 0.42 },
-    { sym: 'HBG', name: 'Bandwidth Hosting',  sector: 'Infrastruktur', base: 1.10 },
+    { sym: 'BBCA', name: 'Bank Central Asia', sector: 'Perbankan', base: 4.50 },
+    { sym: 'BBRI', name: 'Bank Rakyat Indonesia', sector: 'Perbankan', base: 2.25 },
+    { sym: 'BMRI', name: 'Bank Mandiri', sector: 'Perbankan', base: 3.00 },
+    { sym: 'BBNI', name: 'Bank Negara Indonesia', sector: 'Perbankan', base: 2.70 },
+    { sym: 'BRIS', name: 'Bank Syariah Indonesia', sector: 'Perbankan', base: 1.30 },
+    { sym: 'ARTO', name: 'Bank Jago', sector: 'Perbankan', base: 1.20 },
+    { sym: 'TLKM', name: 'Telkom Indonesia', sector: 'Telekomunikasi', base: 1.45 },
+    { sym: 'EXCL', name: 'XLSmart Telecom', sector: 'Telekomunikasi', base: 1.15 },
+    { sym: 'ISAT', name: 'Indosat Ooredoo Hutchison', sector: 'Telekomunikasi', base: 4.75 },
+    { sym: 'TOWR', name: 'Sarana Menara Nusantara', sector: 'Telekomunikasi', base: 0.40 },
+    { sym: 'MTEL', name: 'Dayamitra Telekomunikasi', sector: 'Telekomunikasi', base: 0.31 },
+    { sym: 'ADRO', name: 'Alamtri Resources Indonesia', sector: 'Energi', base: 1.25 },
+    { sym: 'PTBA', name: 'Bukit Asam', sector: 'Energi', base: 1.40 },
+    { sym: 'ITMG', name: 'Indo Tambangraya Megah', sector: 'Energi', base: 13.00 },
+    { sym: 'MEDC', name: 'Medco Energi Internasional', sector: 'Energi', base: 0.65 },
+    { sym: 'PGAS', name: 'Perusahaan Gas Negara', sector: 'Energi', base: 0.80 },
+    { sym: 'AKRA', name: 'AKR Corporindo', sector: 'Energi', base: 0.70 },
+    { sym: 'ESSA', name: 'ESSA Industries Indonesia', sector: 'Energi', base: 0.45 },
+    { sym: 'ICBP', name: 'Indofood CBP Sukses Makmur', sector: 'Barang Konsumen', base: 5.50 },
+    { sym: 'INDF', name: 'Indofood Sukses Makmur', sector: 'Barang Konsumen', base: 3.50 },
+    { sym: 'UNVR', name: 'Unilever Indonesia', sector: 'Barang Konsumen', base: 0.90 },
+    { sym: 'HMSP', name: 'HM Sampoerna', sector: 'Barang Konsumen', base: 0.35 },
+    { sym: 'GGRM', name: 'Gudang Garam', sector: 'Barang Konsumen', base: 7.50 },
+    { sym: 'AMRT', name: 'Sumber Alfaria Trijaya', sector: 'Barang Konsumen', base: 1.45 },
+    { sym: 'CPIN', name: 'Charoen Pokphand Indonesia', sector: 'Barang Konsumen', base: 2.40 },
+    { sym: 'ANTM', name: 'Aneka Tambang', sector: 'Tambang', base: 0.80 },
+    { sym: 'MDKA', name: 'Merdeka Copper Gold', sector: 'Tambang', base: 1.20 },
+    { sym: 'TINS', name: 'Timah', sector: 'Tambang', base: 0.45 },
+    { sym: 'INCO', name: 'Vale Indonesia', sector: 'Tambang', base: 1.90 },
+    { sym: 'SMGR', name: 'Semen Indonesia', sector: 'Infrastruktur', base: 2.00 },
+    { sym: 'INTP', name: 'Indocement Tunggal Prakarsa', sector: 'Infrastruktur', base: 3.50 },
+    { sym: 'WIKA', name: 'Wijaya Karya', sector: 'Infrastruktur', base: 0.15 },
+    { sym: 'PTPP', name: 'PP (Persero)', sector: 'Infrastruktur', base: 0.20 },
+    { sym: 'ASII', name: 'Astra International', sector: 'Otomotif', base: 2.45 },
+    { sym: 'GOTO', name: 'GoTo Gojek Tokopedia', sector: 'Teknologi', base: 0.05 },
+    { sym: 'EMTK', name: 'Elang Mahkota Teknologi', sector: 'Teknologi', base: 0.25 },
+    { sym: 'BUKA', name: 'Bukalapak', sector: 'Teknologi', base: 0.07 },
+    { sym: 'KLBF', name: 'Kalbe Farma', sector: 'Kesehatan', base: 0.75 },
+    { sym: 'SIDO', name: 'Industri Jamu & Farmasi Sido Muncul', sector: 'Kesehatan', base: 0.30 },
+    { sym: 'BSDE', name: 'Bumi Serpong Damai', sector: 'Properti', base: 0.45 },
+    { sym: 'CTRA', name: 'Ciputra Development', sector: 'Properti', base: 0.50 },
+    { sym: 'ACES', name: 'Aspirasi Hidup Indonesia', sector: 'Ritel', base: 0.40 },
+    { sym: 'MAPI', name: 'Mitra Adiperkasa', sector: 'Ritel', base: 0.80 },
+    { sym: 'SCMA', name: 'Surya Citra Media', sector: 'Ritel', base: 0.10 },
+    { sym: 'TPIA', name: 'Chandra Asri Pacific', sector: 'Petrokimia', base: 3.50 },
 ]
 const MARKET_BY_SYM = Object.fromEntries(MARKETS.map((m) => [m.sym, m]))
 const TIMEFRAMES = { '1m': 20, '5m': 100, '15m': 300, '1h': 1200 } // tick per candle

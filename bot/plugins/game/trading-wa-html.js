@@ -180,19 +180,54 @@ input[type=number]:focus{outline:none;border-color:#2b6ea8}
 <script>
 (function(){
 "use strict";
-/* ── pasar: 10 saham, derau deterministik (tanpa boost) ── */
+/* ── pasar: 45 saham IDX, derau deterministik (tanpa boost) ── */
 var TICK=3000;
 var SAHAM=[
- {sym:'UMI',name:'Usanagi Umi Corp',base:1.24,sektor:'Teknologi',shares:1.20,vol:2400000,per:18.4},
- {sym:'JDB',name:'Jadibot Studio',base:2.05,sektor:'Teknologi',shares:0.86,vol:1750000,per:24.1},
- {sym:'WAG',name:'WhatsApp Group Inc',base:0.86,sektor:'Komunikasi',shares:2.40,vol:5100000,per:14.7},
- {sym:'PNL',name:'Panel Hosting',base:1.62,sektor:'Infrastruktur',shares:0.74,vol:980000,per:11.2},
- {sym:'GME',name:'Umi Games',base:0.54,sektor:'Hiburan',shares:1.85,vol:3600000,per:9.8},
- {sym:'DAN',name:'DANA Finance',base:3.10,sektor:'Keuangan',shares:0.42,vol:760000,per:21.6},
- {sym:'SRV',name:'Server VPS',base:0.94,sektor:'Infrastruktur',shares:1.05,vol:1240000,per:13.3},
- {sym:'BOT',name:'Bot AI',base:1.78,sektor:'Teknologi',shares:0.63,vol:1450000,per:29.8},
- {sym:'TRD',name:'Trader $AS',base:0.42,sektor:'Keuangan',shares:3.10,vol:6400000,per:7.4},
- {sym:'HBG',name:'Bandwidth Hosting',base:1.10,sektor:'Komunikasi',shares:0.95,vol:880000,per:12.9}
+ {sym:'BBCA',name:'Bank Central Asia',base:4.50,sektor:'Perbankan',shares:0.42,vol:7600000,per:21.6},
+ {sym:'BBRI',name:'Bank Rakyat Indonesia',base:2.25,sektor:'Perbankan',shares:1.05,vol:12400000,per:12.8},
+ {sym:'BMRI',name:'Bank Mandiri',base:3.00,sektor:'Perbankan',shares:0.74,vol:9800000,per:14.2},
+ {sym:'BBNI',name:'Bank Negara Indonesia',base:2.70,sektor:'Perbankan',shares:0.86,vol:7400000,per:9.7},
+ {sym:'BRIS',name:'Bank Syariah Indonesia',base:1.30,sektor:'Perbankan',shares:1.35,vol:5200000,per:18.9},
+ {sym:'ARTO',name:'Bank Jago',base:1.20,sektor:'Perbankan',shares:1.85,vol:6400000,per:42.5},
+ {sym:'TLKM',name:'Telkom Indonesia',base:1.45,sektor:'Telekomunikasi',shares:2.40,vol:15100000,per:13.4},
+ {sym:'EXCL',name:'XLSmart Telecom',base:1.15,sektor:'Telekomunikasi',shares:1.62,vol:8100000,per:16.1},
+ {sym:'ISAT',name:'Indosat Ooredoo Hutchison',base:4.75,sektor:'Telekomunikasi',shares:0.55,vol:4600000,per:11.8},
+ {sym:'TOWR',name:'Sarana Menara Nusantara',base:0.40,sektor:'Telekomunikasi',shares:3.10,vol:9200000,per:8.6},
+ {sym:'MTEL',name:'Dayamitra Telekomunikasi',base:0.31,sektor:'Telekomunikasi',shares:2.05,vol:11200000,per:17.3},
+ {sym:'ADRO',name:'Alamtri Resources Indonesia',base:1.25,sektor:'Energi',shares:2.15,vol:13800000,per:7.2},
+ {sym:'PTBA',name:'Bukit Asam',base:1.40,sektor:'Energi',shares:1.48,vol:7600000,per:9.4},
+ {sym:'ITMG',name:'Indo Tambangraya Megah',base:13.00,sektor:'Energi',shares:0.24,vol:1900000,per:6.1},
+ {sym:'MEDC',name:'Medco Energi Internasional',base:0.65,sektor:'Energi',shares:1.95,vol:9400000,per:10.5},
+ {sym:'PGAS',name:'Perusahaan Gas Negara',base:0.80,sektor:'Energi',shares:1.72,vol:8700000,per:8.2},
+ {sym:'AKRA',name:'AKR Corporindo',base:0.70,sektor:'Energi',shares:1.58,vol:6900000,per:11.4},
+ {sym:'ESSA',name:'ESSA Industries Indonesia',base:0.45,sektor:'Energi',shares:2.60,vol:8100000,per:14.7},
+ {sym:'ICBP',name:'Indofood CBP Sukses Makmur',base:5.50,sektor:'Barang Konsumen',shares:0.68,vol:4200000,per:15.9},
+ {sym:'INDF',name:'Indofood Sukses Makmur',base:3.50,sektor:'Barang Konsumen',shares:0.94,vol:6100000,per:9.1},
+ {sym:'UNVR',name:'Unilever Indonesia',base:0.90,sektor:'Barang Konsumen',shares:2.30,vol:7300000,per:24.3},
+ {sym:'HMSP',name:'HM Sampoerna',base:0.35,sektor:'Barang Konsumen',shares:3.40,vol:9800000,per:12.6},
+ {sym:'GGRM',name:'Gudang Garam',base:7.50,sektor:'Barang Konsumen',shares:0.32,vol:1500000,per:18.4},
+ {sym:'AMRT',name:'Sumber Alfaria Trijaya',base:1.45,sektor:'Barang Konsumen',shares:1.20,vol:5600000,per:31.7},
+ {sym:'CPIN',name:'Charoen Pokphand Indonesia',base:2.40,sektor:'Barang Konsumen',shares:0.81,vol:4900000,per:19.2},
+ {sym:'ANTM',name:'Aneka Tambang',base:0.80,sektor:'Tambang',shares:1.75,vol:10400000,per:13.8},
+ {sym:'MDKA',name:'Merdeka Copper Gold',base:1.20,sektor:'Tambang',shares:1.42,vol:7200000,per:36.5},
+ {sym:'TINS',name:'Timah',base:0.45,sektor:'Tambang',shares:2.20,vol:6300000,per:28.1},
+ {sym:'INCO',name:'Vale Indonesia',base:1.90,sektor:'Tambang',shares:0.72,vol:3800000,per:17.6},
+ {sym:'SMGR',name:'Semen Indonesia',base:2.00,sektor:'Infrastruktur',shares:0.88,vol:5400000,per:22.4},
+ {sym:'INTP',name:'Indocement Tunggal Prakarsa',base:3.50,sektor:'Infrastruktur',shares:0.51,vol:2600000,per:16.8},
+ {sym:'WIKA',name:'Wijaya Karya',base:0.15,sektor:'Infrastruktur',shares:3.55,vol:12400000,per:7.9},
+ {sym:'PTPP',name:'PP (Persero)',base:0.20,sektor:'Infrastruktur',shares:3.20,vol:10800000,per:8.4},
+ {sym:'ASII',name:'Astra International',base:2.45,sektor:'Otomotif',shares:0.92,vol:8600000,per:10.2},
+ {sym:'GOTO',name:'GoTo Gojek Tokopedia',base:0.05,sektor:'Teknologi',shares:4.20,vol:32100000,per:3.1},
+ {sym:'EMTK',name:'Elang Mahkota Teknologi',base:0.25,sektor:'Teknologi',shares:2.35,vol:7400000,per:11.5},
+ {sym:'BUKA',name:'Bukalapak',base:0.07,sektor:'Teknologi',shares:3.85,vol:15800000,per:4.8},
+ {sym:'KLBF',name:'Kalbe Farma',base:0.75,sektor:'Kesehatan',shares:1.65,vol:9600000,per:14.6},
+ {sym:'SIDO',name:'Industri Jamu & Farmasi Sido Muncul',base:0.30,sektor:'Kesehatan',shares:2.75,vol:8200000,per:17.9},
+ {sym:'BSDE',name:'Bumi Serpong Damai',base:0.45,sektor:'Properti',shares:2.15,vol:6700000,per:9.3},
+ {sym:'CTRA',name:'Ciputra Development',base:0.50,sektor:'Properti',shares:1.95,vol:7100000,per:11.1},
+ {sym:'ACES',name:'Aspirasi Hidup Indonesia',base:0.40,sektor:'Ritel',shares:2.05,vol:8400000,per:13.7},
+ {sym:'MAPI',name:'Mitra Adiperkasa',base:0.80,sektor:'Ritel',shares:1.48,vol:5900000,per:14.9},
+ {sym:'SCMA',name:'Surya Citra Media',base:0.10,sektor:'Ritel',shares:3.30,vol:14200000,per:6.4},
+ {sym:'TPIA',name:'Chandra Asri Pacific',base:3.50,sektor:'Petrokimia',shares:0.62,vol:3400000,per:27.2},
 ];
 var BY={}; SAHAM.forEach(function(s){BY[s.sym]=s});
 function frac(n){var v=Math.sin(n*12.9898)*43758.5453;return v-Math.floor(v)}
@@ -271,7 +306,7 @@ function big(n){
   return Math.round(n).toLocaleString('id-ID');
 }
 function $(id){return document.getElementById(id)}
-var selected='UMI', lastTick=-1;
+var selected='BBCA', lastTick=-1;
 var toastTimer=null;
 function toast(msg){var el=$('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){el.classList.remove('show')},1700)}
 

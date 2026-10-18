@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>UMI TRADE — Pasar $AS</title>
-<meta name="description" content="Pasar saham $AS Umi Games: harga real-time, order beli/jual, portofolio, top up, dan papan peringkat.">
+<meta name="description" content="45 saham IDX dengan simbol & nama asli: harga real-time, order beli/jual, portofolio, tukar koin, dan papan peringkat.">
 <meta name="theme-color" content="#0a0e1a">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="UMI TRADE">
@@ -14,7 +14,7 @@
 <link rel="manifest" href="/manifest.webmanifest">
 <meta property="og:type" content="website">
 <meta property="og:title" content="UMI TRADE — Pasar $AS">
-<meta property="og:description" content="Bursa saham $AS Umi Games: 10 saham, harga real-time, portofolio, dan papan peringkat trader.">
+<meta property="og:description" content="Bursa saham $AS Umi Games: 45 saham IDX, harga real-time, portofolio, dan papan peringkat trader.">
 <meta property="og:image" content="/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
@@ -259,7 +259,7 @@
       <div class="tickerhead">
         <div>
           <div class="row" style="gap:8px"><b id="tSym" style="font-size:17px">UMI</b><span class="badge" id="tSector">Teknologi</span></div>
-          <div class="tiny" id="tName">Usanagi Umi Corp</div>
+          <div class="tiny" id="tName">Bank Central Asia</div>
         </div>
         <div class="grow"></div>
         <div style="text-align:right">
@@ -538,7 +538,7 @@
     balance: 0, equity: 0, netWorth: 0, unrealized: 0, realized: 0,
     history: [], deposits: [], user: null, walletIdr: null, rate: 10,
     koinBalance: null, koinPerAs: 10, koinMin: 20, koinMax: 5000,
-    symbol: 'UMI', side: 'buy', tf: '1m', candles: [], feed: [], depth: null,
+    symbol: 'BBCA', side: 'buy', tf: '1m', candles: [], feed: [], depth: null,
     codes: [], live: false, board: null, account: null, session: null, loginMode: 'token',
   }
 
@@ -701,6 +701,13 @@
   }
 
   /* ─────────── halaman TRADING ─────────── */
+  /* Daftar emiten bisa berubah (Task64b). Kalau simbol yang tersimpan tidak
+     ada lagi di bursa, pindah ke simbol pertama supaya halaman tidak kosong. */
+  function ensureKnownSymbol() {
+    if (!state.symbols.length) return
+    if (state.symbols.some((s) => s.sym === state.symbol)) return
+    state.symbol = state.symbols[0].sym
+  }
   function currentQuote() { return state.quotes[state.symbol] || state.symbols.find((s) => s.sym === state.symbol) || null }
   function currentHolding() { return state.holdings.find((h) => h.sym === state.symbol) || null }
   function buyingPower() {
@@ -997,6 +1004,7 @@
     state.holdings = d.holdings || []
     if (d.session) { state.session = d.session; renderSession() }
     state.quotes = Object.fromEntries(state.symbols.map((s) => [s.sym, s]))
+    ensureKnownSymbol()
     renderTicker(state.symbols); renderMarketStats(); renderMarketList()
     renderSymbolPicker(); renderTradingHeader(); renderTraffic(); renderSaldo()
   }
@@ -1116,6 +1124,7 @@
     state.history = d.history || []; state.deposits = d.deposits || []
     state.symbols = (d.market || []).map((q) => q); state.session = d.session || null
     state.quotes = Object.fromEntries(state.symbols.map((x) => [x.sym, x]))
+    ensureKnownSymbol()
     renderTicker(state.symbols); renderSymbolPicker(); renderTradingHeader(); renderSession()
     await Promise.all([loadAccount(), loadCodes(), loadTraffic(), loadMarket()])
     $('loginView').classList.add('hidden'); $('tabbar').classList.remove('hidden')

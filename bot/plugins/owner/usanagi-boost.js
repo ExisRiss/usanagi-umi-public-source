@@ -117,7 +117,7 @@ let handler = async (m, { text, command, usedPrefix, isOwner }) => {
     let rate = 0
 
     if (cmd === 'boosttrd') {
-      symbol = 'TRD'
+      symbol = 'BBCA'
       if (args[0]) minutes = Number(args[0])
       if (args[1]) rate = Number(args[1]) / 100
     } else {
