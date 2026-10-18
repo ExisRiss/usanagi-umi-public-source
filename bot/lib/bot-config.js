@@ -104,6 +104,7 @@ export function getMainBotConfig() {
     number: '',
     defaultPrefix: String(global.mainBot?.defaultPrefix || '.'),
     defaultLimit: 50,
+    limitEnabled: global.mainBot?.limitEnabled !== false,
     public: true,
     registrationRequired: global.mainBot?.registrationRequired !== false,
     disabledPlugins: [],
@@ -120,6 +121,7 @@ function defaults() {
     namebot,
     defaultPrefix: String(configured.defaultPrefix || '.'),
     defaultLimit: normalizeDefaultLimit(configured.defaultLimit, 25),
+    limitEnabled: configured.limitEnabled !== false,
     public: configured.public !== false,
     onlyGroup: configured.onlyGroup === true,
     registrationRequired: configured.registrationRequired !== false,
@@ -153,6 +155,7 @@ function sanitize(raw = {}) {
   output.namebot = String(output.namebot || base.namebot).slice(0, 80)
   output.defaultPrefix = String(output.defaultPrefix || '.').slice(0, 3) || '.'
   output.defaultLimit = normalizeDefaultLimit(output.defaultLimit, base.defaultLimit)
+  output.limitEnabled = output.limitEnabled !== false
   output.autoAI = { enabled: raw.autoAIEnabled === false ? false : output.autoAI?.enabled !== false }
   output.public = output.public !== false
   output.onlyGroup = output.onlyGroup === true
@@ -185,6 +188,7 @@ export function loadJadibotConfig(number, sessionPath = '', { create = true } = 
     number: normalized,
     defaultPrefix: values.defaultPrefix,
     defaultLimit: values.defaultLimit,
+    limitEnabled: values.limitEnabled !== false,
     public: values.public,
     onlyGroup: values.onlyGroup,
     registrationRequired: values.registrationRequired,
@@ -194,6 +198,7 @@ export function loadJadibotConfig(number, sessionPath = '', { create = true } = 
     file,
     values: {
       namebot: values.namebot,
+      limitEnabled: values.limitEnabled !== false,
       autoAI: values.autoAI,
       autoTyping: values.autoTyping,
       autoTranslate: values.autoTranslate,
@@ -223,6 +228,7 @@ export function saveJadibotConfig(profile) {
     namebot: profile.values?.namebot,
     defaultPrefix: profile.defaultPrefix,
     defaultLimit: profile.defaultLimit,
+    limitEnabled: profile.limitEnabled !== false,
     public: profile.public,
     onlyGroup: profile.onlyGroup,
     registrationRequired: profile.registrationRequired !== false,

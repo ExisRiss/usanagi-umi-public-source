@@ -1,3 +1,4 @@
+import { limitsEnabled } from './limit-mode.js'
 import { isOwnOutboundEcho } from './command-response.js'
 import { chatGroq, getGroqSettings, groqBudget } from './groq-client.js'
 import { conversationKey, conversationMemory, conversationOnly, conversationText, forgetConversation } from './auto-ai-conversation.js'
@@ -74,7 +75,7 @@ export function permissionReason(plugin, context) {
   if ((plugin.private || plugin.privateOnly) && m.isGroup) return 'Hanya untuk chat pribadi.'
   if (botConfig.registrationRequired !== false && !userData.registered && !isOwner && !m.fromMe) return 'Daftar terlebih dahulu.'
   if (Number(plugin.level || 0) > Number(userData.level || 0)) return 'Level belum cukup.'
-  if (!isPrems && userData.limit !== -1 && !userData.isUnlimitedLimit && Number(plugin.limit || 0) > Number(userData.limit || 0)) return 'Limit tidak cukup.'
+  if (limitsEnabled(botConfig) && Number(botConfig.defaultLimit) !== -1 && !isPrems && userData.limit !== -1 && !userData.isUnlimitedLimit && Number(plugin.limit || 0) > Number(userData.limit || 0)) return 'Limit tidak cukup.'
   return ''
 }
 export function buildCommandCatalog(plugins, context) {

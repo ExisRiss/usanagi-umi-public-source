@@ -358,10 +358,67 @@ const handler = async (m, { conn, text, command, usedPrefix }) => {
     return m.reply('🔓 Tautan token dilepas. Login token lagi untuk membuka portofolio.')
   }
 
+  /* ── tukar koin RPG jadi $AS (tanpa DANA) ── */
+  if (['trading', 'saham', 'trader', 'portofolio', 'astrade', 'umitrade'].includes(cmd) && ['topup', 'tukar'].includes(arg0)) {
+    const koin = await import('../../lib/game-koin-topup.js')
+    const jid = `${number}@s.whatsapp.net`
+    const status = koin.koinStatus(jid)
+    const fmt = (n) => Number(n || 0).toLocaleString('id-ID')
+    const rawAmount = String(args[1] || '').trim().toLowerCase()
+    if (!rawAmount) {
+      return m.reply([
+        '🪙 *TUKAR KOIN RPG → $AS*',
+        '',
+        `Koin kamu    : ${fmt(status.koinBalance)} koin`,
+        `Kurs         : ${fmt(status.koinPerAs)} koin = $AS 1`,
+        `Sekali tukar : ${fmt(status.minimumKoin)}–${fmt(status.maximumKoin)} koin`,
+        `Harian       : ${fmt(status.usedTodayKoin)}/${fmt(status.dailyMaximumKoin)} koin`,
+        '',
+        `Tukar  : ${usedPrefix}trading topup <jumlah koin>`,
+        `Semua  : ${usedPrefix}trading topup semua`,
+        '',
+        'Tanpa DANA dan tanpa uang sungguhan — koin dari quest, dungeon, dan RPG.',
+      ].join('\n'))
+    }
+    let amount = /^(all|semua|max)$/.test(rawAmount)
+      ? Math.min(status.koinBalance, status.maximumKoin)
+      : Math.floor(Number(rawAmount.replace(/[.,]/g, '')))
+    if (!Number.isFinite(amount) || amount <= 0) return m.reply(`📝 Contoh: ${usedPrefix}trading topup 1000`)
+    let token = linkFor(number)?.token || ''
+    if (!token) {
+      try { token = await tradeToken(number, m) } catch (error) {
+        return m.reply(`❌ ${error.message || 'Gagal membuat sesi trading.'}`)
+      }
+    }
+    try {
+      const result = await koin.convertKoin({
+        jid,
+        token,
+        amountKoin: amount,
+        reference: `wa-${number}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        credit: async ({ token: userToken, amount: creditAmount, reference }) => {
+          const data = await callGame(config, '/api/trading/credit', { method: 'POST', bot: true, body: { token: config.token, userToken, amount: creditAmount, reference } })
+          return { balance: Number(data.balance) || undefined }
+        },
+      })
+      if (result.duplicate) return m.reply('ℹ️ Referensi ini sudah pernah ditukar.')
+      return m.reply([
+        '✅ *TUKAR KOIN BERHASIL*',
+        '',
+        `Koin dipakai : ${fmt(result.koin)} koin`,
+        `$AS masuk    : $AS ${money(result.credited)}`,
+        `Koin tersisa : ${fmt(result.koinBalance)} koin`,
+        result.gameBalance ? `Kas trading  : $AS ${money(result.gameBalance)}` : '',
+      ].filter(Boolean).join('\n'))
+    } catch (error) {
+      return m.reply(`❌ ${error.message || 'Tukar koin gagal.'}`)
+    }
+  }
+
   if (['trading', 'saham', 'trader', 'portofolio', 'astrade', 'umitrade'].includes(cmd)) {
     const sub = ['login', 'token', 'masuk'].includes(arg0)
     const raw = String(sub ? (args[1] || '') : (args[0] || '')).trim()
-    const bukanToken = ['off', 'kaya', 'miskin', 'pasar', 'help', 'bantuan', ''].includes(arg0)
+    const bukanToken = ['off', 'kaya', 'miskin', 'pasar', 'topup', 'tukar', 'help', 'bantuan', ''].includes(arg0)
     if (sub && !raw) return m.reply(tokenTutorial(usedPrefix))
     if (raw && (!bukanToken || sub)) return loginWithToken(m, conn, config, number, raw, usedPrefix)
   }
@@ -441,7 +498,7 @@ async function tradeToken(number, m) {
   return sessionFor(number, name)
 }
 
-handler.help = COMMANDS.map((c) => `${c} ${['belisaham', 'belias', 'jualsaham', 'jualas'].includes(c) ? '<saham> <lot>' : c === 'trading' ? '[login <token>|off]' : c === 'redeem' ? '[kode]' : c === 'peringkat' ? 'kaya|miskin' : ''}`.trim())
+handler.help = COMMANDS.map((c) => `${c} ${['belisaham', 'belias', 'jualsaham', 'jualas'].includes(c) ? '<saham> <lot>' : c === 'trading' ? '[login <token>|topup <koin>|off]' : c === 'redeem' ? '[kode]' : c === 'peringkat' ? 'kaya|miskin' : ''}`.trim())
 handler.tags = ['game', 'economy']
 handler.description = 'Kartu rich HTML saham/pasar, portofolio akun token, peringkat trader, dan bukti transaksi langsung di pesan WhatsApp'
 handler.command = new RegExp(`^(${COMMANDS.join('|')})$`, 'i')

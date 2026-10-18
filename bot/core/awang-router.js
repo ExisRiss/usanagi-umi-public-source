@@ -2,6 +2,7 @@
 
 import { settings } from '../config/settings.js'
 import { getActivePrefix } from './awang-prefix.js'
+import { limitsEnabled } from '../lib/limit-mode.js'
 import { findPluginByCommand } from './awang-loader.js'
 import { sendTypoSuggestion } from './awang-typo.js'
 import { enqueue } from './awang-antrian.js'
@@ -295,7 +296,8 @@ async function handleIncomingMessage(conn, raw) {
     }
   }
 
-  const bypassLimit = ownerUser || m.isSelf || !limitRequired
+  const limitModeActive = limitsEnabled(settings)
+  const bypassLimit = ownerUser || m.isSelf || !limitRequired || !limitModeActive
   let reservationId = null
   let limitState = 'inactive'
 

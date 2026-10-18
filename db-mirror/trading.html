@@ -424,18 +424,19 @@
     <div class="grid two">
       <div class="card">
         <h2>Top up $AS</h2>
-        <div class="notice warn" id="topupNotice">Saldo UMI kamu berupa rupiah (hasil top up DANA). Tukarkan ke $AS untuk dipakai trading. <b>Kurs: Rp1.000 = $AS 10.</b></div>
-        <label><span>Nominal rupiah (Rp1.000 – Rp200.000)</span>
-          <input id="topupAmount" type="number" min="1000" max="200000" step="1000" inputmode="numeric" placeholder="10000">
+        <div class="notice warn" id="topupNotice">Tukar <b>koin RPG</b> kamu menjadi saldo $AS. Tanpa DANA, tanpa uang sungguhan. <b id="koinRateText">Kurs: 100 koin = $AS 1.</b></div>
+        <div class="stat" style="margin-bottom:10px"><span>KOIN RPG KAMU</span><b class="num" id="koinBalance">—</b></div>
+        <label><span id="koinRangeLabel">Jumlah koin (100 – 20.000)</span>
+          <input id="topupAmount" type="number" min="100" max="20000" step="100" inputmode="numeric" placeholder="1000">
         </label>
         <div class="row" style="margin:-6px 0 12px">
-          <button class="btn btn-sm" data-topup="10000" type="button">Rp10.000</button>
-          <button class="btn btn-sm" data-topup="25000" type="button">Rp25.000</button>
-          <button class="btn btn-sm" data-topup="50000" type="button">Rp50.000</button>
+          <button class="btn btn-sm" data-topup="1000" type="button">1.000 koin</button>
+          <button class="btn btn-sm" data-topup="5000" type="button">5.000 koin</button>
+          <button class="btn btn-sm" data-topup="10000" type="button">10.000 koin</button>
         </div>
-        <div class="stat" style="margin-bottom:12px"><span>KAMU DAPAT</span><b class="num" id="topupPreview">$AS 100.00</b></div>
-        <button class="btn btn-pri btn-block" id="topupBtn" type="button">TUKAR SEKARANG</button>
-        <div class="tiny" style="margin-top:8px">Belum ada saldo rupiah? <a href="https://jadibot-alzriss.gwenna.my.id/#topup" target="_blank" rel="noopener">Top up DANA di website ↗</a></div>
+        <div class="stat" style="margin-bottom:12px"><span>KAMU DAPAT</span><b class="num" id="topupPreview">$AS 10.00</b></div>
+        <button class="btn btn-pri btn-block" id="topupBtn" type="button">TUKAR KOIN SEKARANG</button>
+        <div class="tiny" style="margin-top:8px">Koin didapat dari quest, dungeon, dan berdagang di RPG bot WhatsApp. Nomor WA kamu harus tertaut: kirim <b>.trading login &lt;token&gt;</b> ke bot.</div>
         <h2 style="margin-top:16px">Riwayat top up</h2>
         <div id="depList" class="tiny">Belum ada top up.</div>
       </div>
@@ -536,6 +537,7 @@
     symbols: [], traffic: [], quotes: {}, holdings: [],
     balance: 0, equity: 0, netWorth: 0, unrealized: 0, realized: 0,
     history: [], deposits: [], user: null, walletIdr: null, rate: 10,
+    koinBalance: null, koinPerAs: 100, koinMin: 100, koinMax: 20000,
     symbol: 'UMI', side: 'buy', tf: '1m', candles: [], feed: [], depth: null,
     codes: [], live: false, board: null, account: null, session: null, loginMode: 'token',
   }
@@ -884,11 +886,11 @@
         <td class="r"><button class="btn btn-sm btn-sell" data-quicksell="${esc(h.sym)}" type="button">JUAL</button></td>
       </tr>`).join('') : '<tr><td colspan="6" class="tiny">Belum punya saham. Buka tab Pasar untuk mulai beli.</td></tr>'
 
-    const label = { buy: 'BELI', sell: 'JUAL', daily: 'BONUS HARIAN', redeem: 'REDEEM', topup: 'TOP UP' }
+    const label = { buy: 'BELI', sell: 'JUAL', daily: 'BONUS HARIAN', redeem: 'REDEEM', topup: 'TUKAR KOIN' }
     const hist = [...state.history].reverse().slice(0, 80)
     $('histBody').innerHTML = hist.length ? hist.map((h) => {
       const time = h.time ? new Date(h.time).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'
-      const detail = h.symbol ? `${h.symbol}${h.amount && h.price ? ` · ${money(h.amount)} @ ${money(h.price)}` : ''}` : (h.code || (h.idr ? rupiah(h.idr) : '—'))
+      const detail = h.symbol ? `${h.symbol}${h.amount && h.price ? ` · ${money(h.amount)} @ ${money(h.price)}` : ''}` : (h.code || (h.koin ? `${Number(h.koin).toLocaleString('id-ID')} koin` : (h.idr ? rupiah(h.idr) : '—')))
       const amount = h.total != null ? money(h.total) : money(h.amount)
       const isOut = h.type === 'buy'
       return `<tr><td class="tiny">${time}</td><td><span class="badge">${label[h.type] || esc(h.type)}</span></td><td class="tiny">${esc(detail)}</td><td class="r num ${isOut ? 'down' : 'up'}">${isOut ? '-' : '+'}${amount}</td></tr>`
@@ -910,22 +912,31 @@
     $('pRoles').innerHTML = (u.roles || ['user']).map((r) => `<span class="badge">${esc(String(r).toUpperCase())}</span>`).join('') + (u.owner ? '<span class="badge" style="border-color:var(--gold);color:var(--gold)">ROOT</span>' : '')
     $('pNet').textContent = '$AS ' + money(state.netWorth)
     $('pCash').textContent = money(state.balance)
-    $('pWallet').textContent = state.walletIdr == null ? '—' : rupiah(state.walletIdr)
+    $('pWallet').textContent = state.koinBalance == null ? '—' : `${Number(state.koinBalance).toLocaleString('id-ID')} koin`
     const pl = state.unrealized + state.realized
     $('pPl').textContent = `${sgn(pl)}${money(Math.abs(pl))}`
     $('pPl').className = 'num ' + cls(pl)
     $('pJoined').textContent = u.joined ? new Date(u.joined).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
     $('depList').innerHTML = state.deposits.length
-      ? state.deposits.slice(-8).reverse().map((d) => `<div class="dep"><span class="tiny">${new Date(d.time).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${rupiah(d.idr)}</span><b class="num up">+$AS ${money(d.credit)}</b></div>`).join('')
+      ? state.deposits.slice(-8).reverse().map((d) => `<div class="dep"><span class="tiny">${new Date(d.time).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${d.koin ? `${Number(d.koin).toLocaleString('id-ID')} koin` : rupiah(d.idr || 0)}</span><b class="num up">+$AS ${money(d.credit)}</b></div>`).join('')
       : 'Belum ada top up.'
     $('codeList').innerHTML = state.codes.length
       ? state.codes.map((c) => `<span class="codechip" data-code="${esc(c.code)}"><b>${esc(c.code)}</b><span class="tiny">+${money(c.amount, 0)} · sisa ${c.left}</span></span>`).join('')
       : '<span class="tiny">Memuat kode…</span>'
     topupPreview()
+    renderKoinStatus()
   }
   function topupPreview() {
-    const idr = Number($('topupAmount').value) || 0
-    $('topupPreview').textContent = '$AS ' + money((idr / 1000) * state.rate)
+    const koin = Number($('topupAmount').value) || 0
+    const per = Number(state.koinPerAs) > 0 ? Number(state.koinPerAs) : 100
+    $('topupPreview').textContent = '$AS ' + money(koin / per)
+  }
+  function renderKoinStatus() {
+    if ($('koinBalance')) $('koinBalance').textContent = state.koinBalance == null ? '—' : `${Number(state.koinBalance).toLocaleString('id-ID')} koin`
+    if ($('koinRateText')) $('koinRateText').textContent = `Kurs: ${Number(state.koinPerAs).toLocaleString('id-ID')} koin = $AS 1.`
+    if ($('koinRangeLabel')) $('koinRangeLabel').textContent = `Jumlah koin (${Number(state.koinMin).toLocaleString('id-ID')} – ${Number(state.koinMax).toLocaleString('id-ID')})`
+    if ($('topupAmount')) { $('topupAmount').min = state.koinMin; $('topupAmount').max = state.koinMax }
+    topupPreview()
   }
 
   /* ─────────── halaman OWNER ─────────── */
@@ -1026,9 +1037,17 @@
     if (!TOKEN) return
     try {
       const d = await api('/api/trading/topup', { method: 'POST', body: JSON.stringify({ token: TOKEN, action: 'status' }) })
-      state.walletIdr = d.walletBalance == null ? state.walletIdr : d.walletBalance
+      if (d.koinBalance != null) state.koinBalance = Number(d.koinBalance) || 0
+      if (d.koinPerAs) state.koinPerAs = Number(d.koinPerAs) || state.koinPerAs
+      if (d.minimumKoin) state.koinMin = Number(d.minimumKoin) || state.koinMin
+      if (d.maximumKoin) state.koinMax = Number(d.maximumKoin) || state.koinMax
+      if (d.walletBalance != null) state.walletIdr = d.walletBalance
       if (d.rate) state.rate = d.rate
-    } catch { /* diamkan */ }
+    } catch (e) {
+      const notice = $('topupNotice')
+      if (notice) notice.innerHTML = `<b>Tukar koin RPG</b> menjadi $AS (tanpa DANA). ${esc(e.message || '')}`
+    }
+    renderKoinStatus()
     renderProfil()
   }
 
@@ -1149,17 +1168,22 @@
   }
 
   async function doTopup() {
-    const idr = Math.floor(Number($('topupAmount').value) || 0)
-    if (idr < 1000) return toast('Minimal Rp1.000.', 'error')
-    if (state.walletIdr != null && idr > state.walletIdr) return toast(`Saldo UMI kamu hanya ${rupiah(state.walletIdr)}.`, 'error')
+    const koin = Math.floor(Number($('topupAmount').value) || 0)
+    const min = Number(state.koinMin) || 100
+    const max = Number(state.koinMax) || 20000
+    if (koin < min) return toast(`Minimal ${min.toLocaleString('id-ID')} koin.`, 'error')
+    if (koin > max) return toast(`Maksimal ${max.toLocaleString('id-ID')} koin per transaksi.`, 'error')
+    if (state.koinBalance != null && koin > state.koinBalance) return toast(`Koin RPG kamu hanya ${Number(state.koinBalance).toLocaleString('id-ID')}.`, 'error')
     const btn = $('topupBtn'); btn.disabled = true; const old = btn.textContent; btn.textContent = 'MEMPROSES…'
     try {
-      const reference = 'game-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
-      const d = await api('/api/trading/topup', { method: 'POST', body: JSON.stringify({ token: TOKEN, amountIdr: idr, reference }) })
-      state.balance = d.balance; state.walletIdr = d.walletBalance ?? state.walletIdr
+      const reference = 'game-koin-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
+      const d = await api('/api/trading/topup', { method: 'POST', body: JSON.stringify({ token: TOKEN, amountKoin: koin, reference }) })
+      state.balance = d.balance
+      if (d.koinBalance != null) state.koinBalance = Number(d.koinBalance) || 0
       $('topupAmount').value = ''
       await loadAccount()
-      toast(`Top up berhasil: ${rupiah(d.idr)} → $AS ${money(d.credited)}`, 'ok')
+      renderKoinStatus()
+      toast(`Tukar koin berhasil: ${Number(koin).toLocaleString('id-ID')} koin → $AS ${money(d.credited)}`, 'ok')
     } catch (e) { toast(e.message, 'error') } finally { btn.disabled = false; btn.textContent = old }
   }
 

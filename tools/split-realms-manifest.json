@@ -65,8 +65,8 @@
       "role": "bot",
       "source": "bot/lib/auto-ai.js",
       "remote": "/lib/auto-ai.js",
-      "beforeSha256": "33443753dc6370ddbf481f0f72dca3a5a887674dcac95ae7ef1d5dfdf599d1f7",
-      "sourceSha256": "69ca5992dfb163eae6d8f62af9dbbecc866b32a1a4b6c51bf54f91edc6c9cc69"
+      "beforeSha256": "69ca5992dfb163eae6d8f62af9dbbecc866b32a1a4b6c51bf54f91edc6c9cc69",
+      "sourceSha256": "993ca0dfdefc969db4f0ac29351eec46ea5465d7023d3af78588ebf60aa71f69"
     },
     {
       "role": "bot",
@@ -268,15 +268,15 @@
       "role": "bot",
       "source": "bot/lib/jadibot-platform-api.js",
       "remote": "/lib/jadibot-platform-api.js",
-      "beforeSha256": "f89bc7686e1520c1dcb6c98a30351be83e10b70abe109b95d768c65b82cb0f8d",
-      "sourceSha256": "5abe559d9501174ce42a45ac40d672710371fa1a934d64289a1d5b627b4225ba"
+      "beforeSha256": "5abe559d9501174ce42a45ac40d672710371fa1a934d64289a1d5b627b4225ba",
+      "sourceSha256": "627a2f24d1837107eab8833e5622f7bf552f7b540615dce7826921c94df004a0"
     },
     {
       "role": "game",
       "source": "db-mirror/game.js",
       "remote": "/game.js",
-      "beforeSha256": "e34eed5253af20720361d17ffe43726cab692aeaa0719a1fa45ab100d806ee9b",
-      "sourceSha256": "85e8e5c27575c173dd97db5e74ba54f50ece61de3c4ad14c96af8cbeeb248b3d"
+      "beforeSha256": "85e8e5c27575c173dd97db5e74ba54f50ece61de3c4ad14c96af8cbeeb248b3d",
+      "sourceSha256": "7cd5bdce2415d5f1bfe9221d1f374772ad8d3a2962d96bd153a12c9e0772598e"
     },
     {
       "role": "game",
@@ -381,7 +381,7 @@
       "source": "bot/handler.js",
       "remote": "/handler.js",
       "beforeSha256": "8ddd0901a14b561bcf31958de1d7b76b567ae81117f724d03b0d6b44f784b4a2",
-      "sourceSha256": "8ddd0901a14b561bcf31958de1d7b76b567ae81117f724d03b0d6b44f784b4a2"
+      "sourceSha256": "f43bf9619f4433a791e0ff2b9156df1e0d39774cb1c633419950a44c69a1b7f5"
     },
     {
       "role": "bot",
@@ -444,7 +444,7 @@
       "source": "bot/lib/bot-config.js",
       "remote": "/lib/bot-config.js",
       "beforeSha256": "2436a99bb7315eb89b4d6b81cff941e6869d8cc2c16f6be72a46cfa0b30e917c",
-      "sourceSha256": "2436a99bb7315eb89b4d6b81cff941e6869d8cc2c16f6be72a46cfa0b30e917c"
+      "sourceSha256": "d3692b10eadff90d6077a147f3159ae42e3991b4abf239c26c8c321e1cdc988d"
     },
     {
       "role": "bot",
@@ -478,8 +478,8 @@
       "role": "game",
       "source": "db-mirror/trading.html",
       "remote": "/trading.html",
-      "beforeSha256": "05973706b51f5785950b23bf75f2256e0535b458f9a77a246de689a26b69ae49",
-      "sourceSha256": "6f5c4241d25dc5e46a9290969640eb3b086a1a2851b96e846ed6999002e857a1"
+      "beforeSha256": "6f5c4241d25dc5e46a9290969640eb3b086a1a2851b96e846ed6999002e857a1",
+      "sourceSha256": "70b8443e0fd9e6e76f8fc3c17fbfd6c7533a531e02d90a841b031bb2ebc88941"
     },
     {
       "role": "game",
@@ -499,8 +499,22 @@
       "role": "bot",
       "source": "bot/plugins/game/trading-umi.js",
       "remote": "/plugins/game/trading-umi.js",
-      "beforeSha256": "361bccb918330db10bb84a70c4571d8052960422f735238955454b0ec561a70f",
-      "sourceSha256": "5886f8223b6452c688a35220f7e9f0b4ca50c408493606173ea8980299c7e5c3"
+      "beforeSha256": "5886f8223b6452c688a35220f7e9f0b4ca50c408493606173ea8980299c7e5c3",
+      "sourceSha256": "a67aaf4f725441748b53a713e79365064cf06d5a0c051619bb60e95846d29353"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/limit-mode.js",
+      "remote": "/lib/limit-mode.js",
+      "beforeSha256": null,
+      "sourceSha256": "4b464c56f4b48952fa332c39e122b1fe3fd51db4b8d8dddd8acf8d6e4bd038b4"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/game-koin-topup.js",
+      "remote": "/lib/game-koin-topup.js",
+      "beforeSha256": null,
+      "sourceSha256": "8879984ac8726e7315b04da0d73fdf1111c7ec9bf6f2c5933a9947b0794db981"
     }
   ]
 }

@@ -15,6 +15,8 @@ export const settings = {
     githubLink: global.scriptUrl || ''
   },
   defaultPrefix: '.',
+  // Task64: ON/OFF limit untuk bot utama (website menulis ke global.mainBot).
+  limitEnabled: global.mainBot?.limitEnabled !== false,
   timezone: 'Asia/Makassar',
   footerText: global.namebot || 'Umi Usanagi AI',
   footerYear: '2026',

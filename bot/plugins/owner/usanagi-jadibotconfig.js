@@ -52,6 +52,7 @@ function summary(profile, prefix = '.', fromMain = false) {
     `Nama: ${values.namebot}`,
     `Prefix default: ${profile.defaultPrefix}`,
     `Limit awal: ${profile.defaultLimit === -1 ? 'Unlimited (-1)' : profile.defaultLimit}`,
+    `Limit ON/OFF: ${profile.limitEnabled === false ? 'OFF (semua perintah berlimit gratis)' : 'ON'}`,
     `Mode: ${profile.public ? 'public' : 'self'}`,
     `Auto-typing: ${typing.enabled !== false ? 'on' : 'off'}`,
     `Musik TikTok: ${tiktok.sendMusic !== false ? 'on' : 'off'}`,
@@ -62,6 +63,7 @@ function summary(profile, prefix = '.', fromMain = false) {
     `${base} name <nama>`,
     `${base} prefix <1-3 karakter>`,
     `${base} limit <-1 atau 0-100000>  (-1 = unlimited)`,
+    `${base} limits on|off`,
     `${base} mode public|private`,
     `${base} typing on|off`,
     `${base} music on|off`,
@@ -144,6 +146,10 @@ const handler = async (m, { conn, args, usedPrefix, prefixStorageKey }) => {
     const number = Number(value)
     if (!Number.isInteger(number) || number < -1 || number > 100000) return m.reply('Limit harus -1 (unlimited) atau angka 0-100000.')
     profile.defaultLimit = number
+  } else if (action === 'limits') {
+    const enabled = boolValue(value)
+    if (enabled === null) return m.reply('Gunakan limits on atau limits off.')
+    profile.limitEnabled = enabled
   } else if (action === 'mode') {
     const enabled = boolValue(value)
     if (enabled === null) return m.reply('Gunakan mode public atau private.')

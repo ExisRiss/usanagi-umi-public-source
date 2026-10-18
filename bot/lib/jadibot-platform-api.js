@@ -34,6 +34,7 @@ import {
   lockedJadibotOwnerNumber,
 } from './bot-config.js'
 import { clearScopedPrefixes } from '../core/awang-prefix.js'
+import { koinStatus, convertKoin, numberForToken } from './game-koin-topup.js'
 import { parseNewsletterInput } from './awang-id.js'
 import { cleanupBackupExport, getBackupExportFile, prepareBackupExport } from './vercel-backup-export.js'
 import { agentChat, agentStatus, ownerAgentShell, startUmiAgentWorker, updateAgentSettings } from './umi-agent.js'
@@ -379,6 +380,70 @@ async function routeGameWalletConvert(req, res) {
   return send(res, 502, { ok: false, retryable: true, code: 'UNCERTAIN', error: 'Kredit $AS belum terkonfirmasi. Coba lagi dengan referensi yang sama; saldo tidak akan terpotong dua kali.' })
 }
 
+/* Task64 - top up $AS memakai koin RPG (tanpa DANA).
+ *
+ * Dipanggil website /api/platform/rpg-topup (relay dari server game).
+ * Token akun diverifikasi ulang ke website, lalu nomor WhatsApp pemilik token
+ * ditentukan dari sesi jadibot milik akun atau tautan `.trading login`.
+ * Koin dipotong oleh game-koin-topup.js secara idempoten; $AS dikreditkan ke
+ * database game lewat jalur internal yang sama dengan wallet-convert. */
+function koinOwnerNumbers(userId, token) {
+  const numbers = new Set()
+  try {
+    const rows = Object.values(loadDb().sessions || {})
+    for (const row of rows) {
+      if (String(row?.userId || '') !== String(userId)) continue
+      const number = normalizeBotNumber(row.sessionId)
+      if (number) numbers.add(number)
+    }
+  } catch {}
+  const linked = numberForToken(token)
+  if (linked) numbers.add(linked)
+  return { numbers: [...numbers], linked }
+}
+
+async function routeGameKoinTopup(req, res) {
+  const input = await bodyJson(req)
+  const token = safeText(input.token, 300)
+  if (token.length < 16) return send(res, 400, { ok: false, error: 'Token akun diperlukan.' })
+  let profile
+  try { profile = await gameProfileFromToken(token) } catch (error) { return send(res, Number(error?.status) || 401, { ok: false, error: error?.message || 'Token akun tidak valid.' }) }
+  const userId = safeText(profile.id, 80)
+  if (!userId) return send(res, 401, { ok: false, error: 'Profil akun tidak lengkap.' })
+  if (limited(`game-koin:${userId}`, 30)) throw Object.assign(new Error('Terlalu banyak permintaan tukar koin. Coba lagi sebentar.'), { status: 429 })
+
+  const { numbers, linked } = koinOwnerNumbers(userId, token)
+  if (!numbers.length) {
+    return send(res, 409, {
+      ok: false, code: 'NOT_LINKED',
+      error: 'Nomor WhatsApp kamu belum tertaut. Kirim perintah .trading login <token> dari WhatsApp, lalu coba lagi.',
+    })
+  }
+  let number = normalizeBotNumber(input.number)
+  if (number && !numbers.includes(number)) number = ''
+  if (!number) number = linked && numbers.includes(linked) ? linked : numbers[0]
+  const jid = `${number}@s.whatsapp.net`
+
+  if (input.action === 'status') return send(res, 200, { ...koinStatus(jid), number })
+
+  let result
+  try {
+    result = await convertKoin({
+      jid,
+      token,
+      amountKoin: input.amountKoin,
+      reference: safeText(input.reference, 120),
+      credit: async ({ token: userToken, amount, reference }) => {
+        const credit = await creditGameBalance(userToken, amount, reference)
+        return { balance: Number(credit?.balance) || undefined }
+      },
+    })
+  } catch (error) {
+    return send(res, Number(error?.status) || 500, { ok: false, error: error?.message || 'Tukar koin gagal.', code: error?.code, retryable: error?.retryable === true })
+  }
+  return send(res, 200, { ...result, number })
+}
+
 async function routeTripayCallback(req, res) {
   if (req.method !== 'POST') return send(res, 405, { error: 'Metode callback tidak diizinkan.' })
   if (limited('tripay:callback', 180, 60 * 1000)) throw Object.assign(new Error('Terlalu banyak callback pembayaran.'), { status: 429 })
@@ -717,6 +782,7 @@ function profileSettings(profile) {
     only_group: profile.onlyGroup === true,
     registration_required: profile.registrationRequired !== false,
     default_limit: profile.defaultLimit,
+    limit_enabled: profile.limitEnabled !== false,
     owner_number: (profile.ownerNumbers || []).find(number => number !== lockedJadibotOwnerNumber()) || '',
     owner_numbers: normalizeJadibotOwners(profile.ownerNumbers || []),
     locked_owner_number: lockedJadibotOwnerNumber(),
@@ -768,6 +834,10 @@ function applySettings(profile, input) {
       throw Object.assign(new Error('Limit awal harus -1 (unlimited) atau 0-100000.'), { status: 400 })
     }
     profile.defaultLimit = limit
+  }
+  if (input.limit_enabled !== undefined) {
+    if (typeof input.limit_enabled !== 'boolean') throw Object.assign(new Error('Limit ON/OFF harus true atau false.'), { status: 400 })
+    profile.limitEnabled = input.limit_enabled
   }
   if (input.owner_number !== undefined) {
     const ownerNumber = normalizeBotNumber(input.owner_number)
@@ -1066,6 +1136,8 @@ async function route(req, res) {
   // Game web (UMI TRADE) memakai saldo Rp pengguna untuk ditukar jadi $AS.
   // Token akun diverifikasi ulang ke website sebelum saldo disentuh.
   if (pathname === '/api/platform/wallet-convert' && req.method === 'POST') return routeGameWalletConvert(req, res)
+  // Task64: tukar koin RPG -> $AS UMI TRADE (tanpa DANA).
+  if (pathname === '/api/platform/rpg-koin' && req.method === 'POST') return routeGameKoinTopup(req, res)
 
   if (pathname.startsWith('/api/internal/backup/')) return routeInternalBackup(req, res, pathname)
 

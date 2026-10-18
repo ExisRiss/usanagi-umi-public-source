@@ -67,8 +67,9 @@ const OPEN_JOIN_DEFAULT = String(process.env.UMI_GAME_OPEN_JOIN || '1').toLowerC
 const VERIFY_URL = String(process.env.UMI_VERIFY_URL || 'https://jadibot-alzriss.gwenna.my.id/api/platform/verify-token').trim()
 /* Alamat publik game dipakai saat bot mengirim tautan trading. */
 const PUBLIC_URL = String(process.env.UMI_GAME_PUBLIC_URL || 'https://game.gwenna.my.id').trim().replace(/\/+$/, '')
-/* Endpoint top up: tarik saldo UMI (Rp) jadi $AS lewat platform. */
-const TOPUP_URL = String(process.env.UMI_TOPUP_URL || 'https://jadibot-alzriss.gwenna.my.id/api/platform/game-topup').trim()
+/* Endpoint top up (Task64): koin RPG ditukar jadi $AS, tanpa DANA.
+ * Bot memotong koin secara idempoten lalu mengkredit $AS lewat jalur internal. */
+const TOPUP_URL = String(process.env.UMI_KOIN_TOPUP_URL || process.env.UMI_TOPUP_URL || 'https://jadibot-alzriss.gwenna.my.id/api/platform/rpg-topup').trim()
 
 /* `cmd` adalah nama perintah WhatsApp yang benar-benar diterima plugin
  * bot/plugins/game/game-webmultiplayer.js. Catur, ular tangga, dan werewolf
@@ -1539,9 +1540,8 @@ function candlesOf(sym, ticksPerCandle = 20, limit = 96, tick = nowTick()) {
 const TRADING_DB_FILE = path.join(HERE, 'trading-data.json')
 const INITIAL_BALANCE = 100
 const DAILY_BONUS = 10
-const MIN_TOPUP_IDR = 5000
-const MAX_TOPUP_IDR = 200000
-const AS_PER_1000_IDR = Number(process.env.UMI_AS_PER_1000_IDR || 10) // Rp1.000 = $AS 10
+const MIN_TOPUP_KOIN = Math.max(1, Number(process.env.UMI_KOIN_MIN || 100))
+const MAX_TOPUP_KOIN = Math.max(MIN_TOPUP_KOIN, Number(process.env.UMI_KOIN_MAX || 20000))
 const REDEEM_CODES = {
     'UMI2024': { amount: 50, maxUses: 100, used: 0 },
     'TRADING': { amount: 25, maxUses: 50, used: 0 },
@@ -2099,7 +2099,7 @@ async function handleTradingAPI(req, res, url, parts) {
             return sendJson(res, 200, { ok: true, code: key, amount: rc.amount, balance: round2(account.balance) })
         }
 
-        /* ── Top up $AS dari saldo UMI (Rp) ── */
+        /* ── Top up $AS dari koin RPG (Task64, tanpa DANA) ── */
         if (req.method === 'POST' && parts[0] === 'topup') {
             const gate = rateLimit(req, 'trading:topup', 20, 60_000)
             if (gate.limited) {
@@ -2111,14 +2111,17 @@ async function handleTradingAPI(req, res, url, parts) {
             if (!token) return sendJson(res, 401, { error: 'Token diperlukan. Masuk dulu.' })
             if (body.action === 'status') {
                 try {
-                    const r = await fetch(TOPUP_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, action: 'status' }), signal: AbortSignal.timeout(15000) })
+                    const r = await fetch(TOPUP_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, action: 'status', source: 'umi-games' }), signal: AbortSignal.timeout(15000) })
                     const d = await r.json().catch(() => ({}))
-                    return sendJson(res, r.ok ? 200 : 502, d)
+                    return sendJson(res, r.ok ? 200 : (r.status || 502), d)
                 } catch (e) { return sendJson(res, 502, { ok: false, error: 'Tidak bisa menghubungi platform: ' + e.message }) }
             }
-            const amountIdr = Math.floor(Number(body.amountIdr))
-            if (!Number.isFinite(amountIdr) || amountIdr < MIN_TOPUP_IDR || amountIdr > MAX_TOPUP_IDR) {
-                return sendJson(res, 400, { error: `Nominal top up harus Rp${MIN_TOPUP_IDR.toLocaleString('id-ID')} – Rp${MAX_TOPUP_IDR.toLocaleString('id-ID')}.` })
+            if (body.amountIdr !== undefined && body.amountKoin === undefined) {
+                return sendJson(res, 400, { ok: false, code: 'NO_DANA', error: 'Top up DANA sudah tidak dipakai. Muat ulang halaman, lalu tukar koin RPG kamu menjadi $AS.' })
+            }
+            const amountKoin = Math.floor(Number(body.amountKoin))
+            if (!Number.isFinite(amountKoin) || amountKoin < MIN_TOPUP_KOIN || amountKoin > MAX_TOPUP_KOIN) {
+                return sendJson(res, 400, { error: `Jumlah koin harus ${MIN_TOPUP_KOIN.toLocaleString('id-ID')} – ${MAX_TOPUP_KOIN.toLocaleString('id-ID')} per transaksi.` })
             }
             const reference = String(body.reference || `${token.slice(0, 8)}-${Date.now()}`)
             const account = accountForToken(token)
@@ -2127,12 +2130,11 @@ async function handleTradingAPI(req, res, url, parts) {
             if (done) {
                 if (done.status === 'pending' && Date.now() - Date.parse(done.time || 0) < 5 * 60 * 1000) return sendJson(res, 409, { ok: false, pending: true, error: 'Transaksi dengan referensi ini sedang diproses.' })
                 if (done.status === 'pending') account.deposits = account.deposits.filter(d => d !== done)
-                return sendJson(res, 200, { ok: true, duplicate: true, credited: done.credit, idr: done.idr, balance: round2(account.balance), walletBalance: done.walletBalance })
+                return sendJson(res, 200, { ok: true, duplicate: true, credited: Number(done.credit) || 0, koin: done.koin || amountKoin, balance: round2(account.balance), koinBalance: done.koinBalance })
             }
-            // Reserve the reference synchronously before any await. Concurrent
-            // requests with the same reference now get 409 instead of both
-            // reaching the platform and crediting $AS twice.
-            const pending = { reference, idr: amountIdr, status: 'pending', time: new Date().toISOString() }
+            // Reserve the reference synchronously before any await so two
+            // concurrent requests cannot both debit the same koin.
+            const pending = { reference, koin: amountKoin, status: 'pending', time: new Date().toISOString() }
             account.deposits.push(pending)
             saveTradingDB()
             const dropPending = () => {
@@ -2143,27 +2145,30 @@ async function handleTradingAPI(req, res, url, parts) {
             try {
                 const r = await fetch(TOPUP_URL, {
                     method: 'POST', headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ token, amountIdr, reference, source: 'umi-games' }),
+                    body: JSON.stringify({ token, amountKoin, reference, source: 'umi-games' }),
                     signal: AbortSignal.timeout(25000),
                 })
                 payload = await r.json().catch(() => ({}))
-                if (!r.ok || !payload.ok) { dropPending(); return sendJson(res, r.status === 402 ? 402 : 400, { ok: false, error: payload.error || 'Top up gagal.' }) }
-            } catch (e) { dropPending(); return sendJson(res, 502, { ok: false, error: 'Tidak bisa menghubungi platform: ' + e.message }) }
+                if (!r.ok || !payload.ok) { dropPending(); return sendJson(res, r.status === 402 ? 402 : (r.status || 400), { ok: false, error: payload.error || 'Tukar koin gagal.', code: payload.code }) }
+            } catch (e) { dropPending(); return sendJson(res, 502, { ok: false, retryable: true, error: 'Tidak bisa menghubungi platform: ' + e.message }) }
             if (payload.duplicate) {
-                // The platform already debited this reference. Never credit a
-                // second time; leave the completed record for reconciliation.
                 dropPending()
-                return sendJson(res, 200, { ok: true, duplicate: true, credited: Number(payload.credited) || 0, idr: amountIdr, balance: round2(account.balance), walletBalance: payload.walletBalance, reconciliation: true })
+                return sendJson(res, 200, { ok: true, duplicate: true, credited: Number(payload.credited) || 0, koin: Number(payload.koin) || amountKoin, balance: round2(account.balance), koinBalance: payload.koinBalance, reconciliation: true })
             }
             const credit = round2(Number(payload.credited) || 0)
             if (!(credit > 0)) { dropPending(); return sendJson(res, 502, { ok: false, error: 'Platform tidak mengembalikan jumlah kredit yang valid.' }) }
-            account.balance = round2(account.balance + credit)
+            // Bot sudah mengkredit akun lewat /api/trading/credit dan mengirim
+            // gameBalance. Pakai angka itu supaya saldo tidak bertambah dua kali;
+            // kredit lokal hanya untuk platform lama yang tidak mengirim gameBalance.
+            const alreadyCredited = Number.isFinite(Number(payload.gameBalance))
+            if (alreadyCredited) account.balance = round2(Number(payload.gameBalance))
+            else account.balance = round2(account.balance + credit)
             pending.status = 'completed'
             pending.credit = credit
-            pending.walletBalance = payload.walletBalance
-            account.history.push({ type: 'topup', amount: credit, idr: amountIdr, reference, time: new Date().toISOString() })
+            pending.koinBalance = payload.koinBalance
+            account.history.push({ type: 'topup', amount: credit, koin: amountKoin, reference, time: new Date().toISOString() })
             saveTradingDB()
-            return sendJson(res, 200, { ok: true, credited: credit, idr: amountIdr, balance: round2(account.balance), walletBalance: payload.walletBalance, rate: payload.rate })
+            return sendJson(res, 200, { ok: true, credited: credit, koin: amountKoin, balance: round2(account.balance), koinBalance: payload.koinBalance, rate: payload.rate })
         }
 
         /* ── Kredit/debit dari bot (internal) ── */

@@ -25,6 +25,7 @@ import {
 import { collectUserIdentityKeys, mergeUserIdentityRecords } from './lib/user-identity.js'
 import { getActivePrefix } from './core/awang-prefix.js'
 import { prefixStorageKey, isPluginDisabled } from './lib/bot-config.js'
+import { limitsEnabled } from './lib/limit-mode.js'
 import {
   isGroupAdmin as resolveGroupAdmin,
   isBotAdmin as resolveBotGroupAdmin,
@@ -155,6 +156,9 @@ export async function handler(chatUpdate) {
 
 async function handleMessage(chatUpdate) {
     const conn = this;
+    // Task64: status ON/OFF limit harus terbaca juga di blok finally (blok try
+    // punya scope sendiri, jadi `const limitsActive` di dalamnya tidak terlihat).
+    let limitBilling = true;
 	if (!chatUpdate) return;
 	this.pushMessage(chatUpdate.messages).catch(console.error);
 	let m = chatUpdate.messages[chatUpdate.messages.length - 1];
@@ -256,6 +260,10 @@ if (!unifiedRpg()) {
 }
 // Nilai -1 adalah sentinel unlimited dan tidak pernah dipotong.
 const configuredDefaultLimit = Number(botConfig.defaultLimit)
+// Task64: tombol Limit ON/OFF di website + default_limit -1 mematikan seluruh
+// penagihan limit, bukan hanya untuk pengguna baru.
+const limitsActive = limitsEnabled(botConfig) && configuredDefaultLimit !== -1
+limitBilling = limitsActive
 userData.limit ??= configuredDefaultLimit === -1
     ? -1
     : Math.max(0, Number.isFinite(configuredDefaultLimit) ? configuredDefaultLimit : 0)
@@ -766,7 +774,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 
                 const activeUserLimit = Number(global.db.data.users[m.sender].limit)
                 const unlimitedLimit = activeUserLimit === -1 || global.db.data.users[m.sender].isUnlimitedLimit === true
-                if (!isPrems && !unlimitedLimit && pluginLimit > 0 && activeUserLimit < pluginLimit) {
+                if (limitsActive && !isPrems && !unlimitedLimit && pluginLimit > 0 && activeUserLimit < pluginLimit) {
                     this.reply(m.chat, `[❗] Limit anda habis, silahkan beli melalui *${usedPrefix}buy limit*`, m);
                     continue;
                 }
@@ -858,7 +866,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
                     const shouldCommitLimit = plugin.limitCommit === 'manual'
                         ? limitCommitState === 'success'
                         : pluginResult?.success !== false && limitCommitState !== 'failed';
-                    if (!isPrems && pluginLimit > 0 && shouldCommitLimit) {
+                    if (limitsActive && !isPrems && pluginLimit > 0 && shouldCommitLimit) {
                         m.limit = m.limit || pluginLimit;
                     }
 				} catch (e) {
@@ -903,7 +911,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 							console.error(e);
 						}
 					}
-					if (m.limit && !isPrems && Number(global.db.data.users[m.sender]?.limit) !== -1 && global.db.data.users[m.sender]?.isUnlimitedLimit !== true) m.reply(+m.limit + ' Limit terpakai ✔️');
+					if (m.limit && limitsActive && !isPrems && Number(global.db.data.users[m.sender]?.limit) !== -1 && global.db.data.users[m.sender]?.isUnlimitedLimit !== true) m.reply(+m.limit + ' Limit terpakai ✔️');
 				}
 				break;
 			}
@@ -941,7 +949,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 
     if (!await awardMessageExp(m.sender, exp, m.key?.id || m.id)) user.exp += exp
 
-    const unlimitedLimit = Number(user.limit) === -1 || user.isUnlimitedLimit === true
+    const unlimitedLimit = Number(user.limit) === -1 || user.isUnlimitedLimit === true || !limitBilling
     if (!unlimitedLimit && Number.isFinite(cost) && cost > 0) {
         user.limit = Math.max(0, user.limit - cost)
     }
