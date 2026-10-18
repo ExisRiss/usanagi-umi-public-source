@@ -3,7 +3,7 @@
     "bot": "serverjadibotVip",
     "game": "servergameVip"
   },
-  "note": "Task57: Feedback audit; stop history-sync metadata request floods, bound metadata/presence waits, shared API/cleaner registry removes expired-session reservations and all local backups after 15min. Preserve ownership checks, active sessions, keys, RPG, AFK, no-slash replies, main/autoread OFF.",
+  "note": "Task58: replace stalled single-provider amfind with bounded public TikTok caption/comments/replies lookup, paced fallback, creator attribution and URL validation. Preserve Task55-57, active sessions, keys, RPG, main/autoread OFF. Diagnostic is read-only with mocked WA transport.",
   "files": [
     {
       "role": "bot",
@@ -86,14 +86,14 @@
       "role": "bot",
       "source": "bot/lib/group-metadata-cache.js",
       "remote": "/lib/group-metadata-cache.js",
-      "beforeSha256": "c9b01a3e4dcd9171ba634b80d268c44b6e4464931876c25cb9b440c1ff9dceda",
+      "beforeSha256": "37b58fc018060d061768384ff543ad2356d61d54615db261c7599dc96d0039a4",
       "sourceSha256": "37b58fc018060d061768384ff543ad2356d61d54615db261c7599dc96d0039a4"
     },
     {
       "role": "bot",
       "source": "bot/lib/store.js",
       "remote": "/lib/store.js",
-      "beforeSha256": "fb02c12c5c812e39d899b27d3286181531a7a24202730ca3aef7c5fe5d4bf6d1",
+      "beforeSha256": "fb0fa54eb896d89bad0291660841a451cb23bbab27114cf27faf5756e4886be5",
       "sourceSha256": "fb0fa54eb896d89bad0291660841a451cb23bbab27114cf27faf5756e4886be5"
     },
     {
@@ -268,7 +268,7 @@
       "role": "bot",
       "source": "bot/lib/jadibot-platform-api.js",
       "remote": "/lib/jadibot-platform-api.js",
-      "beforeSha256": "27df790da0f97b2ca21dc57605e00cacbae5d390e1241f443ca6291e74e82cd1",
+      "beforeSha256": "d914ae224a30b16d55a4a3d31df037c8cb7c4a7eae2d2768b7dc47c61b39f1f9",
       "sourceSha256": "d914ae224a30b16d55a4a3d31df037c8cb7c4a7eae2d2768b7dc47c61b39f1f9"
     },
     {
@@ -380,7 +380,7 @@
       "role": "bot",
       "source": "bot/handler.js",
       "remote": "/handler.js",
-      "beforeSha256": "01e4929ee90cc01275e79a292bd194d17ff655674a51190aab82f65b2814f768",
+      "beforeSha256": "e355418425942bbff93bfe6ca813e9bbbaaab863173ac75fc6eae586633e0888",
       "sourceSha256": "e355418425942bbff93bfe6ca813e9bbbaaab863173ac75fc6eae586633e0888"
     },
     {
@@ -401,22 +401,43 @@
       "role": "bot",
       "source": "bot/lib/jadibot-session-cleaner.js",
       "remote": "/lib/jadibot-session-cleaner.js",
-      "beforeSha256": "1312cf2eca755a2ba7864727dd955d0786ad4dfa745945f05d57930567d2a771",
+      "beforeSha256": "07ec62060c447d2eade4fb48e25fac7da7c54bb56d0bb6e4dd9cffdbdd77ba15",
       "sourceSha256": "07ec62060c447d2eade4fb48e25fac7da7c54bb56d0bb6e4dd9cffdbdd77ba15"
     },
     {
       "role": "bot",
       "source": "bot/lib/jadibot-platform-state.js",
       "remote": "/lib/jadibot-platform-state.js",
-      "beforeSha256": null,
+      "beforeSha256": "0db04c1031f0bb6718326f06549925eae4f1153a3c1ba7ceb6c52becde02c1a9",
       "sourceSha256": "0db04c1031f0bb6718326f06549925eae4f1153a3c1ba7ceb6c52becde02c1a9"
     },
     {
       "role": "bot",
       "source": "bot/lib/auto-ai-reply.js",
       "remote": "/lib/auto-ai-reply.js",
-      "beforeSha256": null,
+      "beforeSha256": "08425f535b82dc161ad2f08c8da2c7df99738abddb1d5bcb36b7d5b84b050ccc",
       "sourceSha256": "08425f535b82dc161ad2f08c8da2c7df99738abddb1d5bcb36b7d5b84b050ccc"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/tools/amfind.js",
+      "remote": "/plugins/tools/amfind.js",
+      "beforeSha256": "efc347c9429aa61a6f1f1bb9036465c3c6fc8737d18bf9b65b1f4a1abc0e7ed9",
+      "sourceSha256": "6c4bd7fc1b0b800962762634ce68bfb9fb5f6c2f716fc99dc4cbbe3fc20cdb89"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/amfind.js",
+      "remote": "/lib/amfind.js",
+      "beforeSha256": null,
+      "sourceSha256": "7c1fd976d37f5bd864a7f23d102b7997011cbccd11474dd667eada934e57ed7a"
+    },
+    {
+      "role": "bot",
+      "source": "bot/tools/check-amfind.mjs",
+      "remote": "/tools/check-amfind.mjs",
+      "beforeSha256": null,
+      "sourceSha256": "85540f1c3cb4321dfc12f18eff2fd0a04d3052d284a5cc6fad446f18173ae771"
     }
   ]
 }

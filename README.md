@@ -4,6 +4,12 @@ This repository contains the **sanitized source template** for the Usanagi Umi W
 
 > **Security notice:** This is intentionally not a production backup. WhatsApp sessions, phone numbers, pairing codes, database/runtime data, Pterodactyl/GitHub/Vercel credentials, API keys, environment files, deployment archives, and owner-specific configuration have been removed or replaced with placeholders.
 
+## Amfind tanpa ketergantungan endpoint yang timeout — Task58 (18 Oktober 2026)
+
+- `/amfind` dan `/amfinder` mencari caption, komentar, serta balasan kreator dengan fallback, validasi URL, antrean rate-limit, dedup/cache dan batas waktu. Format Markdown dan trailing slash didukung; kegagalan provider tidak disamarkan menjadi “preset tidak ada”.
+- Tautan pelapor teruji dari server produksi: preset ditemukan pada balasan kreator dalam 3,143 dan 2,993 detik untuk dua varian URL. Transport WA diagnostik masih mock, bukan acceptance perangkat pelapor.
+- 337 tes lulus; 62/62 SHA produksi cocok, empat health endpoint sehat, delapan Jadibot tersambung. Main/autoread tetap OFF. [Detail Task58](docs/AMFIND-TIMEOUT-TASK58.md).
+
 ## Feedback ditinjau dan diperbaiki — Task57 (18 Oktober 2026)
 
 - Audit 88 laporan: perbaikan metadata grup yang berlebihan, reservation sesi kedaluwarsa yang mengunci pairing, dan presence yang dapat menahan AutoAI. Sesi aktif/ownership, AFK, prefix, RPG dan main/autoread OFF tetap dilindungi.

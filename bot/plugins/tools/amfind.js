@@ -1,186 +1,50 @@
-/*
-# Name : Preset AlightMotion Finder
-# Type : ESM
-# Url : https://bintangapi.my.id
-# By AlzRiss - Usanagi Umi AI
-*/
+/* Preset AlightMotion Finder — By AlzRiss - Usanagi Umi AI */
+import { findAmPresets } from '../../lib/amfind.js'
 
-import axios from 'axios'
-
-let handler = async (m, { conn, usedPrefix, command, text }) => {
-    try {
-        const url = text?.trim()
-
-        if (!url) {
-            return m.reply(
-                `❌ Masukkan link TikTok.\n\n` +
-                `Contoh:\n${usedPrefix + command} https://vt.tiktok.com/ZSb5ce1L7/`
-            )
+function react(conn, m, text) {
+    // Cosmetic reactions must not hold up the actual lookup or reply.
+    try { Promise.resolve(conn.sendMessage(m.chat, { react: { text, key: m.key } })).catch(() => {}) } catch {}
+}
+const number = value => Number.isFinite(Number(value)) ? Number(value).toLocaleString('id-ID') : '-'
+export function formatAmResult(result) {
+    let text = `*ALIGHT MOTION PRESET*\n\n` +
+        `👤 Kreator: ${result.author.name || '-'}\n` +
+        `🔗 Username: @${result.author.username || '-'}\n` +
+        `🎬 ${String(result.caption || '-').slice(0, 600)}\n\n` +
+        `👁️ ${number(result.views)} · ❤️ ${number(result.likes)} · 💬 ${number(result.comments)}\n`
+    if (result.status === 'found') text += '\n*TAUTAN PRESET*\n'
+    else if (result.status === 'incomplete') text += '\n⚠️ Pencarian belum lengkap karena batas layanan/waktu. Belum ada tautan preset yang ditemukan pada komentar yang berhasil dibaca. Coba lagi sebentar.\n'
+    else text += '\nBelum ditemukan tautan preset pada caption, komentar, dan balasan publik yang berhasil dibaca. Ini tidak memastikan videonya tidak punya preset.\n'
+    for (const item of result.items) {
+        const location = item.source === 'reply' ? 'balasan komentar' : item.source === 'caption' ? 'caption' : 'komentar'
+        text += `\n📁 ${item.label}\nSumber: ${location} ${item.isAuthor ? 'kreator video' : 'pengguna lain (belum terverifikasi sebagai preset kreator)'}\n${item.url}\n`
+    }
+    text += `\nDiperiksa: ${result.inspected} komentar + ${result.replies} balasan.\n🎥 ${result.url}`
+    return text
+}
+export function createAmfindHandler(find = findAmPresets) {
+    return async (m, { conn, usedPrefix, command, text }) => {
+        if (!String(text || '').trim()) return m.reply(`Masukkan tautan TikTok.\nContoh: ${usedPrefix}${command} https://vt.tiktok.com/ZSgMYu5uY/`)
+        react(conn, m, '⏳')
+        let result
+        try { result = await find(text) }
+        catch (failure) {
+            react(conn, m, '❌')
+            const message = failure.code === 'INVALID_URL'
+                ? `Gunakan satu tautan video TikTok yang valid.\nContoh: ${usedPrefix}${command} https://vt.tiktok.com/ZSgMYu5uY/`
+                : failure.code === 'BUSY'
+                    ? 'Pencarian preset sedang penuh. Coba lagi sebentar.'
+                    : 'Data video/komentar TikTok belum dapat dibaca dari layanan pencarian. Coba lagi sebentar; pastikan videonya publik.'
+            // Do not leak provider HTML/errors, or turn a failed lookup into "no preset".
+            console.warn('[AMFIND] lookup unavailable:', String(failure.code || 'LOOKUP').replace(/[^A-Z_]/g, '').slice(0, 40))
+            return m.reply(message)
         }
-
-        if (!/tiktok\.com/i.test(url)) {
-            return m.reply('❌ URL harus berupa link TikTok yang valid.')
-        }
-
-        // Loading reaction
-        try {
-            await conn.sendMessage(m.chat, { react: { text: '⏳', key: m.key } })
-        } catch {}
-
-        const { data } = await axios.get(
-            'https://bintangapi.my.id/api/amfind/',
-            {
-                params: { url },
-                headers: {
-                    Accept: '*/*',
-                    'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7',
-                    Connection: 'keep-alive',
-                    Origin: 'https://starlabs.biz.id',
-                    Referer: 'https://starlabs.biz.id/',
-                    'Sec-Fetch-Dest': 'empty',
-                    'Sec-Fetch-Mode': 'cors',
-                    'Sec-Fetch-Site': 'cross-site',
-                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Mobile Safari/537.36',
-                },
-                timeout: 30000
-            }
-        )
-
-        if (!data?.success || !data?.data) {
-            throw new Error('Preset tidak ditemukan.')
-        }
-
-        /*
-         * =========================
-         * DATA API
-         * =========================
-         */
-
-        const result = data.data || {}
-        const video = result.video || {}
-        const user = result.user || {}
-        const preset = result.preset || {}
-
-        // Fallback Agresif: Cari data di berbagai properti yang sering dipakai API TikTok
-        // Berjaga-jaga jika format API terkadang mengembalikan field yang berbeda
-        const rawViews = video.views ?? video.play_count ?? video.playCount ?? result.views ?? result.play_count ?? 0
-        const rawLikes = video.likes ?? video.digg_count ?? video.diggCount ?? result.likes ?? result.digg_count ?? 0
-        const rawComments = video.comments ?? video.comment_count ?? video.commentCount ?? result.comments ?? result.comment_count ?? 0
-
-        // Parse ke Number agar formatNumber tidak bentrok (Jika NaN/Undefined paksa jadi 0)
-        const views = Number(rawViews) || 0
-        const likes = Number(rawLikes) || 0
-        const comments = Number(rawComments) || 0
-
-        const duration = video.duration ?? 0
-        const caption = video.caption ?? '-'
-
-        /*
-         * =========================
-         * PRESET ITEMS
-         * =========================
-         */
-
-        const items = Array.isArray(preset.items) ? preset.items : []
-
-        /*
-         * =========================
-         * TEXT RESULT
-         * =========================
-         */
-
-        let resultText =
-`╭─「 *ALIGHT MOTION PRESET* 」
-│
-│ 👤 *Creator:* ${user.display_name || '-'}
-│ 🔗 *Username:* @${user.username || '-'}
-│
-│ 🎬 *Caption:*
-│ ${caption}
-│
-│ 👁️ *Views:* ${formatNumber(views)}
-│ ❤️ *Likes:* ${formatNumber(likes)}
-│ 💬 *Comments:* ${formatNumber(comments)}
-│ ⏱️ *Duration:* ${duration}s
-│
-│ 📦 *Preset:*
-│ ${preset.is_reply ? 'Reply Comment' : 'Comment'}
-│ ${preset.is_author ? 'Author' : 'User'}
-╰─────────────────`
-
-        /*
-         * =========================
-         * DOWNLOAD LINKS
-         * =========================
-         */
-
-        if (items.length > 0) {
-            resultText += `\n\n╭─「 *DOWNLOAD PRESET* 」`
-            for (const item of items) {
-                if (!item?.url) continue
-                resultText += `\n│ 📁 *${item.label || 'Preset'}*\n│ 🔗 ${item.url}\n`
-            }
-            resultText += `╰─────────────────`
-        }
-
-        /*
-         * =========================
-         * TIKTOK
-         * =========================
-         */
-
-        if (video.url) {
-            resultText += `\n\n🎥 *TikTok:*\n${video.url}`
-        }
-
-        /*
-         * =========================
-         * SEND THUMBNAIL
-         * =========================
-         */
-
-        if (result.thumbnail) {
-            try {
-                await conn.sendMessage(
-                    m.chat,
-                    { image: { url: result.thumbnail }, caption: resultText },
-                    { quoted: m }
-                )
-            } catch (err) {
-                await m.reply(resultText)
-            }
-        } else {
-            await m.reply(resultText)
-        }
-
-        // Success reaction
-        try {
-            await conn.sendMessage(m.chat, { react: { text: '✅', key: m.key } })
-        } catch {}
-
-    } catch (e) {
-        // Error reaction
-        try {
-            await conn.sendMessage(m.chat, { react: { text: '❌', key: m.key } })
-        } catch {}
-
-        const error = e.response?.data
-            ? (typeof e.response.data === 'string' ? e.response.data : JSON.stringify(e.response.data, null, 2))
-            : e.message
-
-        return m.reply(`❌ Terjadi kesalahan:\n${error}`)
+        await m.reply(formatAmResult(result))
+        react(conn, m, result.status === 'found' ? '✅' : '⚠️')
     }
 }
-
-function formatNumber(number) {
-    // Validasi tambahan agar tidak error saat toLocaleString
-    const num = Number(number);
-    if (isNaN(num)) return '0';
-    return num.toLocaleString('id-ID');
-}
-
+const handler = createAmfindHandler()
 handler.help = ['amfind <url>']
 handler.tags = ['tools']
 handler.command = ['amfind', 'amfinder']
-
 export default handler

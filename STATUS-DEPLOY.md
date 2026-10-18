@@ -1972,3 +1972,19 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - Detaildocs/FEEDBACK-AUDIT-TASK57.md,README; evidence sanitizeddeploy-check/task57, laporan/log/credential privat.secrets/task57. Final safety dicatat berikut.
 
 - Final safety Task57:4016trackedfile/24nilai privat diperiksa,0temuan; gitdiffcheck PASS. Dependency symlink dilepas sebelum publikasi.
+
+
+## Task58 — /amfind timeout pada tautan TikTok (2026-10-18)
+
+- Workspace kembali snapshot0d76f6a; patch dipreservasi privat sebelum fetch/reset baseline4a32f86. Origin/helper dipulihkan; hanya panel.env diekstrak dari vault, tidakrestoreDB/config/sesi. Pluginamfindlive didownload danSHA cocokbaseline sebelumedit.
+- Akar: pluginmengandalkansatuendpointbintangapi/api/amfind denganAxios timeout30detik, tanpa fallback, lalu mengirim rawerror. Tautanpendekpengguna resolve301kevideopublik; endpointamfindlama tidakmerespons pada probe16/18detik baikURLpendekmaupuncanonical, homepage200. Bukan sekadarslashterakhir.
+- Jalurpublikalternatifterbukti: metadatavideo/komentarTikWM dan halaman/APIpublikTikTokterbaca; presetnyata ada dibalasankreator. KanalWhatsAppkreatoruntukXML dipisahkan, tidakdiklaimfileXMLlangsung. Tidakmenggunakan login/cookie/bypassakun.
+- Helperbaruvalidasihost/path/port/protocol/credentials, Markdown/short/canonicalnormalization danredirectallowlist; responseIDmismatchditolak, numericvideoIDtetapstring. Pencariancaption/comment/reply, prioritaskanthreadpreset/kreator, attributionauthorID, tautanpenggunalainbertandabelumterverifikasi. Responsebodydibatasi, tanpa downloadberkas/thumbnailtambahan.
+- Providerteramati1request/detik; antrean1,2detik, satukaliretryrate-limit,2activejob, in-flightdedup, cachepositif5menit/64key. Budget24detik/request5,5detik/max4halaman/10thread. Gagal/parsial tidakdisamarkanmenjadipresettidakada; tidaknegativecache. Reaksitidakmenahanreply. Aliasamfind/amfinder danprefixaktif tetap.
+- QA337PASS=103unit/helper/regresi+128actualdispatcher/AutoAI/AFK+96backend/Realms+10transportwebsite;39tesbaru(36helper/plugin+3actualdispatcher). HTML/provider/WAfixture;SQLite/filesystemregresi nyata. ParserAcornterpisahES2020PASSuntukhelperdanplugin. Test-sourceportablemenggunakannativesyntaxcheck,tidakmenambahdependencyruntime.
+- Lookupnyatadariworkspace3.139ms:49komentar+3balasan,halamanpertama,foundpresetkreator. VarianMarkdown/slashsamahasil. Setelahdeploy, diagnostikread-onlydiserverproduksi viaownerrelayterautentikasi: URLslash3.143ms, tanpaSlash2.993ms, keduanyafoundURLyangsama/sourceReply/isAuthortrue; pluginmenghasilkansatubalasandengansemualink. WAtransportmock; physicalWhatsAppacceptancefalse. Tidakmengirimpesanuji kegruppengguna atau mengubahdataakun/game/sesi; auditoperasionalrelaytetapberjalan.
+- Guardedcode-onlydeploy62targetpreflight/readback;2filefitur+1diagnostikdiunggah, restartbotditerima. Tidakredeploywebsite/gameataurestoredata/config/auth;keytidakdirotasi. Task55AFK/Task56noslash/Task57cleaner/RPGguarddipertahankan.
+- Verifikasi62/62SHAlive,4health200JSON;8Jadibot/2039plugin, mainOFF/autoreadOFF/tanpapairingmain. Uptime34detik,175chunk/32chat/3command;0readonly/identity/runtime/import/preview/metadata-rate/cleaner/error-message/AFKnotification/persistenceerror. BukanbuktideliveryWhatsAppfisik.
+- Detaildocs/AMFIND-TIMEOUT-TASK58.md,README; sanitizedevidencedeploy-check/task58, rawprovider/log/credentialhanya.secrets/task58. TidakmerubahstatusFeedbackhistorisyangtidakterkait.
+
+- Final safety Task58:4021trackedfile/23nilai privat diperiksa,0temuan; gitdiffcheck PASS. Dependency symlink dilepas sebelum publikasi.
