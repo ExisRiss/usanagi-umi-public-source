@@ -43,12 +43,10 @@ function bind(conn) {
 				if (!chats) chats = conn.chats[id] = { id };
 				chats.isChats = !readOnly;
 				if (name) chats[isGroup ? 'subject' : 'name'] = name;
-				if (isGroup) {
-					const metadata = await conn.groupMetadata(id).catch(() => null);
-					if (name || metadata?.subject) chats.subject = name || metadata.subject;
-					if (!metadata) continue;
-					chats.metadata = metadata;
-				}
+				// History sync can contain hundreds of groups. It must not spend a
+				// metadata query per chat and exhaust WhatsApp before the first reply.
+				// Permissions/outbound encryption fetch fresh members on demand.
+				if (isGroup && chats.metadata?.subject && !name) chats.subject = chats.metadata.subject;
 			}
 		} catch (e) {
 			console.error(e);

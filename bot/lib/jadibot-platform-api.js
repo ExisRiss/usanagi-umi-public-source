@@ -1,3 +1,4 @@
+import { platformSessions } from './jadibot-platform-state.js'
 import { createRealmHttp } from './realms/http.js'
 import { realmService } from './realms/runtime.js'
 import { getDb } from '../core/awang-sqlite.js'
@@ -38,7 +39,6 @@ import { agentChat, agentStatus, ownerAgentShell, startUmiAgentWorker, updateAge
 import { buyPanelPackage, buyProduct, createWalletTopup, handleTripayCallback, manualTopupRequests, panelAutoOrderStatus, reviewManualTopup, shopCatalog, startPanelAutoOrder, testPanelConnection, updatePanelPackages, updatePanelSettings, adjustWallet, creditWalletForGame, debitWalletForGame, walletOrders, walletStatus } from './panel-autoorder.js'
 
 
-const DB_FILE = path.join(process.cwd(), 'data', 'jadibot-platform.json')
 const BACKUP_DIR = path.join(process.cwd(), 'data', 'jadibot-backups')
 const SESSION_DIR = path.join(process.cwd(), 'sessions', 'jadibot')
 const CUSTOM_PLUGIN_DIR = path.join(process.cwd(), 'plugins', 'custom')
@@ -54,7 +54,6 @@ const ownerConsole = globalThis.__usanagiOwnerConsole || { cursor: 0, chunks: []
 globalThis.__usanagiOwnerConsole = ownerConsole
 let ownerConsoleRelaySecret = null
 let server = null
-let database = null
 
 const nowIso = () => new Date().toISOString()
 const safeText = (value, max = 200) => String(value ?? '').trim().slice(0, max)
@@ -359,20 +358,8 @@ function config() {
   return global.jadibotPlatform || {}
 }
 
-function loadDb() {
-  if (database) return database
-  try { database = JSON.parse(fs.readFileSync(DB_FILE, 'utf8')) } catch { database = { sessions: {}, backups: {} } }
-  database.sessions ||= {}
-  database.backups ||= {}
-  return database
-}
-
-function saveDb() {
-  fs.mkdirSync(path.dirname(DB_FILE), { recursive: true })
-  const temp = `${DB_FILE}.${process.pid}.tmp`
-  fs.writeFileSync(temp, `${JSON.stringify(loadDb(), null, 2)}\n`, { mode: 0o600 })
-  fs.renameSync(temp, DB_FILE)
-}
+const loadDb = () => platformSessions.load()
+const saveDb = () => platformSessions.save()
 
 function send(res, status, payload, headers = {}) {
   const body = payload === undefined ? '' : JSON.stringify(payload)
@@ -474,6 +461,7 @@ async function authenticate(req) {
 }
 
 function ownedSession(user, number) {
+  platformSessions.assertAvailable(number)
   const session = loadDb().sessions[number]
   if (!session) throw Object.assign(new Error('Session tidak ditemukan.'), { status: 404 })
   if (!user.isOwner && session.userId !== user.id) throw Object.assign(new Error('Anda tidak memiliki session ini.'), { status: 403 })
@@ -1038,6 +1026,7 @@ async function route(req, res) {
     const input = await bodyJson(req)
     const number = normalizeBotNumber(input.phone || input.session_id)
     if (!number || number.length < 7 || number.length > 15) throw Object.assign(new Error('Nomor WhatsApp tidak valid.'), { status: 400 })
+    platformSessions.assertAvailable(number)
     const db = loadDb()
     const existing = db.sessions[number]
     if (existing && !user.isOwner && existing.userId !== user.id) throw Object.assign(new Error('Nomor ini sudah dimiliki akun lain.'), { status: 409 })

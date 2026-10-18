@@ -1,3 +1,4 @@
+import { sendAutoAIReply } from './lib/auto-ai-reply.js'
 import { handleAfkMessage } from './lib/afk.js';
 import { isRealmAccessCommand } from './lib/realms/access.js';
 import { runUnifiedCommand, awardMessageExp } from './lib/rpg/unified-runtime.js';
@@ -37,26 +38,6 @@ import {
 
 const isNumber = (x) => typeof x === 'number' && !isNaN(x);
 const registrationCommands = new Set(['daftar', 'verify', 'reg', 'register']);
-
-// Balasan Auto-AI dibuat terasa seperti orang mengetik: status "sedang menulis",
-// jeda sesuai panjang teks, lalu kirim. Tidak ada template teknis ke pengguna.
-async function sendAutoAIReply(conn, m, text) {
-    const body = String(text || '').trim();
-    if (!body) return;
-    try {
-        if (typeof conn.sendPresenceUpdate === 'function') await conn.sendPresenceUpdate('composing', m.chat);
-    } catch { }
-    const delay = Math.min(2600, Math.max(320, body.length * 16));
-    await new Promise(resolve => setTimeout(resolve, delay));
-    try {
-        await m.reply(body);
-    } catch {
-        try { await conn.sendMessage(m.chat, { text: body }, {}); } catch { }
-    }
-    try {
-        if (typeof conn.sendPresenceUpdate === 'function') await conn.sendPresenceUpdate('paused', m.chat);
-    } catch { }
-}
 
 // Kalimat manusia untuk rencana berjadwal, dipakai kalau model tidak memberi kalimat.
 function naturalScheduleNote(steps, prefix) {

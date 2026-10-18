@@ -4,6 +4,12 @@ This repository contains the **sanitized source template** for the Usanagi Umi W
 
 > **Security notice:** This is intentionally not a production backup. WhatsApp sessions, phone numbers, pairing codes, database/runtime data, Pterodactyl/GitHub/Vercel credentials, API keys, environment files, deployment archives, and owner-specific configuration have been removed or replaced with placeholders.
 
+## Feedback ditinjau dan diperbaiki — Task57 (18 Oktober 2026)
+
+- Audit 88 laporan: perbaikan metadata grup yang berlebihan, reservation sesi kedaluwarsa yang mengunci pairing, dan presence yang dapat menahan AutoAI. Sesi aktif/ownership, AFK, prefix, RPG dan main/autoread OFF tetap dilindungi.
+- 298 tes lulus; tujuh runtime file di-deploy code-only. 59/59 SHA cocok, empat health endpoint sehat dan tujuh Jadibot tersambung. Empat reservation orphan masuk grace period 15 menit; tidak diambil alih paksa.
+- Catatan Feedback sudah diperbarui; enam laporan teknis masih monitoring karena penerimaan/pairing di perangkat pelapor belum diuji. [Detail Task57](docs/FEEDBACK-AUDIT-TASK57.md).
+
 ## Balasan tanpa slash tambahan — Task56 (18 Oktober 2026)
 
 - Hapus URL/slash dan karakter tersembunyi yang disisipkan plugin preview di depan balasan biasa maupun AutoAI. Isi pesan dan metadata pemanggil dipertahankan; contoh command tetap mengikuti prefix aktif.

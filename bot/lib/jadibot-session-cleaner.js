@@ -15,6 +15,7 @@
  * Hitungan disimpan di data/jadibot-session-cleaner.json supaya restart
  * container tidak mengulang dari nol.
  */
+import { platformSessions } from './jadibot-platform-state.js'
 import fs from 'node:fs'
 import path from 'node:path'
 import { execFile } from 'node:child_process'
@@ -59,6 +60,7 @@ function saveState() {
 }
 
 function entryFor(number) {
+  if (!state.loaded) loadState()
   const key = digits(number)
   if (!key) return null
   if (!state.entries[key]) {
@@ -121,16 +123,17 @@ function removeTarget(target) {
   }
 }
 
-function refreshBackupArchive() {
-  if (!fs.existsSync(BACKUP_DIR) || !fs.existsSync(BACKUP_TAR)) return
+async function refreshBackupArchive() {
+  if (!fs.existsSync(BACKUP_TAR)) return
+  if (!fs.existsSync(BACKUP_DIR)) { fs.rmSync(BACKUP_TAR, { force: true }); return }
   const temp = `${BACKUP_TAR}.tmp`
-  execFile('tar', ['-czf', temp, '-C', path.dirname(BACKUP_DIR), path.basename(BACKUP_DIR)], { timeout: 60_000 }, error => {
-    if (error) {
-      try { fs.unlinkSync(temp) } catch {}
-      return
-    }
-    try { fs.renameSync(temp, BACKUP_TAR) } catch {}
-  })
+  try {
+    await new Promise((resolve, reject) => execFile('tar', ['-czf', temp, '-C', path.dirname(BACKUP_DIR), path.basename(BACKUP_DIR)], { timeout: 60_000 }, error => error ? reject(error) : resolve()))
+    fs.renameSync(temp, BACKUP_TAR)
+  } catch (error) {
+    try { fs.unlinkSync(temp) } catch {}
+    throw error // Retain reservation/state and retry; never report a complete purge.
+  }
 }
 
 function sessionFolders() {
@@ -156,7 +159,8 @@ export async function sweepJadibotSessions() {
   const removed = []
   try {
     const conns = global.jadibotConns instanceof Map ? global.jadibotConns : null
-    const folders = sessionFolders()
+    // Include orphan website reservations/backups, not only folders on disk.
+    const folders = [...new Set([...sessionFolders(), ...platformSessions.numbers()])]
     const now = Date.now()
 
     for (const number of folders) {
@@ -176,17 +180,26 @@ export async function sweepJadibotSessions() {
       if (!(disconnectedMs >= TTL_MS)) continue
 
       const minutes = Math.round(disconnectedMs / 60000)
+      if (!platformSessions.beginRemoval(number)) continue
       try {
         if (state.removalHook) await state.removalHook(number)
-      } catch {}
-      const sessionRemoved = removeTarget(path.join(SESSIONS_DIR, number))
-      const backupPath = path.join(BACKUP_DIR, number)
-      const backupRemoved = fs.existsSync(backupPath) ? removeTarget(backupPath) : false
-      delete state.entries[number]
-      saveState()
-      console.log(`[JADIBOT-CLEANER] ${number} putus ${minutes} menit — session dihapus${backupRemoved ? ' + backup dihapus' : ''}`)
-      console.log(`[JADIBOT-CLEANER] sessionRemoved=${sessionRemoved}`)
-      removed.push({ number, minutes, backupRemoved })
+        const current = conns && conns.get(number)
+        if (current && current.__jadibotConnected) continue
+        const sessionRemoved = removeTarget(path.join(SESSIONS_DIR, number))
+        if (!sessionRemoved) continue
+        const backupPath = path.join(BACKUP_DIR, number)
+        const hadBackup = fs.existsSync(backupPath)
+        if (hadBackup && !removeTarget(backupPath)) continue
+        await refreshBackupArchive()
+        const platform = platformSessions.remove(number)
+        delete state.entries[number]
+        saveState()
+        console.log(`[JADIBOT-CLEANER] sesi putus ${minutes} menit dibersihkan beserta registry dan backup.`)
+        removed.push({ number, minutes, backupRemoved: hadBackup, ...platform })
+      } catch (error) {
+        console.error('[JADIBOT-CLEANER] pembersihan belum lengkap; akan diulang:', error.message)
+      } finally { platformSessions.endRemoval(number) }
+
     }
 
     // Buang catatan untuk sesi yang sudah tidak ada di disk.
@@ -198,7 +211,6 @@ export async function sweepJadibotSessions() {
       dirty = true
     }
     if (dirty) saveState()
-    if (removed.length) refreshBackupArchive()
   } finally {
     state.sweeping = false
   }
