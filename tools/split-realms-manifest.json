@@ -3,7 +3,7 @@
     "bot": "serverjadibotVip",
     "game": "servergameVip"
   },
-  "note": "Task60: per-session persisted AutoAI toggles (no restart for toggle-only); bounded avatar download/text fallback; exact idempotent boot patch retaining unmapped PN/device session-key recipients. Preserve Task59 RPG, sessions, keys, main/autoread OFF. Website deployed separately.",
+  "note": "Task61: conversational tone, chat-only action guard, RAM-only 20-minute bounded context isolated by session/chat/sender, commit only after successful reply path and local forget. Preserve Task60 per-session toggles, vendor key-query patch, profile fallback, RPG, keys, main/autoread OFF. No base-model training.",
   "files": [
     {
       "role": "bot",
@@ -58,15 +58,15 @@
       "role": "bot",
       "source": "bot/lib/auto-ai-prompt.js",
       "remote": "/lib/auto-ai-prompt.js",
-      "beforeSha256": "c969b3551d702c4f0f3260c0078567dc7b43ed77d375fcce8b501fd0a5726c0f",
-      "sourceSha256": "c969b3551d702c4f0f3260c0078567dc7b43ed77d375fcce8b501fd0a5726c0f"
+      "beforeSha256": "dc3e0354e857e4e992dc4d2cccd534ebc6682b652080352fd047d672018f554b",
+      "sourceSha256": "dc3e0354e857e4e992dc4d2cccd534ebc6682b652080352fd047d672018f554b"
     },
     {
       "role": "bot",
       "source": "bot/lib/auto-ai.js",
       "remote": "/lib/auto-ai.js",
-      "beforeSha256": "93b528141bbafd7e95c40933e8c883d024380e67ab61e6f6b55aa617debf2cea",
-      "sourceSha256": "93b528141bbafd7e95c40933e8c883d024380e67ab61e6f6b55aa617debf2cea"
+      "beforeSha256": "33443753dc6370ddbf481f0f72dca3a5a887674dcac95ae7ef1d5dfdf599d1f7",
+      "sourceSha256": "69ca5992dfb163eae6d8f62af9dbbecc866b32a1a4b6c51bf54f91edc6c9cc69"
     },
     {
       "role": "bot",
@@ -149,7 +149,7 @@
       "role": "bot",
       "source": "bot/scripts/boot.js",
       "remote": "/scripts/boot.js",
-      "beforeSha256": "aa45c8039e7394f19d74aed1dbd2874f2a52963c4a1084613829560d1b936edc",
+      "beforeSha256": "72c19f8b8908cf860e562c3eb6bc0c51919834176b7db4d8dda259562af1080a",
       "sourceSha256": "72c19f8b8908cf860e562c3eb6bc0c51919834176b7db4d8dda259562af1080a"
     },
     {
@@ -268,7 +268,7 @@
       "role": "bot",
       "source": "bot/lib/jadibot-platform-api.js",
       "remote": "/lib/jadibot-platform-api.js",
-      "beforeSha256": "d914ae224a30b16d55a4a3d31df037c8cb7c4a7eae2d2768b7dc47c61b39f1f9",
+      "beforeSha256": "796e3fc26f03e4966b34d1c299234cb334d1f32d087cbe4c6d2367148eeef43a",
       "sourceSha256": "796e3fc26f03e4966b34d1c299234cb334d1f32d087cbe4c6d2367148eeef43a"
     },
     {
@@ -380,8 +380,8 @@
       "role": "bot",
       "source": "bot/handler.js",
       "remote": "/handler.js",
-      "beforeSha256": "e355418425942bbff93bfe6ca813e9bbbaaab863173ac75fc6eae586633e0888",
-      "sourceSha256": "e355418425942bbff93bfe6ca813e9bbbaaab863173ac75fc6eae586633e0888"
+      "beforeSha256": "8ddd0901a14b561bcf31958de1d7b76b567ae81117f724d03b0d6b44f784b4a2",
+      "sourceSha256": "8ddd0901a14b561bcf31958de1d7b76b567ae81117f724d03b0d6b44f784b4a2"
     },
     {
       "role": "bot",
@@ -415,8 +415,8 @@
       "role": "bot",
       "source": "bot/lib/auto-ai-reply.js",
       "remote": "/lib/auto-ai-reply.js",
-      "beforeSha256": "08425f535b82dc161ad2f08c8da2c7df99738abddb1d5bcb36b7d5b84b050ccc",
-      "sourceSha256": "08425f535b82dc161ad2f08c8da2c7df99738abddb1d5bcb36b7d5b84b050ccc"
+      "beforeSha256": "e2731e03e32865b0aee48c1d45499292510ff4549627937f7780d54d135908bc",
+      "sourceSha256": "6f6d4118a12639a790d2aa77c1964c4c9afbf8105a8e69193a2a84c057bbf21f"
     },
     {
       "role": "bot",
@@ -443,29 +443,36 @@
       "role": "bot",
       "source": "bot/lib/bot-config.js",
       "remote": "/lib/bot-config.js",
-      "beforeSha256": "34dae2d8ed3e5f58d7cdf4873d484aab06f6075fdf4a0c16cd8e0a65d90343d2",
+      "beforeSha256": "2436a99bb7315eb89b4d6b81cff941e6869d8cc2c16f6be72a46cfa0b30e917c",
       "sourceSha256": "2436a99bb7315eb89b4d6b81cff941e6869d8cc2c16f6be72a46cfa0b30e917c"
     },
     {
       "role": "bot",
       "source": "bot/lib/baileys-session-compat.js",
       "remote": "/lib/baileys-session-compat.js",
-      "beforeSha256": null,
+      "beforeSha256": "1c30fcf275397008ed5bb65ea553171311dbfecfce77f14157e81f125e2bf1f6",
       "sourceSha256": "1c30fcf275397008ed5bb65ea553171311dbfecfce77f14157e81f125e2bf1f6"
     },
     {
       "role": "bot",
       "source": "bot/lib/profile-photo.js",
       "remote": "/lib/profile-photo.js",
-      "beforeSha256": null,
+      "beforeSha256": "c9bef272f8b6630b88de17d1c3aa5993d67fed424ab37f9bc4f25667f964492f",
       "sourceSha256": "c9bef272f8b6630b88de17d1c3aa5993d67fed424ab37f9bc4f25667f964492f"
     },
     {
       "role": "bot",
       "source": "bot/plugins/economy/xp-profile.js",
       "remote": "/plugins/economy/xp-profile.js",
-      "beforeSha256": "b3b6de1901f263337915739d3c766839c2fb738891c9269379510948f57598d9",
+      "beforeSha256": "71131cd375c9ce90f887d86c189e5a0a24f3ab1a66da8f358c9ee12003e63eca",
       "sourceSha256": "71131cd375c9ce90f887d86c189e5a0a24f3ab1a66da8f358c9ee12003e63eca"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/auto-ai-conversation.js",
+      "remote": "/lib/auto-ai-conversation.js",
+      "beforeSha256": "a568e8d902596d4a6b5c26dd3ecb5a4e8af9aa3e9d6e01416b0f78b110a136f4",
+      "sourceSha256": "dd0536325ece329fbea609950e11685364b1e95bea17ca1f0cffdbce9c8d576a"
     }
   ]
 }

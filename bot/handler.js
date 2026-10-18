@@ -460,7 +460,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
             }
         }
         const aiDispatchText = aiDispatchPlan ? `${activePrefix}${aiDispatchPlan.command}${aiDispatchPlan.args ? ' ' + aiDispatchPlan.args : ''}` : selfAIRequest ? '' : m.text;
-        if (aiPlan.kind === 'answer') { m.__autoAIHandled = true; m.__autoAIAnswer = aiPlan.answer; }
+        if (aiPlan.kind === 'answer') { m.__autoAIHandled = true; m.__autoAIAnswer = aiPlan.answer; m.__autoAIConversation = aiPlan.conversation; }
         if (aiDispatchPlan) {
             m.__autoAITargetPlugin = aiDispatchPlan.plugin;
         }

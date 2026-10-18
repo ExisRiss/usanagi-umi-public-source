@@ -4,6 +4,13 @@ This repository contains the **sanitized source template** for the Usanagi Umi W
 
 > **Security notice:** This is intentionally not a production backup. WhatsApp sessions, phone numbers, pairing codes, database/runtime data, Pterodactyl/GitHub/Vercel credentials, API keys, environment files, deployment archives, and owner-specific configuration have been removed or replaced with placeholders.
 
+## AutoAI teman ngobrol lebih natural — Task61 (18 Oktober 2026)
+
+- Gaya lebih santai dan mendengarkan; curhat/pertanyaan umum memakai mode ngobrol tanpa menjalankan fitur. Command eksplisit dan pengaman lama tetap tersedia.
+- Konteks singkat RAM-only dipisah per sesi, chat, dan pengirim: maksimal empat giliran, kedaluwarsa 20 menit. Hanya jalur kirim berhasil yang dicatat. `!!lupakan obrolan kita` menghapus konteks sendiri, termasuk membatalkan response lama yang belum dikirim; tidak menghapus pesan WhatsApp.
+- 451 tes PASS; uji Groq nyata dengan pesan sintetis berhasil mengingat pembicaraan sebelumnya. 67/67 SHA produksi cocok, empat health sehat, main/autoread OFF. Toggle tiap sesi Task60 dan progres RPG dipertahankan.
+- Ini perbaikan prompt/konteks/routing, **bukan pelatihan ulang model**. Kualitas gaya tetap bervariasi dan penerimaan WhatsApp fisik belum diuji. [Detail Task61](docs/AUTOAI-CONVERSATION-TASK61.md).
+
 ## AutoAI per session, menu dan profil — Task60 (18 Oktober 2026)
 
 - Tombol **AutoAI ON/OFF** di setiap kartu Sessions dan checkbox Settings. Pengaturan tersimpan per sesi, tidak mengubah sesi lain; toggle kartu berlaku tanpa restart. Command manual tetap tersedia saat AutoAI OFF.
