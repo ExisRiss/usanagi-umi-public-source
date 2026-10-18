@@ -1,5 +1,20 @@
 # STATUS DEPLOY
 
+## Task 64b — 45 saham IDX asli (2026-10-19)
+
+**Commit:** `b9b940c`
+
+| Item | Status |
+|---|---|
+| Nama & kode saham jadi emiten IDX asli | **SELESAI + TERDEPLOY** (game `186425d1`, bot `d178bf71`) |
+| Jumlah emiten | **10 → 45** (BBCA, BBRI, BMRI, BBNI, BRIS, ARTO, TLKM, EXCL, ISAT, TOWR, MTEL, ADRO, PTBA, ITMG, MEDC, PGAS, AKRA, ESSA, ICBP, INDF, UNVR, HMSP, GGRM, AMRT, CPIN, ANTM, MDKA, TINS, INCO, SMGR, INTP, WIKA, PTPP, ASII, GOTO, EMTK, BUKA, KLBF, SIDO, BSDE, CTRA, ACES, MAPI, SCMA, TPIA) |
+| Harga acuan | harga IDX ÷ 2.000 (BBCA ≈ $AS 5, GOTO ≈ $AS 0,06) supaya tetap terjangkau saldo $AS |
+| Sinkron di semua tampilan | web `/trading`, offline, kartu WhatsApp, tombol boost (default BBCA) |
+| Simbol lama (UMI, TRD, DANA, …) | hilang total (`fiktif tersisa: []`) |
+
+Bukti: `/home/user/deploy-check/task64b/verify.txt`.
+
+
 ## Task 64 — Top up $AS pakai koin RPG + Limit ON/OFF (2026-10-19)
 
 **Commit:** `5c92dbc` → `a4ebe03` → `ac9da69` → `66e60ff` (branch `main`).
