@@ -1928,3 +1928,18 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - Final recheck memakai URL JavaScript berversi yang benar-benar dimuat HTML (unversioned edgecache sempat memberi aset lama):49SHA/14livechecksPASS. Uptime332detik,37chat/6command,0readonly/identity/runtime/error-message;2jadibot. Tidak menganggap hasil cachelama atau tes dialog sebelum eventclose sebagai acceptancefinal.
 
 - Final safety Task54:4004file source/23nilai privat diperiksa,0temuan. Dependency symlink dilepas sebelum publikasi; rawdata/log/token tidak dipublikasikan.
+
+
+## Task55 — AFK tidak berakhir saat pengguna mengirim pesan (2026-10-18)
+
+- Workspace kembali0d76f6a/2377dirty; patch disimpan privat, origin/helper dipulihkan, baselinef1b8ed7 difetch/reset. Credentialpanel saja diekstrak dari vault existing; tidak restoreDB/config/sesi stale. Ownerbuffer awal900chunk tidak memuat AFK atau runtimeerror, sehingga diagnosis dari source+reproduksi handler, bukan klaim menemukan incident spesifik dalam buffer.
+- Akar implementasi: legacy users.afk, native Map awang-afk, dan imported global.afkStorage terpisah. Main/Jadibot hanya menjalankan hooklegacy; imported checkAfk tidak dipanggil compatibilitydispatcher, router native bukan jalur ini. Privateprefix/premium gate mendahului hook.
+- Satu state afkStateV1 dalam JSON existing; seluruh setter/getter/clear untuklegacy/native/impor diarahkan ke service bersama. Legacy persistedrecords dimigrasikan sebelumprofilmerge; flaglama dinonaktifkan setelahstatusdisalin, bukanresetstatusmassal. Map impor dipindahkan jika masihada dalamproses; statevolatile yang hilang akibat restart lama tidak direkonstruksi.
+- Maintenance AFK sebelum commandgate: pesanbaru menghapus status tepatpengirim/aliastepercaya, persistsebelumnotif. Tidak menebak PN dariangkaLID atau menggabungduaPNkonflik. Notifpakaisocketjadibot yang benar; selfmode tetapbolehdiam. Failedsend tidak mengembalikanAFK. AFKsetulang dikecualikan, prefixaktif dihormati.
+- Mention/quote/statusreturn membaca state sama; dedup hook/ID dan boundedtargets. Foto/audio/stiker/dokumen tanpa caption dideteksi; history/protocol/reaction/status/echo tidak dianggapkembali, timestamp lama tidak menghapusAFKbaru. Hooklegacy menjadiadapteridempoten, nofreeconn/noNumberprototype.
+- QA236PASS=25AFKunit+13actualhandler/SQLite+102dispatcher/AutoAI+96backend/Realms. Actual commandalias8jenis→chat→tag tidakmenyisakanAFK. Regresi mencakup private nonpremium/unregistered/groupOnly, aliasverified/unverified/conflict, media, reAFK, JSONrestart, sendfailure/concurrency. Serializer/transportWA masihmock; physicalacceptancebelum.
+-5existingAFKsource didownload dan cocok baseline sebelumdeploy. Manifest55targetguardedpreflight/upload/readback; restartbot diterima. Updatecode-only7runtimefile, tidakdeploygame/website atau uploaduserdata/auth. MainOFF/autoreadOFF/keys/sesi/progresRPG/financialguard dipertahankan. Detaildocs/AFK-RETURN-TASK55.md danREADME; evidence sanitizeddeploy-check/task55, rawlog/patch/recovery.secrets. Verifikasi akhir menyusul.
+
+- Verifikasi akhir:55/55sourceSHA live cocok;4healthAPI/duawebsite/game200JSON.5jadibot terhubung setelahrestart,mainOFF/autoreadOFF/tanpapairing. Uptime109detik,buffer536chunk:91chat/2command,0readonly/identity/runtimeerror/AFKnotificationfailure/AFKpersistencefailure. Belum ada AFKreturnnotice pada buffer itu, jadi physicalAFKacceptance tidak diklaim.
+
+- Read-only persistenceprobe:afkStateV1 benar-benar tersimpan dalam databaseJSONlive (0active saatprobe),0moduleimporterror; probe tidakmenulis userdata. Final safety Task55:4008file source/23nilai privat,0temuan; dependency symlink tidak dipublikasikan.

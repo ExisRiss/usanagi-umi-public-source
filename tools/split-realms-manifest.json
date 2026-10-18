@@ -3,8 +3,50 @@
     "bot": "serverjadibotVip",
     "game": "servergameVip"
   },
-  "note": "Task54: Realms private login access, verified Jadibot token to WA-proven account linking, own-message AutoAI only with !! and outbound echo guards. Code only; preserve keys, sessions and main OFF.",
+  "note": "Task55: one persistent AFK state for legacy/native/imported commands, trusted PN/LID cleanup on real messages before private command gates, dedup and no stale mentions. Preserve RPG, sessions, keys, main/autoread OFF.",
   "files": [
+    {
+      "role": "bot",
+      "source": "bot/core/awang-afk.js",
+      "remote": "/core/awang-afk.js",
+      "beforeSha256": "2e98a5680f907ab65bf4b6342318878caea8330e71dd5926b6306d83ca0efe85",
+      "sourceSha256": "3e8e485a8733dad3673cbefce62f52e6ea19f26d205801b411bff1c26afb7999"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/afk.js",
+      "remote": "/lib/afk.js",
+      "beforeSha256": null,
+      "sourceSha256": "0a8a2f6bff5f7ef0965eb8e8e52a70192266c09103f81c1210b1465198197e77"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/_system/_afk.js",
+      "remote": "/plugins/_system/_afk.js",
+      "beforeSha256": "0aba5f89468ea5b86a88b6a8b862cb09e631580fbbf9ae3ca0c8983a48a05b4a",
+      "sourceSha256": "ea2ea2ff4879e5cc59fb6355185845999b220396200556c6076846b31c6a6943"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/group/usanagi-afk.js",
+      "remote": "/plugins/group/usanagi-afk.js",
+      "beforeSha256": "65e0196ae8233dcaeab0eafd3b5fb48abdb021afc8aaadb545ae7d063bd0348e",
+      "sourceSha256": "f6e60fad3f640b24f9bf84944cdc3c2d0597d601afbbb9ce399d13196ab47d9b"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/info/main-afk.js",
+      "remote": "/plugins/info/main-afk.js",
+      "beforeSha256": "0851b970cd27ba0b3766a93de7ce47b985274a43ca38cd81159457931f1da442",
+      "sourceSha256": "0865404b85d0209a039482fb209b23396a2adda5416012e0208189ef65f5867f"
+    },
+    {
+      "role": "bot",
+      "source": "bot/integrations/umi/plugins/group/afk.js",
+      "remote": "/integrations/umi/plugins/group/afk.js",
+      "beforeSha256": "81df9f5fae3440eff79ed5640abbc4a86e9708c553a6d7d88d46cb61f977021c",
+      "sourceSha256": "949fc4ef3b204e2eede3e5f5d5f67552b6efc61fce8ce8b822601eec29f090e7"
+    },
     {
       "role": "bot",
       "source": "bot/lib/command-response.js",
@@ -338,8 +380,8 @@
       "role": "bot",
       "source": "bot/handler.js",
       "remote": "/handler.js",
-      "beforeSha256": "995c93d73b5bc27fa27a7bc0061dbcd8c05ecdeae811d410c4793096e62a32ee",
-      "sourceSha256": "16c308a2915f47842aeb691ce9a4b3be4845be81cbccd12cccc70a36686970ae"
+      "beforeSha256": "16c308a2915f47842aeb691ce9a4b3be4845be81cbccd12cccc70a36686970ae",
+      "sourceSha256": "01e4929ee90cc01275e79a292bd194d17ff655674a51190aab82f65b2814f768"
     },
     {
       "role": "bot",

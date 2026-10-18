@@ -1,3 +1,4 @@
+import { handleAfkMessage } from './lib/afk.js';
 import { isRealmAccessCommand } from './lib/realms/access.js';
 import { runUnifiedCommand, awardMessageExp } from './lib/rpg/unified-runtime.js';
 import { unifiedRpg } from './lib/rpg/unified-store.js';
@@ -249,6 +250,12 @@ if (isBlacklistedUser && !isOwner && !blacklistCmd) {
 // Satukan record PN dan LID milik pengguna yang sama. Tanpa ini, pengguna
 // dapat terdaftar di private chat tetapi terlihat belum terdaftar di grup.
 const userIdentityKeys = collectUserIdentityKeys(m, resolvedSenderNumber)
+const prefixKey = prefixStorageKey(this, m.chat)
+const activePrefix = await getActivePrefix(prefixKey, botConfig.defaultPrefix)
+// Activity clears AFK before private/premium/registration/only-group command gates.
+// Do this before profile merging, so a stale PN/LID field cannot overwrite the status.
+const afkNotify = (isOwner || m.fromMe || (botConfig.type === 'jadibot' ? botConfig.public !== false : global.db.data.settings?.[this.user.jid]?.public !== false)) && !isPluginDisabled(botConfig, '_system/_afk.js')
+await handleAfkMessage(m, this, { prefix: activePrefix, aliases: userIdentityKeys, type: chatUpdate.type, notify: afkNotify })
 const mergedUser = mergeUserIdentityRecords(global.db.data.users, userIdentityKeys)
 global.db.data.users[m.sender] ||= mergedUser
 
@@ -305,8 +312,6 @@ if (isStatus) return
 // ==================
 // 🚫 PRIVATE CHAT
 // ==================
-const prefixKey = prefixStorageKey(this, m.chat)
-const activePrefix = await getActivePrefix(prefixKey, botConfig.defaultPrefix)
 const realmAccessCommand = isRealmAccessCommand(m.text, activePrefix)
 const prefix = { test: text => String(text || '').startsWith(activePrefix) }
 

@@ -26,7 +26,8 @@ Rimuru MD adalah SC hasil rename dari SC Ourin MD.
                  「 👑 𝑹𝑰𝑴𝑼𝑹𝑼 𝑴𝑫 👑 」
 */
 
-const afkStorage = global.afkStorage || (global.afkStorage = new Map())
+import { setAfk, getAfk, removeAfk, isAfk, persistAfk } from '../../../../core/awang-afk.js'
+import { handleAfkMessage } from '../../../../lib/afk.js'
 
 const pluginConfig = {
     name: 'afk',
@@ -44,41 +45,15 @@ const pluginConfig = {
     isEnabled: true
 }
 
-function getAfkUser(jid) {
-    return afkStorage.get(jid) || null
-}
-
-function setAfkUser(jid, reason) {
-    afkStorage.set(jid, {
-        reason: reason || 'Tidak ada alasan',
-        time: Date.now()
-    })
-}
-
-function removeAfkUser(jid) {
-    afkStorage.delete(jid)
-}
-
-function isUserAfk(jid) {
-    return afkStorage.has(jid)
-}
-
-function formatDuration(ms) {
-    const seconds = Math.floor(ms / 1000)
-    const minutes = Math.floor(seconds / 60)
-    const hours = Math.floor(minutes / 60)
-    if (hours > 0) {
-        return `${hours} jam ${minutes % 60} menit`
-    } else if (minutes > 0) {
-        return `${minutes} menit ${seconds % 60} detik`
-    } else {
-        return `${seconds} detik`
-    }
-}
+function getAfkUser(jid) { const entry=getAfk(jid);return entry?{...entry,time:entry.since}:null }
+function setAfkUser(jid,reason) { return setAfk(jid,reason) }
+function removeAfkUser(jid) { return removeAfk(jid) }
+function isUserAfk(jid) { return isAfk(jid) }
 
 async function handler(m, { sock }) {
     const reason = m.text || 'Tidak ada alasan'
     setAfkUser(m.sender, reason)
+    await persistAfk()
     await m.reply(
         `💤 *ᴀꜰᴋ ᴀᴋᴛɪꜰ*\n\n` +
         `\`\`\`@${m.sender.split('@')[0]} sekarang AFK\`\`\`\n` +
@@ -89,27 +64,8 @@ async function handler(m, { sock }) {
 }
 
 async function checkAfk(m, sock) {
-    const afkData = getAfkUser(m.sender)
-    if (afkData) {
-        if (m.isCommand && m.command?.toLowerCase() === 'afk') return
-        removeAfkUser(m.sender)
-        const duration = formatDuration(Date.now() - afkData.time)
-        await m.reply(`👋 *ᴀꜰᴋ ʙᴇʀᴀᴋʜɪʀ*\n\n` +
-                `\`\`\`@${m.sender.split('@')[0]} sudah kembali!\`\`\`\n` +
-                `🍀 \`Durasi AFK:\` *${duration}*`, { mentions: [m.sender] })
-    }
-    if (m.isGroup && m.mentionedJid && m.mentionedJid.length > 0) {
-        for (const mentioned of m.mentionedJid) {
-            const mentionedAfk = getAfkUser(mentioned)
-            if (mentionedAfk) {
-                const duration = formatDuration(Date.now() - mentionedAfk.time)
-                await m.reply(`💤 *ᴜsᴇʀ ᴀꜰᴋ*\n\n` +
-                        `\`\`\`Hustt, jangan di ganggu!\`\`\` \`@${mentioned.split('@')[0]}\` lagi AFK\n` +
-                        `🍀 \`Alasan:\` *${mentionedAfk.reason}*\n` +
-                        `🍀 \`Sejak:\` *${duration} yang lalu*`, { mentions: [mentioned] })
-            }
-        }
-    }
+    if (m.isCommand && ['afk','away','brb'].includes(String(m.command||'').toLowerCase())) return
+    return handleAfkMessage(m,sock,{prefix:m.prefix||sock?.botConfig?.defaultPrefix||'/'})
 }
 
 export { pluginConfig as config, handler, checkAfk, getAfkUser, setAfkUser, removeAfkUser, isUserAfk }

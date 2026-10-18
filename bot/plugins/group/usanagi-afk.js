@@ -1,10 +1,11 @@
 /* By AlzRiss - Usanagi Umi AI */
 
-import { setAfk } from '../../core/awang-afk.js'
+import { setAfk, persistAfk } from '../../core/awang-afk.js'
 
-const handler = async (m, { conn }) => {
-  const reason = String(m.text || '').trim()
+const handler = async (m, { conn, text }) => {
+  const reason = String(typeof text === 'string' ? text : m.text || '').trim()
   setAfk(m.sender, reason)
+  await persistAfk()
 
   const tag = m.sender.split('@')[0]
 

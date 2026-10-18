@@ -4,6 +4,12 @@ This repository contains the **sanitized source template** for the Usanagi Umi W
 
 > **Security notice:** This is intentionally not a production backup. WhatsApp sessions, phone numbers, pairing codes, database/runtime data, Pterodactyl/GitHub/Vercel credentials, API keys, environment files, deployment archives, and owner-specific configuration have been removed or replaced with placeholders.
 
+## AFK kembali terdeteksi — Task55 (18 Oktober 2026)
+
+- Status AFK legacy/native/impor kini memakai satu penyimpanan persisten. Chat biasa dan media mengakhiri AFK sebelum gate command private, termasuk alias PN/LID yang tepercaya.
+- Status dibersihkan sebelum notifikasi; mention setelah pengguna kembali tidak lagi membaca flag AFK lama. Re-AFK, history dan pantulan pesan bot dibedakan.
+- 236 tes otomatis lulus; transport WA mock bukan acceptance perangkat pengguna. [Detail Task55](docs/AFK-RETURN-TASK55.md).
+
 ## Login MMORPG & self-AutoAI — Task54 (18 Oktober 2026)
 
 - `{prefix}realms login` dapat dijalankan lewat chat pribadi Jadibot tanpa tertahan gate premium/gameplay. Kode tidak dikirim ke grup.
