@@ -1,3 +1,4 @@
+import { createGroupMetadataCache } from './group-metadata-cache.js';
 import path from 'path';
 import fs from 'fs';
 import util from 'util';
@@ -35,7 +36,12 @@ export function makeWASocket(connectionOptions, options = {}) {
 	/**
 	 * @type {import('@rexxhayanasi/elaina-baileys').WASocket}
 	 */
-	let conn = MakeWASocket(connectionOptions);
+	let metadataCache;
+	let conn = MakeWASocket({ ...connectionOptions, cachedGroupMetadata: jid => metadataCache ? metadataCache.get(jid) : undefined });
+	metadataCache = createGroupMetadataCache({ fetchGroup: conn.groupMetadata.bind(conn), fetchAll: conn.groupFetchAllParticipating.bind(conn) });
+	conn.groupMetadata = metadataCache.get;
+	conn.groupFetchAllParticipating = metadataCache.all;
+	metadataCache.bind(conn.ev);
 
 	const OrigMsg = conn.sendMessage.bind(conn);
 	let sock = Object.defineProperties(conn, {

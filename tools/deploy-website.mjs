@@ -68,6 +68,33 @@ const call = async (url, init = {}) => {
     return { status: res.status, json, text }
 }
 
+async function checkBackendConfiguration() {
+    if (WEB !== path.join(REPO, 'website')) return
+    const project = await call(`/v9/projects/${encodeURIComponent(PROJECT)}?teamId=${TEAM}`)
+    if (!project.json?.id) throw Error('Website project lookup failed; no deployment created')
+    const envs = await call(`/v9/projects/${project.json.id}/env?teamId=${TEAM}`)
+    const rows = (envs.json?.envs || []).filter(x => x.target?.includes('production'))
+    if (rows.some(x => x.key === 'UMI_CONFIG_GIST_URL')) throw Error('Review dynamic Gist routing before deploying; do not silently override it')
+    const matches = rows.filter(x => x.key === 'UMI_API_ORIGIN')
+    if (matches.length !== 1) throw Error('Production backend origin missing or ambiguous')
+    const env = await call(`/v1/projects/${project.json.id}/env/${matches[0].id}?decrypt=true&teamId=${TEAM}`)
+    let origin
+    try { origin = new URL(env.json.value) } catch { throw Error('Cannot read production backend origin') }
+    if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw Error('Production backend must use a plain HTTPS origin, never a stale panel allocation')
+    const response = await fetch(new URL('/api/health', origin), { redirect: 'error', signal: AbortSignal.timeout(10000) })
+    const health = await response.json()
+    if (!response.ok || health.ok !== true || health.service !== 'usanagi-umi-jadibot') throw Error('Backend health preflight failed; no deployment created')
+    console.log('==> production HTTPS backend preflight passed')
+}
+
+async function checkLiveWebsite() {
+    if (WEB !== path.join(REPO, 'website')) return
+    const response = await fetch(`https://${PROJECT}.vercel.app/api/health`, { redirect: 'error', signal: AbortSignal.timeout(15000), cache: 'no-store' })
+    const data = await response.json()
+    if (!response.ok || data.ok !== true || data.service !== 'usanagi-umi-jadibot') throw Error('Deployment READY but website-to-backend health failed; do not claim success')
+    console.log('==> live website-to-backend health passed')
+}
+
 async function createDeployment() {
     return call(`/v13/deployments?teamId=${TEAM}&forceNew=1`, {
         method: 'POST',
@@ -80,6 +107,7 @@ async function createDeployment() {
     })
 }
 
+await checkBackendConfiguration()
 let dep = await createDeployment()
 let missing = dep.json?.missing_files || dep.json?.error?.missing_files || dep.json?.error?.missing || []
 if (missing.length) {
@@ -106,7 +134,7 @@ for (let i = 0; i < 60; i++) {
     const st = await call(`/v13/deployments/${dep.json.id}?teamId=${TEAM}`)
     const state = st.json?.readyState || st.json?.status
     process.stdout.write(` ${state || '?'}`)
-    if (state === 'READY') { console.log(`\n✅ Produksi READY: https://${PROJECT}.vercel.app (${dep.json.url || ''})`); process.exit(0) }
+    if (state === 'READY') { await checkLiveWebsite(); console.log(`\n✅ Produksi READY: https://${PROJECT}.vercel.app (${dep.json.url || ''})`); process.exit(0) }
     if (state === 'ERROR' || state === 'CANCELED') { console.error('\n❌ deployment gagal:', JSON.stringify(st.json?.error || {}).slice(0, 400)); process.exit(1) }
 }
 console.error('\n⏱️ timeout menunggu deployment')

@@ -74,6 +74,9 @@ function bind(conn) {
 			}
 		}
 
+		if (!metadata || !Array.isArray(metadata.participants)) return;
+		participants = (participants || []).map(p => typeof p === 'string' ? { id: p } : p).filter(p => p && p.id);
+
 		switch (action) {
 			case 'add':
 			case 'revoked_membership_requests':

@@ -10,7 +10,8 @@
   <link rel="icon" href="/assets/umi-logo.jpg">
   <link rel="preload" href="/assets/fonts/space-mono-regular.ttf" as="font" type="font/ttf" crossorigin>
   <link rel="stylesheet" href="/assets/app.css?v=20261016-pages4">
-  
+
+  <link rel="stylesheet" href="/assets/layout-compat.css?v=20261018-backend52">
 </head>
 <body>
   <div id="scene" class="scene" aria-hidden="true"><div class="scene-shade"></div><i class="orb orb-a"></i><i class="orb orb-b"></i><i class="orb orb-c"></i></div>
@@ -30,9 +31,9 @@
         <span class="eyebrow">MULTI-DEVICE · REAL-TIME · PRIVATE SESSION</span>
         <h1>JADIKAN NOMORMU <em>BOT UMI</em> SENDIRI.</h1>
         <p>Hubungkan nomor WhatsApp, atur fiturnya, dan pantau semuanya dari satu studio. Proses cepat, performa stabil, dan fitur lengkap.</p>
-        <div class="hero-stats" style="display:flex;gap:24px;margin:20px 0;flex-wrap:wrap">
-          <div style="text-align:center"><b id="heroOnline" style="font-size:32px;color:var(--lime,#6ee7b7)">0</b><br><span style="font-size:12px;color:var(--muted)">bot online</span></div>
-          <div style="text-align:center"><b id="heroUsers" style="font-size:32px;color:var(--gold,#ffd166)">0</b><br><span style="font-size:12px;color:var(--muted)">pengguna</span></div>
+        <div class="hero-stats umi-layout-1">
+          <div class="umi-layout-2"><b id="heroOnline" class="umi-layout-3">0</b><br><span class="umi-layout-4">bot online</span></div>
+          <div class="umi-layout-2"><b id="heroUsers" class="umi-layout-5">0</b><br><span class="umi-layout-4">pengguna</span></div>
         </div>
         <div class="hero-actions"><button id="startButton" class="btn btn-primary" type="button">BUAT JADIBOT ↗</button><a class="btn btn-glass" href="https://whatsapp.com/channel/0029VbDBOXH11ulIKHVbmO0m" target="_blank" rel="noreferrer">SALURAN RESMI</a><a class="btn btn-glass" href="https://game.gwenna.my.id/" target="_blank">🎮 GAME WEB</a><a class="btn btn-glass" href="https://game.gwenna.my.id/realms" target="_blank" rel="noopener noreferrer">ECLIPSE REALMS ↗</a></div>
         <div class="feature-strip"><article><b>01</b><span>Nomor custom</span></article><article><b>02</b><span>Pairing 8 digit</span></article><article><b>03</b><span>Config per sesi</span></article><article><b>04</b><span>Trading $AS</span></article></div>
@@ -45,16 +46,16 @@
       <div class="glass-card auth-card">
         <div class="auth-tabs"><button type="button" data-auth-tab="login" class="active">LOGIN</button><button type="button" data-auth-tab="register">DAFTAR</button></div>
         <form id="loginForm">
-          <button id="googleLoginBtn" class="btn btn-google" type="button" style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px;background:#fff;color:#333;border:1px solid #dadce0;font-weight:600"><svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#34A853" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#EA4335" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>Masuk dengan Google</button>
-          <div style="text-align:center;color:var(--muted);font-size:12px;margin-bottom:12px">— atau login manual —</div>
+          <button id="googleLoginBtn" class="btn btn-google umi-layout-6" type="button"><svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#34A853" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#EA4335" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>Masuk dengan Google</button>
+          <div class="umi-layout-7">— atau login manual —</div>
           <label>Username atau email<input name="identifier" autocomplete="username" required placeholder="AlzRiss atau nama@gmail.com"></label>
           <label>Password<input name="password" type="password" autocomplete="current-password" minlength="6" required placeholder="Minimal 6 karakter"></label>
           <button class="btn btn-primary" type="submit">MASUK ↗</button>
           <a class="btn btn-glass tutorial-login-btn" href="#tutorial">LIHAT TUTORIAL ↗</a>
         </form>
         <form id="registerForm" class="hidden">
-          <button id="googleRegisterBtn" class="btn btn-google" type="button" style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px;background:#fff;color:#333;border:1px solid #dadce0;font-weight:600"><svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#34A853" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#EA4335" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>Daftar dengan Google</button>
-          <div style="text-align:center;color:var(--muted);font-size:12px;margin-bottom:12px">— atau daftar manual —</div>
+          <button id="googleRegisterBtn" class="btn btn-google umi-layout-6" type="button"><svg width="20" height="20" viewBox="0 0 48 48"><path fill="#4285F4" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#34A853" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#EA4335" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>Daftar dengan Google</button>
+          <div class="umi-layout-7">— atau daftar manual —</div>
           <label>Username<input name="username" autocomplete="username" minlength="3" maxlength="40" pattern="[A-Za-z0-9_.-]{3,40}" required placeholder="Username baru"></label>
           <label>Gmail<input name="email" type="email" autocomplete="email" pattern="[A-Za-z0-9]+(?:\.?[A-Za-z0-9]+)*@gmail\.com" required placeholder="nama@gmail.com"></label>
           <label>Password<input name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="Minimal 8 karakter"></label>
@@ -84,7 +85,7 @@
           <div class="section-head"><h3>BOT MILIKMU</h3><button id="refreshSessions" class="mini" type="button">↻ REFRESH</button></div><div id="sessionList" class="card-grid"></div>
         </section>
 
-        <section id="walletPage" class="page hidden"><div class="stats"><article class="stat cyan"><span>SALDO TERSEDIA</span><b id="walletBalance">Rp0</b></article><article class="stat lime"><span>METODE TOP UP</span><b id="walletChannel">DANA</b></article><article class="stat pink"><span>STATUS</span><b id="walletState">MEMUAT</b></article></div><article class="panel block"><div class="section-head"><h3>RIWAYAT SALDO</h3><span class="chip partner">LEDGER</span></div><div id="walletLedger" class="list"><p>Memuat riwayat…</p></div></article><article class="panel block"><div class="section-head"><h3>JALAN PINTAS</h3><span class="chip user">WALLET</span></div><div class="actions"><a class="btn btn-primary" href="#topup">TOP UP SALDO</a><a class="btn btn-yellow" href="#shop">BUKA SHOP</a><a class="btn" href="#panel">PANEL SAYA</a></div></article></section>
+        <section id="walletPage" class="page hidden"><div class="stats"><article class="stat cyan"><span>SALDO TERSEDIA</span><b id="walletBalance">—</b></article><article class="stat lime"><span>METODE TOP UP</span><b id="walletChannel">DANA</b></article><article class="stat pink"><span>STATUS</span><b id="walletState">MEMUAT</b></article></div><article class="panel block"><div class="section-head"><h3>RIWAYAT SALDO</h3><span class="chip partner">LEDGER</span></div><div id="walletLedger" class="list"><p>Memuat riwayat…</p></div></article><article class="panel block"><div class="section-head"><h3>JALAN PINTAS</h3><span class="chip user">WALLET</span></div><div class="actions"><a class="btn btn-primary" href="#topup">TOP UP SALDO</a><a class="btn btn-yellow" href="#shop">BUKA SHOP</a><a class="btn" href="#panel">PANEL SAYA</a></div></article></section>
 <section id="topupPage" class="page hidden"><article class="panel block"><div class="section-head"><h3>TOP UP SALDO</h3><button id="refreshWallet" class="mini" type="button">↻ REFRESH</button></div><p>Saldo hanya masuk setelah pembayaran DANA terverifikasi otomatis. Nominal top up tidak dapat ditarik tunai dan digunakan untuk membeli paket panel.</p><form id="walletTopupForm"><label>Nominal Top Up (Rp)<input id="walletTopupAmount" name="amount" type="number" inputmode="numeric" min="10000" max="5000000" step="1000" required value="10000"></label><div class="actions"><button class="btn btn-primary" type="submit">BUAT INVOICE DANA</button></div></form><div id="walletTopupNotice" class="notice">Memuat konfigurasi Wallet…</div><div id="walletActiveInvoice" class="notice hidden"></div></article><article class="panel block"><div class="section-head"><h3>RIWAYAT TOP UP</h3><span class="chip user">DANA / TRIPAY</span></div><div id="walletTopups" class="list"><p>Belum ada invoice.</p></div></article></section>
 <section id="shopPage" class="page hidden"><article class="panel block"><div class="section-head"><h3>TOKO AUTO ORDER</h3><button id="refreshShop" class="mini" type="button">↻ MUAT ULANG</button></div><p>Bayar memakai saldo Wallet. Server panel dibuat otomatis, premium langsung aktif, dan produk digital terkirim seketika. Kegagalan pembuatan otomatis mengembalikan saldo.</p><h4>PAKET PANEL</h4><div id="walletShopPackages" class="list"><p>Memuat paket…</p></div><h4>PRODUK &amp; PREMIUM</h4><div id="walletShopProducts" class="list"><p>Memuat produk…</p></div><h4>ORDER SAYA</h4><div id="walletOrders" class="list"><p>Belum ada order.</p></div></article></section>
 <section id="acctopupPage" class="page hidden"><article class="panel block"><div class="section-head"><h3>PERMINTAAN TOP UP DANA MANUAL</h3><button id="refreshManualTopups" class="mini" type="button">↻ REFRESH</button></div><p>Setujui hanya setelah pembayaran benar-benar masuk ke akun DANA. Persetujuan menambah saldo pengguna satu kali; penolakan tidak mengubah saldo.</p><div id="manualTopupRequests" class="list"><p>Memuat permintaan top up…</p></div></article></section>
@@ -138,7 +139,7 @@
   </article>
 </section>
 
-        <section id="filesPage" class="page hidden"><article class="panel block"><div class="section-head"><h3>UPLOAD FILE ZIP</h3><button id="refreshFiles" class="mini" type="button">↻ REFRESH</button></div><p>Unggah berkas <b>.zip</b> (maks 50 MB). File tersimpan privat di storage owner — unduh lagi atau hapus kapan saja dari daftar di bawah. Link unduh yang dibuat berlaku 1 jam.</p><div id="zipDrop" role="button" tabindex="0" style="border:1.5px dashed rgba(140,190,255,.55);border-radius:18px;padding:28px 18px;text-align:center;cursor:pointer;background:rgba(90,150,255,.07)"><b style="font-size:15px">📦 Seret &amp; letakkan file ZIP di sini</b><br><small>atau klik untuk memilih file dari perangkat</small><input id="zipFileInput" type="file" accept=".zip,application/zip" class="hidden"></div><div id="zipProgressWrap" class="hidden" style="margin-top:14px"><div style="height:10px;border-radius:999px;background:rgba(255,255,255,.12);overflow:hidden"><div id="zipProgressBar" style="height:100%;width:0%;border-radius:999px;background:linear-gradient(90deg,#3b82f6,#06b6d4);transition:width .2s"></div></div><small id="zipProgressText">0%</small></div><div id="zipUploadStatus" class="notice hidden"></div></article><article class="panel block"><div class="section-head"><h3>FILE SAYA</h3><span class="chip partner">ZIP · PRIVAT</span></div><div id="filesList" class="list"><p>Memuat file…</p></div></article></section>
+        <section id="filesPage" class="page hidden"><article class="panel block"><div class="section-head"><h3>UPLOAD FILE ZIP</h3><button id="refreshFiles" class="mini" type="button">↻ REFRESH</button></div><p>Unggah berkas <b>.zip</b> (maks 50 MB). File tersimpan privat di storage owner — unduh lagi atau hapus kapan saja dari daftar di bawah. Link unduh yang dibuat berlaku 1 jam.</p><div id="zipDrop" role="button" tabindex="0" class="umi-layout-8"><b class="umi-layout-9">📦 Seret &amp; letakkan file ZIP di sini</b><br><small>atau klik untuk memilih file dari perangkat</small><input id="zipFileInput" type="file" accept=".zip,application/zip" class="hidden"></div><div id="zipProgressWrap" class="hidden umi-layout-10"><div class="umi-layout-11"><div id="zipProgressBar" class="umi-layout-12"></div></div><small id="zipProgressText">0%</small></div><div id="zipUploadStatus" class="notice hidden"></div></article><article class="panel block"><div class="section-head"><h3>FILE SAYA</h3><span class="chip partner">ZIP · PRIVAT</span></div><div id="filesList" class="list"><p>Memuat file…</p></div></article></section>
 
         <section id="connectPage" class="page hidden"><div class="split"><article class="panel"><span class="step">01</span><h3>MASUKKAN NOMOR</h3><p>Gunakan format internasional tanpa tanda plus. Contoh: <b>628123456789</b>.</p><form id="pairForm"><label>Nomor WhatsApp<input id="pairPhone" inputmode="numeric" required placeholder="628xxxxxxxxxx"></label><button class="btn btn-primary" type="submit">MINTA PAIRING CODE</button></form></article><article class="panel yellow-panel"><span class="step">02</span><h3>PAIRING CODE</h3><output id="pairCode" class="pair-code">••••-••••</output><div class="actions pair-actions"><button id="copyPairCode" class="mini" type="button" disabled>SALIN CODE</button></div><ol><li>Buka WhatsApp.</li><li>Pilih <b>Perangkat tertaut</b>.</li><li>Pilih tautkan dengan nomor telepon.</li><li>Masukkan kode di atas.</li></ol><div id="pairStatus" class="notice">Menunggu nomor.</div><div class="pair-log-wrap"><b>LOG PAIRING</b><pre id="pairLogs" class="terminal output pair-log" aria-live="polite">Belum ada aktivitas pairing.</pre></div></article></div></section>
 
@@ -161,36 +162,36 @@
         <section id="feedbackPage" class="page hidden"><div class="feedback-layout"><form id="feedbackForm" class="panel feedback-form"><div class="section-head"><h3>LAPORKAN BUG</h3><span class="chip owner">PRIVATE</span></div><p>Laporkan masalah pada website atau session bot milikmu. Laporan hanya dapat dilihat oleh owner platform.</p><div class="form-grid"><label>Terjadi di<select id="feedbackTarget" name="target"><option value="website">Website Jadibot</option><option value="bot">Bot / Jadibot saya</option></select></label><label id="feedbackSessionWrap" class="hidden">Session bot<select id="feedbackSession" name="session_id"></select></label></div><label>Judul masalah<input name="title" maxlength="160" required placeholder="Contoh: Menu tidak mengirim gambar banner"></label><label>Penjelasan bug<textarea name="description" maxlength="5000" minlength="10" required placeholder="Jelaskan apa yang terjadi, hasil yang diharapkan, dan pesan error bila ada."></textarea></label><label>Langkah untuk mengulanginya <small>(opsional)</small><textarea name="steps" maxlength="2500" placeholder="1. Buka halaman...&#10;2. Tekan...&#10;3. Terjadi..."></textarea></label><div id="feedbackStatus" class="notice hidden"></div><button class="btn btn-primary" type="submit">KIRIM FEEDBACK</button></form><article class="panel feedback-history"><div class="section-head"><h3>RIWAYAT LAPORAN</h3><button id="refreshFeedback" class="mini" type="button">↻ REFRESH</button></div><div id="feedbackList" class="feedback-list"><p>Belum ada laporan.</p></div></article></div></section>
 
         <section id="profilePage" class="page hidden">
-          <div class="profile-layout" style="display:grid;gap:20px;max-width:700px">
+          <div class="profile-layout umi-layout-13">
             <article class="panel block">
               <div class="section-head"><h3>PROFIL SAYA</h3><span class="chip user">AKUN</span></div>
-              <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px">
-                <div id="profileAvatar" style="width:56px;height:56px;border-radius:50%;background:var(--accent,#6c5ce7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;flex-shrink:0">?</div>
+              <div class="umi-layout-14">
+                <div id="profileAvatar" class="umi-layout-15">?</div>
                 <div>
-                  <div id="profileDisplayName" style="font-size:16px;font-weight:600">—</div>
-                  <div id="profileDisplayRole" style="font-size:12px;color:var(--muted)">—</div>
+                  <div id="profileDisplayName" class="umi-layout-16">—</div>
+                  <div id="profileDisplayRole" class="umi-layout-4">—</div>
                 </div>
               </div>
               <div class="form-grid">
-                <label>Username<input id="profileUsername" readonly style="opacity:.7"></label>
-                <label>Email<input id="profileEmail" readonly style="opacity:.7"></label>
-                <label>Role<span id="profileRole" class="chip user" style="display:inline-block;margin-top:8px">—</span></label>
-                <label>Bergabung<span id="profileJoined" style="display:block;margin-top:8px;color:var(--muted);font-size:13px">—</span></label>
+                <label>Username<input id="profileUsername" readonly class="umi-layout-17"></label>
+                <label>Email<input id="profileEmail" readonly class="umi-layout-17"></label>
+                <label>Role<span id="profileRole" class="chip user umi-layout-18">—</span></label>
+                <label>Bergabung<span id="profileJoined" class="umi-layout-19">—</span></label>
               </div>
             </article>
 
             <article class="panel block">
               <div class="section-head"><h3>TOKEN AKUN</h3><span class="chip partner">API TOKEN</span></div>
-              <p style="font-size:13px;color:var(--muted)">Token ini digunakan untuk verifikasi di fitur Trading $AS dan API lainnya. Jangan bagikan token ke siapapun.</p>
-              <div style="margin:16px 0;padding:14px;background:var(--bg,#0a0a1a);border-radius:10px;border:1px solid var(--line,#333);word-break:break-all;font-family:monospace;font-size:13px;position:relative">
-                <span id="profileToken" style="color:var(--gold,#ffd166)">••••••••••••••••</span>
-                <button id="toggleTokenBtn" class="mini" type="button" style="position:absolute;top:8px;right:8px;font-size:11px;padding:4px 10px">TAMPILKAN</button>
+              <p class="umi-layout-20">Token ini digunakan untuk verifikasi di fitur Trading $AS dan API lainnya. Jangan bagikan token ke siapapun.</p>
+              <div class="umi-layout-21">
+                <span id="profileToken" class="umi-layout-22">••••••••••••••••</span>
+                <button id="toggleTokenBtn" class="mini umi-layout-23" type="button">TAMPILKAN</button>
               </div>
               <div class="actions">
                 <button id="copyTokenBtn" class="btn btn-primary" type="button">📋 SALIN TOKEN</button>
                 <button id="regenerateTokenBtn" class="btn btn-yellow" type="button">🔄 REGENERATE TOKEN</button>
               </div>
-              <div id="tokenNotice" class="notice hidden" style="margin-top:12px"></div>
+              <div id="tokenNotice" class="notice hidden umi-layout-24"></div>
             </article>
 
             <article class="panel block">
@@ -206,8 +207,8 @@
 
             <article class="panel block">
               <div class="section-head"><h3>TENTANG AKUN</h3></div>
-              <p style="font-size:13px;color:var(--muted)">Akun ini terhubung ke platform Usanagi Umi Jadibot Studio. Dari sini kamu bisa mengelola bot WhatsApp, trading $AS, dan mengakses semua fitur premium.</p>
-              <div class="actions" style="margin-top:12px">
+              <p class="umi-layout-20">Akun ini terhubung ke platform Usanagi Umi Jadibot Studio. Dari sini kamu bisa mengelola bot WhatsApp, trading $AS, dan mengakses semua fitur premium.</p>
+              <div class="actions umi-layout-24">
                 <a class="btn btn-glass" href="https://game.gwenna.my.id/trading" target="_blank">📈 TRADING $AS</a>
                 <a class="btn btn-glass" href="https://game.gwenna.my.id/" target="_blank">🎮 GAME WEB</a>
               </div>
@@ -238,73 +239,8 @@
   </main>
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
   <script src="/assets/supabase.min.js?v=2.76.1"></script>
-  <script src="/assets/app.js?v=20261016-autoread1" defer></script><script>setTimeout(function(){try{var v=window.__UMI_JS_VER||'';if(v&&v!=='20261016-autoread1'&&!sessionStorage.getItem('umi_reloaded_autoread1')){sessionStorage.setItem('umi_reloaded_autoread1','1');location.reload()}}catch(e){}},2000)</script>
-  <script>
-  /* === GOOGLE LOGIN (fixed: wait for state.storage, dedupe binding) === */
-  (function(){
-    var _googleBound = false;
-    function initGoogleLogin(){
-      if(_googleBound) return;
-      var btns = ['googleLoginBtn','googleRegisterBtn'];
-      btns.forEach(function(id){
-        var btn = document.getElementById(id);
-        if(!btn) return;
-        btn.addEventListener('click', async function(){
-          try {
-            /* Wait for app.js to initialize state.storage (max 8s) */
-            var client = null;
-            for(var i=0;i<40;i++){
-              client = (window.state && window.state.storage) || null;
-              if(client && client.auth && client.auth.signInWithOAuth) break;
-              await new Promise(function(r){setTimeout(r,200)});
-            }
-            /* Fallback: create client directly if state.storage never appeared */
-            if(!client && window.supabase && window.supabase.createClient){
-              client = window.supabase.createClient(
-                'https://tlcvkksfgdyeiypzcwdj.supabase.co',
-                'sb_publishable_ebpebtzCNxvsKWb0xtgX_A_ClzPlhob',
-                { auth:{ persistSession:false, autoRefreshToken:false, detectSessionInUrl:true } }
-              );
-            }
-            if(client && client.auth && client.auth.signInWithOAuth){
-              /* Simpan halaman tujuan supaya balik dari Google tidak selalu ke dashboard */
-              try {
-                var h = window.location.hash;
-                if(h && h !== '#auth' && /^#[a-z-]+$/.test(h)) localStorage.setItem('umi_return_to', h);
-              } catch(e){}
-              var result = await client.auth.signInWithOAuth({
-                provider: 'google',
-                options: { redirectTo: window.location.origin + '/#dashboard' }
-              });
-              if(result.error) throw result.error;
-              return;
-            }
-            var res = await fetch('/api/platform/auth/google', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-            var data = await res.json();
-            if(data.url) window.location.href = data.url;
-            else throw new Error('Google login belum dikonfigurasi');
-          } catch(e){
-            var toastEl = document.getElementById('toast');
-            if(toastEl){ toastEl.textContent = 'Google login: ' + (e.message || 'Belum tersedia'); toastEl.className='toast show'; setTimeout(function(){toastEl.className='toast hidden'},3000); }
-          }
-        });
-      });
-      _googleBound = true;
-    }
+  <script src="/assets/app.js?v=20261018-backend52" defer></script>
 
-    /* === HERO STATS === */
-    function loadHeroStats(){
-      fetch('/api/platform/stats').then(function(r){return r.json()}).then(function(data){
-        var el;
-        el = document.getElementById('heroOnline'); if(el) el.textContent = data.online || '0';
-        el = document.getElementById('heroUsers'); if(el) el.textContent = data.users || '0';
-      }).catch(function(){});
-    }
-
-    /* Init: bind once now + once after app.js load */
-    initGoogleLogin(); loadHeroStats();
-    window.addEventListener('load', function(){ setTimeout(initGoogleLogin, 1500); });
-  })();
-  </script>
+  <script src="/assets/auth-controls.js?v=20261018-backend52" defer></script>
 </body>
 </html>

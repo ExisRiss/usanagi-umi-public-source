@@ -18,7 +18,7 @@ export const config = { api: { bodyParser: false } }
 const DB_URL = () => String(process.env.UMI_DATA_SUPABASE_URL || process.env.SUPABASE_URL || '').replace(/\/+$/, '')
 const SERVICE_KEY = () => String(process.env.UMI_DATA_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY || '')
 const ANON_KEY = () => String(process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_ebpebtzCNxvsKWb0xtgX_A_ClzPlhob')
-const APP_URL = 'https://website-jadibot-by-alzriss.vercel.app'
+const APP_URL = 'https://alzriss-comunity.vercel.app'
 const OWNER_EMAIL = 'akunindo2011264@gmail.com'
 const CORS_METHODS = 'GET,POST,PUT,PATCH,DELETE,OPTIONS'
 const CORS_HEADERS = 'Content-Type, X-API-Key, X-VAPIKEY, Authorization'

@@ -9,6 +9,7 @@ import {
   securityHeaders,
 } from './_security.js'
 import { getBotApiConfig } from './_bot-config.js'
+import { requestBot } from './_bot-transport.js'
 
 const FIXED_OWNER = 'akunindo2011264@gmail.com'
 const VALID_ROLES = new Set(['user', 'admin', 'partner', 'owner', 'developer'])
@@ -152,7 +153,7 @@ async function botOwnerRelayRequest(audience, path, user, { method = 'GET', body
   }
   const ticketHeader = ticketHeaders[audience]
   if (!ticketHeader) throw Object.assign(new Error('Audience relay owner tidak valid.'), { status: 500 })
-  const response = await fetch(`${botConfig.origin}/api/${audience}/${path}`, {
+  const { response, data } = await requestBot(`${botConfig.origin}/api/${audience}/${path}`, {
     method,
     headers: {
       Accept: 'application/json',
@@ -160,10 +161,7 @@ async function botOwnerRelayRequest(audience, path, user, { method = 'GET', body
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(55000),
   })
-  const raw = await response.text(); let data
-  try { data = raw ? JSON.parse(raw) : {} } catch { data = { error: raw } }
   if (!response.ok) throw Object.assign(new Error(data.error || 'Relay owner bot gagal merespons.'), { status: response.status })
   return data
 }
@@ -185,14 +183,11 @@ async function botRequest(path, user, { method = 'GET', body, headers = {} } = {
   // Resolve the same HTTPS-only dynamic Gist origin used by the public proxy;
   // never fall back to an HTTP Pterodactyl allocation.
   const botConfig = await getBotApiConfig()
-  const response = await fetch(`${botConfig.origin}/api/${path}`, {
+  const { response, data } = await requestBot(`${botConfig.origin}/api/${path}`, {
     method,
     headers: { Authorization: `Bearer ${user.token}`, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}), ...headers },
     body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(55000),
   })
-  const raw = await response.text(); let data
-  try { data = raw ? JSON.parse(raw) : {} } catch { data = { error: raw } }
   if (!response.ok) throw Object.assign(new Error(data.error || 'Backend bot gagal merespons.'), { status: response.status })
   return data
 }
@@ -365,7 +360,7 @@ export default async function handler(req, res) {
       try { botConfig = await getBotApiConfig() } catch {}
       if (!botConfig?.origin) return send(res, 503, { ok: false, error: 'Relay bot belum siap. Coba lagi sebentar.' })
       try {
-        const response = await fetch(`${String(botConfig.origin).replace(/\/+$/, '')}/api/platform/wallet-convert`, {
+        const { response, data } = await requestBot(`${String(botConfig.origin).replace(/\/+$/, '')}/api/platform/wallet-convert`, {
           method: 'POST',
           headers: {
             Accept: 'application/json',
@@ -379,13 +374,10 @@ export default async function handler(req, res) {
             reference: text(req.body?.reference, 120),
             source: text(req.body?.source, 40) || 'umi-games',
           }),
-          signal: AbortSignal.timeout(40000),
-        })
-        const raw = await response.text(); let data
-        try { data = raw ? JSON.parse(raw) : {} } catch { data = { ok: false, error: raw } }
+        }, 40000)
         return send(res, response.status, data)
       } catch (error) {
-        return send(res, 502, { ok: false, error: `Relay bot tidak merespons: ${String(error?.message || '').slice(0, 120)}` })
+        return send(res, error.status || 502, { ok: false, error: error.message, code: error.code })
       }
     }
     /* Change password */
@@ -1016,6 +1008,6 @@ export default async function handler(req, res) {
     const status = Number(error?.status) || 500
     if (error?.retryAfter) res.setHeader('Retry-After', String(error.retryAfter))
     if (status >= 500) console.error('[PLATFORM]', error?.message)
-    return send(res, status, { error: status >= 500 ? 'Layanan platform sedang bermasalah.' : error.message })
+    return send(res, status, { error: error.code?.startsWith('BOT_') ? error.message : status >= 500 ? 'Layanan platform sedang bermasalah.' : error.message, ...(error.code?.startsWith('BOT_') ? { code: error.code } : {}) })
   }
 }

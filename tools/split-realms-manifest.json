@@ -3,8 +3,29 @@
     "bot": "serverjadibotVip",
     "game": "servergameVip"
   },
-  "note": "Task51: guarded unified RPG runtime update; no runtime database, credential or auth upload. Opt-in migration runs on server with consistent pre-migration backup; unresolved identities remain held.",
+  "note": "Task52: guarded per-socket group metadata cache and participant event safety; preserve active unified RPG, credentials and sessions. Code-only updates, no data restore.",
   "files": [
+    {
+      "role": "bot",
+      "source": "bot/lib/group-metadata-cache.js",
+      "remote": "/lib/group-metadata-cache.js",
+      "beforeSha256": null,
+      "sourceSha256": "c9b01a3e4dcd9171ba634b80d268c44b6e4464931876c25cb9b440c1ff9dceda"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/store.js",
+      "remote": "/lib/store.js",
+      "beforeSha256": "356ee6561057d0bc360f52f07bc48739e0be3142d60cc5c6f2a36409dddc07c6",
+      "sourceSha256": "fb02c12c5c812e39d899b27d3286181531a7a24202730ca3aef7c5fe5d4bf6d1"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/simple.js",
+      "remote": "/lib/simple.js",
+      "beforeSha256": "cfe54218b632adf58a7068ae61f0d655d4f9dadd293b02a4d3c1518c961423b0",
+      "sourceSha256": "0527208f41b5306a6d784625c67c688f38a3e984a43f2ccc6f2ad55579073fe5"
+    },
     {
       "role": "bot",
       "source": "bot/lib/rpg/unified-store.js",

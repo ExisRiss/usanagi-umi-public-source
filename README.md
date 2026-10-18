@@ -4,7 +4,14 @@ This repository contains the **sanitized source template** for the Usanagi Umi W
 
 > **Security notice:** This is intentionally not a production backup. WhatsApp sessions, phone numbers, pairing codes, database/runtime data, Pterodactyl/GitHub/Vercel credentials, API keys, environment files, deployment archives, and owner-specific configuration have been removed or replaced with placeholders.
 
-## Status layanan — 18 Oktober 2026 (Task51)
+## Perbaikan website/Jadibot — Task52 (18 Oktober 2026)
+
+- Error backend website502 diperbaiki: routing produksi kini melalui API HTTPS aktif, bukan alokasi server lama.
+- Kontrol main/autoread, script OAuth/CSP, timeout relay dan tampilan wallet saat pemulihan diperbaiki. Cache metadata grup mengurangi request berulang/rate-limit; main bot tetap OFF.
+- 33 pemeriksaan HTTP dan12 pemeriksaan browser live lulus pada kedua domain; pengujian owner fixture dipisahkan dari login nyata. Tidak ada data/sesi ditimpa atau key dirotasi.
+- Detail: [perbaikan, deploy, feedback dan batasan Task52](docs/WEBSITE-BACKEND-TASK52.md).
+
+## Riwayat layanan — 18 Oktober 2026 (Task51)
 
 - AutoAI Groq aktif memakai konfigurasi privat owner; tes provider dan planner nyata berhasil.
 - Authority RPG terverifikasi sudah live: 235 catatan → 220 profil, EXP/item/pet dan koin dibaca melalui bridge SQLite bersama bot/Realms. 205 LID lama masih ditahan, bukan digabung berdasarkan tebakan.

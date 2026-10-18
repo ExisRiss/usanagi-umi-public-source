@@ -2,7 +2,7 @@ import crypto from 'node:crypto'
 import dns from 'node:dns/promises'
 import net from 'node:net'
 
-const APP_ORIGIN = 'https://website-jadibot-by-alzriss.vercel.app'
+const APP_ORIGIN = 'https://alzriss-comunity.vercel.app'
 const buckets = globalThis.__umiSecurityBuckets || new Map()
 globalThis.__umiSecurityBuckets = buckets
 

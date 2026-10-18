@@ -1,5 +1,6 @@
 import { assertBodySize, enforceSameOrigin, rateLimit, securityHeaders } from './_security.js'
 import { getBotApiConfig } from './_bot-config.js'
+import { requestBot } from './_bot-transport.js'
 
 const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST', 'PATCH', 'DELETE', 'OPTIONS'])
 const ALLOWED_PATHS = new Set([
@@ -84,19 +85,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const upstream = await fetch(target, { ...options, signal: AbortSignal.timeout(55000) })
-    const data = Buffer.from(await upstream.arrayBuffer())
+    const { response: upstream, raw } = await requestBot(target, options, path === 'health' ? 8000 : 45000)
+    const data = Buffer.from(raw)
     res.status(upstream.status)
     res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/json; charset=utf-8')
     res.setHeader('Cache-Control', 'no-store')
     res.setHeader('X-Umi-Config-Version', botConfig.version)
     return req.method === 'HEAD' ? res.end() : res.send(data)
   } catch (error) {
-    const timeout = error?.name === 'TimeoutError' || error?.name === 'AbortError'
-    return res.status(timeout ? 504 : 502).json({
-      error: timeout
-        ? 'Backend Umi tidak merespons tepat waktu. Coba lagi.'
-        : 'Backend Umi sedang tidak dapat dijangkau. Coba lagi sebentar.',
-    })
+    return res.status(error.status || 502).json({ error: error.message, code: error.code || 'BOT_UNREACHABLE' })
   }
 }
