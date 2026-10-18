@@ -1540,8 +1540,8 @@ function candlesOf(sym, ticksPerCandle = 20, limit = 96, tick = nowTick()) {
 const TRADING_DB_FILE = path.join(HERE, 'trading-data.json')
 const INITIAL_BALANCE = 100
 const DAILY_BONUS = 10
-const MIN_TOPUP_KOIN = Math.max(1, Number(process.env.UMI_KOIN_MIN || 100))
-const MAX_TOPUP_KOIN = Math.max(MIN_TOPUP_KOIN, Number(process.env.UMI_KOIN_MAX || 20000))
+const MIN_TOPUP_KOIN = Math.max(1, Number(process.env.UMI_KOIN_MIN || 20))
+const MAX_TOPUP_KOIN = Math.max(MIN_TOPUP_KOIN, Number(process.env.UMI_KOIN_MAX || 5000))
 const REDEEM_CODES = {
     'UMI2024': { amount: 50, maxUses: 100, used: 0 },
     'TRADING': { amount: 25, maxUses: 50, used: 0 },

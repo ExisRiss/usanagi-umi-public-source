@@ -28,12 +28,12 @@ function intEnv(name, fallback, min = 1) {
   return Number.isFinite(value) && value >= min ? value : fallback
 }
 
-/** 1 $AS = berapa koin. Default 100 koin = $AS 1 (setara hadiah quest RPG). */
-export function koinPerAs() { return intEnv('UMI_KOIN_PER_AS', 100) }
+/** 1 $AS = berapa koin. Default 10 koin = $AS 1 (kurs murah, pilihan owner). */
+export function koinPerAs() { return intEnv('UMI_KOIN_PER_AS', 10) }
 export function koinLimits() {
-  const min = intEnv('UMI_KOIN_MIN', 100)
-  const max = Math.max(min, intEnv('UMI_KOIN_MAX', 20000))
-  const daily = Math.max(max, intEnv('UMI_KOIN_DAILY_MAX', 50000))
+  const min = intEnv('UMI_KOIN_MIN', 20)                    // 20 koin = $AS 2
+  const max = Math.max(min, intEnv('UMI_KOIN_MAX', 5000))   // 5.000 koin = $AS 500
+  const daily = Math.max(max, intEnv('UMI_KOIN_DAILY_MAX', 20000))
   return { min, max, daily }
 }
 export function koinToAs(amountKoin) {

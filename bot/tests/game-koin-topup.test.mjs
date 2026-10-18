@@ -23,11 +23,11 @@ function fixture(koin = 5000) {
   return { rows, finish() { delete globalThis[UNIFIED_RPG]; setLedgerDb(null) } }
 }
 
-test('kurs koin: 100 koin = $AS 1 dan dibulatkan ke bawah', () => {
+test('kurs koin: 10 koin = $AS 1 dan dibulatkan ke bawah', () => {
   assert.equal(koinToAs(0), 0)
-  assert.equal(koinToAs(99), 0.99)
-  assert.equal(koinToAs(100), 1)
-  assert.equal(koinToAs(250), 2.5)
+  assert.equal(koinToAs(5), 0.5)
+  assert.equal(koinToAs(10), 1)
+  assert.equal(koinToAs(25), 2.5)
 })
 
 test('status menampilkan saldo koin dan batas tukar', () => {
@@ -35,7 +35,7 @@ test('status menampilkan saldo koin dan batas tukar', () => {
   try {
     const status = koinStatus(JID)
     assert.equal(status.koinBalance, 4321)
-    assert.equal(status.koinPerAs, 100)
+    assert.equal(status.koinPerAs, 10)
     assert.ok(status.minimumKoin >= 1)
     assert.ok(status.maximumKoin >= status.minimumKoin)
   } finally { f.finish() }
@@ -45,15 +45,15 @@ test('konversi memotong koin sekali dan referensi yang sama tidak mengkredit ula
   const f = fixture(5000)
   try {
     let calls = 0
-    const credit = async ({ amount, reference }) => { calls++; assert.equal(amount, 2.5); assert.ok(reference); return { balance: 102.5 } }
+    const credit = async ({ amount, reference }) => { calls++; assert.equal(amount, 25); assert.ok(reference); return { balance: 125 } }
     const first = await convertKoin({ jid: JID, token: 't'.repeat(32), amountKoin: 250, reference: ref(), credit })
-    assert.equal(first.credited, 2.5)
+    assert.equal(first.credited, 25)
     assert.equal(readKoin(JID), 4750)
     assert.equal(calls, 1)
     const id = 'fixed-reference'
     const a = await convertKoin({ jid: JID, token: 't'.repeat(32), amountKoin: 250, reference: id, credit })
     const b = await convertKoin({ jid: JID, token: 't'.repeat(32), amountKoin: 250, reference: id, credit })
-    assert.equal(a.credited, 2.5)
+    assert.equal(a.credited, 25)
     assert.equal(b.duplicate, true)
     assert.equal(b.credited, 0)
     assert.equal(readKoin(JID), 4500)
@@ -77,7 +77,7 @@ test('koin tidak cukup dan batas transaksi ditolak', async () => {
   try {
     await assert.rejects(() => convertKoin({ jid: JID, token: 't'.repeat(32), amountKoin: 500, reference: ref(), credit: async () => ({}) }), /tidak cukup/)
     assert.equal(readKoin(JID), 120)
-    await assert.rejects(() => convertKoin({ jid: JID, token: 't'.repeat(32), amountKoin: 1, reference: ref(), credit: async () => ({}) }), /Jumlah koin harus/)
+    await assert.rejects(() => convertKoin({ jid: JID, token: 't'.repeat(32), amountKoin: 5, reference: ref(), credit: async () => ({}) }), /Jumlah koin harus/)
     assert.equal(readKoin(JID), 120)
   } finally { f.finish() }
 })

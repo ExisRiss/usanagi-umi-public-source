@@ -276,7 +276,7 @@
       "source": "db-mirror/game.js",
       "remote": "/game.js",
       "beforeSha256": "85e8e5c27575c173dd97db5e74ba54f50ece61de3c4ad14c96af8cbeeb248b3d",
-      "sourceSha256": "7cd5bdce2415d5f1bfe9221d1f374772ad8d3a2962d96bd153a12c9e0772598e"
+      "sourceSha256": "ca758fae918990416df18f3e65befb11ec3bb131570dbf56a7c88dee6b0db621"
     },
     {
       "role": "game",
@@ -479,7 +479,7 @@
       "source": "db-mirror/trading.html",
       "remote": "/trading.html",
       "beforeSha256": "6f5c4241d25dc5e46a9290969640eb3b086a1a2851b96e846ed6999002e857a1",
-      "sourceSha256": "70b8443e0fd9e6e76f8fc3c17fbfd6c7533a531e02d90a841b031bb2ebc88941"
+      "sourceSha256": "cd25e3a94472c8e8d03a8679312badaeb3a8b9878dfdb9956576457b92dae075"
     },
     {
       "role": "game",
@@ -514,7 +514,42 @@
       "source": "bot/lib/game-koin-topup.js",
       "remote": "/lib/game-koin-topup.js",
       "beforeSha256": null,
-      "sourceSha256": "8879984ac8726e7315b04da0d73fdf1111c7ec9bf6f2c5933a9947b0794db981"
+      "sourceSha256": "3759bc786c4088a81338e393df4b4407f1f9ff3de7427aa90853ea81766cb5a3"
+    },
+    {
+      "role": "bot",
+      "source": "bot/config/settings.js",
+      "remote": "/config/settings.js",
+      "beforeSha256": "4b6eb27b03cff8584017ff95870cf9a2437ca1ef9150a80a3cc458e02cae2bbf",
+      "sourceSha256": "edb9d9faf49cf477eff096867e8e4842fced26907a9cf46d0a6972b6f7024cd3"
+    },
+    {
+      "role": "bot",
+      "source": "bot/core/awang-router.js",
+      "remote": "/core/awang-router.js",
+      "beforeSha256": "aeed79178111cc068e10582b6a75286afd29aa2e8ac184d3c5466ed88271c2a4",
+      "sourceSha256": "18136ed9e943874e5b8a11da6f751c7b998e4cc3a99e9b1bb4140128406cb88a"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/owner/usanagi-jadibotconfig.js",
+      "remote": "/plugins/owner/usanagi-jadibotconfig.js",
+      "beforeSha256": "0388c53147fd8c7153fa90d4fef27f17390a3a7426fd3a8a24c81e2cf26b4ac0",
+      "sourceSha256": "e175d167d40cfc57fd1c65cd391295bfc0d07f39954bea5963f10f20e1895616"
+    },
+    {
+      "role": "bot",
+      "source": "bot/lib/rich-info-cards.js",
+      "remote": "/lib/rich-info-cards.js",
+      "beforeSha256": "de4a0b72f4a0942b29a0dd2cb2b36d8cc53317120e0bc37a0f1c00237e70f654",
+      "sourceSha256": "bccf174935a1c3004c8a534883183672f85a830019256c94623d9896e8a44c74"
+    },
+    {
+      "role": "bot",
+      "source": "bot/plugins/economy/limit.js",
+      "remote": "/plugins/economy/limit.js",
+      "beforeSha256": "f8f18eeb540ee5d6326f0403377513a99d1d198a49ee5255c67435bd1aa23838",
+      "sourceSha256": "46cc1c1b21cbd6dabe72d8b2f3ffac3155f7d2524753c3491f7815c94af951df"
     }
   ]
 }

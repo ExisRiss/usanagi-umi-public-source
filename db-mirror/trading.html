@@ -424,15 +424,15 @@
     <div class="grid two">
       <div class="card">
         <h2>Top up $AS</h2>
-        <div class="notice warn" id="topupNotice">Tukar <b>koin RPG</b> kamu menjadi saldo $AS. Tanpa DANA, tanpa uang sungguhan. <b id="koinRateText">Kurs: 100 koin = $AS 1.</b></div>
+        <div class="notice warn" id="topupNotice">Tukar <b>koin RPG</b> kamu menjadi saldo $AS. Tanpa DANA, tanpa uang sungguhan. <b id="koinRateText">Kurs: 10 koin = $AS 1.</b></div>
         <div class="stat" style="margin-bottom:10px"><span>KOIN RPG KAMU</span><b class="num" id="koinBalance">—</b></div>
-        <label><span id="koinRangeLabel">Jumlah koin (100 – 20.000)</span>
-          <input id="topupAmount" type="number" min="100" max="20000" step="100" inputmode="numeric" placeholder="1000">
+        <label><span id="koinRangeLabel">Jumlah koin (20 – 5.000)</span>
+          <input id="topupAmount" type="number" min="20" max="5000" step="10" inputmode="numeric" placeholder="100">
         </label>
         <div class="row" style="margin:-6px 0 12px">
+          <button class="btn btn-sm" data-topup="100" type="button">100 koin</button>
+          <button class="btn btn-sm" data-topup="500" type="button">500 koin</button>
           <button class="btn btn-sm" data-topup="1000" type="button">1.000 koin</button>
-          <button class="btn btn-sm" data-topup="5000" type="button">5.000 koin</button>
-          <button class="btn btn-sm" data-topup="10000" type="button">10.000 koin</button>
         </div>
         <div class="stat" style="margin-bottom:12px"><span>KAMU DAPAT</span><b class="num" id="topupPreview">$AS 10.00</b></div>
         <button class="btn btn-pri btn-block" id="topupBtn" type="button">TUKAR KOIN SEKARANG</button>
@@ -537,7 +537,7 @@
     symbols: [], traffic: [], quotes: {}, holdings: [],
     balance: 0, equity: 0, netWorth: 0, unrealized: 0, realized: 0,
     history: [], deposits: [], user: null, walletIdr: null, rate: 10,
-    koinBalance: null, koinPerAs: 100, koinMin: 100, koinMax: 20000,
+    koinBalance: null, koinPerAs: 10, koinMin: 20, koinMax: 5000,
     symbol: 'UMI', side: 'buy', tf: '1m', candles: [], feed: [], depth: null,
     codes: [], live: false, board: null, account: null, session: null, loginMode: 'token',
   }
@@ -928,7 +928,7 @@
   }
   function topupPreview() {
     const koin = Number($('topupAmount').value) || 0
-    const per = Number(state.koinPerAs) > 0 ? Number(state.koinPerAs) : 100
+    const per = Number(state.koinPerAs) > 0 ? Number(state.koinPerAs) : 10
     $('topupPreview').textContent = '$AS ' + money(koin / per)
   }
   function renderKoinStatus() {
@@ -1169,8 +1169,8 @@
 
   async function doTopup() {
     const koin = Math.floor(Number($('topupAmount').value) || 0)
-    const min = Number(state.koinMin) || 100
-    const max = Number(state.koinMax) || 20000
+    const min = Number(state.koinMin) || 20
+    const max = Number(state.koinMax) || 5000
     if (koin < min) return toast(`Minimal ${min.toLocaleString('id-ID')} koin.`, 'error')
     if (koin > max) return toast(`Maksimal ${max.toLocaleString('id-ID')} koin per transaksi.`, 'error')
     if (state.koinBalance != null && koin > state.koinBalance) return toast(`Koin RPG kamu hanya ${Number(state.koinBalance).toLocaleString('id-ID')}.`, 'error')
