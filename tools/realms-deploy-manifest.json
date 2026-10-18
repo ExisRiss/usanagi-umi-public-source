@@ -4,82 +4,117 @@
     {
       "source": "bot/lib/realms/catalog.js",
       "remote": "/lib/realms/catalog.js",
-      "beforeSha256": null
+      "beforeSha256": null,
+      "sourceSha256": "4cb233647b74bb7e4396cb49042de69316366460fbbd4363b642c9eff33dde8d"
     },
     {
       "source": "bot/lib/realms/service.js",
       "remote": "/lib/realms/service.js",
-      "beforeSha256": null
+      "beforeSha256": null,
+      "sourceSha256": "9a430d887c164668978f059c8621f2116568ed1f88a84d2309b47ccea8fc6b2b"
     },
     {
       "source": "bot/lib/realms/gate.js",
       "remote": "/lib/realms/gate.js",
-      "beforeSha256": null
+      "beforeSha256": null,
+      "sourceSha256": "a9cdcc8d3b848477ebbe0357b60671d8ff1632b5cd9d8702bb7369b6e0e3eb32"
     },
     {
       "source": "bot/lib/realms/runtime.js",
       "remote": "/lib/realms/runtime.js",
-      "beforeSha256": null
+      "beforeSha256": null,
+      "sourceSha256": "fc8fc783f3233d758bfecd44169a0404bdb0152df83c62ee80a91c8dc52e5624"
     },
     {
       "source": "bot/lib/realms/http.js",
       "remote": "/lib/realms/http.js",
-      "beforeSha256": null
+      "beforeSha256": null,
+      "sourceSha256": "9b8245874d731e4b1a143982a776d142cca209ce9d6d5aedc36074e6abca780d"
     },
     {
       "source": "bot/public/realms/index.html",
       "remote": "/public/realms/index.html",
-      "beforeSha256": null
+      "beforeSha256": null,
+      "sourceSha256": "12757be5fe6f745e4330499ca11290ea3162e5dc3ce25bdf2d132a0bd0bb7add"
     },
     {
       "source": "bot/public/realms/app.js",
       "remote": "/public/realms/app.js",
-      "beforeSha256": null
+      "beforeSha256": null,
+      "sourceSha256": "d0b4b34463ffc69a9745a4a3ab1a05a65e6a0f8916cae3254431a3bc56c54bda"
     },
     {
       "source": "bot/public/realms/style.css",
       "remote": "/public/realms/style.css",
-      "beforeSha256": null
+      "beforeSha256": null,
+      "sourceSha256": "e9d8e15cc0ba339d059154d40f7f82dfe19bf7c61218c69c64cc6c1268cc9bb9"
     },
     {
       "source": "bot/public/realms/world.webp",
       "remote": "/public/realms/world.webp",
-      "beforeSha256": null
+      "beforeSha256": null,
+      "sourceSha256": "ef85a0a5f5e8d4671c249517a8e100f45cc50533ad5716863ad09cd4f3b4d19e"
+    },
+    {
+      "source": "bot/public/realms/dungeon.webp",
+      "remote": "/public/realms/dungeon.webp",
+      "beforeSha256": null,
+      "sourceSha256": "e4071ad3ad8c5f296588441fb23af0caf9293c29ec9febd5fb72d77f67dd37c5"
+    },
+    {
+      "source": "bot/public/realms/kingdom.webp",
+      "remote": "/public/realms/kingdom.webp",
+      "beforeSha256": null,
+      "sourceSha256": "7703a6e572c0e0a7e394d64ba994932196b5ef6ec3a6195e7d0333773bd4e7cf"
     },
     {
       "source": "bot/plugins/rpg/realms.js",
       "remote": "/plugins/rpg/realms.js",
-      "beforeSha256": null
+      "beforeSha256": null,
+      "sourceSha256": "001e862cad523d6dc45ab3d936f534daa1560668e31101d2c054828fd151ea87"
     },
     {
       "source": "bot/lib/auto-ai-scheduler.js",
       "remote": "/lib/auto-ai-scheduler.js",
       "beforeSha256": "c988fd083c8dacef9d18548c95193d4adecad148ca9ff275711100c7e3310b33",
-      "baseline": "41fd8cb; must match live before deployment"
+      "baseline": "41fd8cb; must match live before deployment",
+      "sourceSha256": "1ed279ce788cbcfa85218e86d7882019351c266282378580878d44153900a9d9"
     },
     {
       "source": "bot/plugins/rpg/usanagi-shop.js",
       "remote": "/plugins/rpg/usanagi-shop.js",
       "beforeSha256": "4426c1a3eeaf089140cb36797f94789b886c21d855e7aff042f844921d662908",
-      "baseline": "41fd8cb; must match live before deployment"
+      "baseline": "41fd8cb; must match live before deployment",
+      "sourceSha256": "e6b16131c0ee6ae514b27585ff024a0510f3df96c96ff64c6173ea1b6e6ad4ab"
     },
     {
       "source": "bot/handler.js",
       "remote": "/handler.js",
       "beforeSha256": "92f199750fac4a0363acc2c59348857895349a31d95dadbad82a306ac0b95812",
-      "baseline": "live downloaded"
+      "baseline": "live downloaded",
+      "sourceSha256": "2ac62d93fdec21c6e7679afbafcce072aaab7dabaf045169ac01789f015892e7"
     },
     {
       "source": "bot/lib/jadibot-platform-api.js",
       "remote": "/lib/jadibot-platform-api.js",
       "beforeSha256": "4a4ba58738cd58db785b6b68b7b9e737745d8335e0f78e1a233ce71a9f48c8bc",
-      "baseline": "live downloaded"
+      "baseline": "live downloaded",
+      "sourceSha256": "6332f195a11a9192a8f366b71cfaa32117397cb9d483aee9f38a28346186291a"
     },
     {
       "source": "db-mirror/game.js",
       "remote": "/game/game.js",
       "beforeSha256": "c77eec6e6836db89709f46c7b9a0aed43104abb220891d54a81563c80489535d",
-      "baseline": "live downloaded"
+      "baseline": "live downloaded",
+      "sourceSha256": "1a8200ba59f019ecb4055928f9fc63e56df1dee71f2f878447871b01c80f1838"
+    },
+    {
+      "source": "db-mirror/game.html",
+      "remote": "/game/game.html",
+      "beforeSha256": "41eeb405ad76b9b2035232c70c1d567988ea8182ba4d02dd58a9a99ffba87fa3",
+      "baseline": "Source 04fb90c; live equality must be checked before any write",
+      "sourceSha256": "3967fb10954bb3486b9dd36a966249d08e772d33fc21d654a45a1755d704a451"
     }
-  ]
+  ],
+  "note": "Task47 source hashes. Retained pre-Task46 production baseline; not an installer for an empty VPS. Do not probe the down old VPS. Use full-source migration instructions for its replacement."
 }

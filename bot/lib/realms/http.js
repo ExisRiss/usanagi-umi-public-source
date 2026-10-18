@@ -3,14 +3,14 @@ import path from 'node:path'
 import {fileURLToPath} from 'node:url'
 import {withRealmGate} from './gate.js'
 import {RealmError} from './service.js'
-import {REALM_NAME,CLASSES,NPCS,MONSTERS,SHOP,PETS,QUEST,WORLD,WALKABLE} from './catalog.js'
+import {REALM_NAME,CLASSES,NPCS,MONSTERS,SHOP,PETS,QUEST,WORLD,WALKABLE,REGIONS,PORTALS,DUNGEON,ROYAL_QUEST} from './catalog.js'
 const ROOT=fileURLToPath(new URL('../../public/realms/',import.meta.url))
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.webp':'image/webp','.svg':'image/svg+xml'}
-const allowed=new Set(['index.html','app.js','style.css','world.webp'])
+const allowed=new Set(['index.html','app.js','style.css','world.webp','kingdom.webp','dungeon.webp'])
 function send(res,status,data){if(res.writableEnded)return;res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});res.end(JSON.stringify(data))}
 async function body(req){let data='',bytes=0;for await(const c of req){bytes+=c.length;if(bytes>4096)throw new RealmError('Payload terlalu besar.',413);data+=c}try{const parsed=JSON.parse(data);if(!parsed||typeof parsed!=='object'||Array.isArray(parsed))throw Error('object required');return parsed}catch{throw new RealmError('JSON object tidak valid.')}}
 function token(req){return String(req.headers.cookie||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('realm_session='))?.slice(14)||''}
-export function createRealmHttp(getService){
+export function createRealmHttp(getService,{preview=false}={}){
  const rates=new Map(),streams=new Map()
  function rate(key,max,window=60000){const t=Date.now(),r=rates.get(key);if(!r||r.until<t){if(rates.size>10000)for(const[k,v]of rates)if(v.until<t)rates.delete(k);if(rates.size>12000)throw new RealmError('Layanan sibuk.',503);rates.set(key,{count:1,until:t+window});return}if(++r.count>max)throw new RealmError('Terlalu banyak permintaan. Coba sebentar lagi.',429)}
  return async function realmHttp(req,res){
@@ -30,7 +30,7 @@ export function createRealmHttp(getService){
     if(origin&&new URL(origin).host!==req.headers.host)throw new RealmError('Origin ditolak.',403)
     if(req.headers['sec-fetch-site']==='cross-site')throw new RealmError('Permintaan lintas situs ditolak.',403)
    }
-   if(route==='/realms/api/meta'&&req.method==='GET')return send(res,200,{name:REALM_NAME,classes:CLASSES,npcs:NPCS,monsters:MONSTERS,shop:SHOP,pets:PETS,quest:QUEST,world:WORLD,walkable:WALKABLE,phase:'vertical-slice',channels:['global','local']})
+   if(route==='/realms/api/meta'&&req.method==='GET')return send(res,200,{name:REALM_NAME,classes:CLASSES,npcs:NPCS,monsters:MONSTERS,shop:SHOP,pets:PETS,quest:QUEST,world:WORLD,walkable:WALKABLE,regions:REGIONS,portals:PORTALS,dungeon:DUNGEON,royalQuest:ROYAL_QUEST,preview,phase:'world-expansion',channels:['global','local']})
    const ip=String(req.headers['cf-connecting-ip']||req.socket.remoteAddress||'').slice(0,80)
    if(route==='/realms/api/login'&&req.method==='POST'){
     rate('login:'+ip,8,60000);const input=await body(req)

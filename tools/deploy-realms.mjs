@@ -29,6 +29,7 @@ try{
  for(const file of manifest.files){
   const bytes=fs.readFileSync(path.join(ROOT,file.source)),present=await exists(file.remote),before=present?await read(file.remote):null
   const actual=before?hash(before):null,newHash=hash(bytes)
+  if(file.sourceSha256&&newHash!==file.sourceSha256)throw Error('Source differs from reviewed manifest: '+file.source)
   if(actual!==file.beforeSha256&&actual!==newHash)throw Error('Live drift; abort without writes: '+file.remote)
   if(before)fs.writeFileSync(path.join(evidence,file.remote.slice(1).replaceAll('/','__')+'.before'),before)
   plan.push({...file,bytes,before,sha256:newHash,unchanged:actual===newHash});console.log('Preflight OK',file.remote)

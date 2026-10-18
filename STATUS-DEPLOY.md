@@ -1769,3 +1769,37 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - Royal Capital/kerajaan lanjutan, party manusia, dungeon co-op terisolasi, guild/roles/chat, whisper/friends, player trading/crafting, full tutorial/quest campaign, skill trees/element, advanced pet UI dan owner admin moderation belum selesai.
 - Gate masih single-process; load/distributed tests, audit ekonomi legacy menyeluruh, retention ledger dan admin review workflow belum selesai.
 - Laporan teknis/setup/env/deploy/rollback: `docs/ECLIPSE-REALMS.md`. Ini vertical slice berfungsi, bukan klaim memenuhi seluruh master prompt.
+
+## Task 47 — dunia baru, preview Arena & paket VPS (2026-10-18)
+
+### Deploy aktual dan batasannya
+- Pemilik menjelaskan VPS lama down, penggantian Senin/Selasa; memilih preview Arena terisolasi. Tidak mengulang probe panel500 atau menulis/restart produksi.
+- Proses `Eclipse Realms — Mainkan versi tes` berjalan di port4173/0.0.0.0 dengan persistent SQLite terpisah, `REALMS_MODE=preview`. Tombol guest tidak perlu WhatsApp; tidak ada guest route pada handler produksi. Preview tidak memuat env/token produksi.
+- Gunakan kartu Live Preview Arena. Tes akses HTTPS mentah dari browser luar konteks Arena mendapat403 `Missing traffic access token` dari gateway E2B; jangan menyebut URL mentah sebagai publik tanpa akses platform. Game/UI/API lokal lulus, akses melalui UI Arena dari perangkat pemilik belum dikonfirmasi.
+- Source website sidebar/hero dan lobi game sudah menautkan MMORPG; website produksi belum dideploy ulang. Domain game permanen menunggu VPS baru. Preview bukan hosting permanen, data guest bukan data produksi.
+
+### Implementasi
+- Greenleaf (desa+hutan), Royal Capital safe zone beserta merchant/healer/petkeeper/Captain Edrin; quest dua wolf dengan klaim satu kali.
+- Portal antar region memeriksa posisi/jarak/combat di server. Atlas menampilkan tiga region. Aset kerajaan/dungeon original baru, dikompres WebP.
+- Hollow Crypt dungeon **solo** tersimpan: dua encounter berurutan + phased boss, reward chest1000gold/500EXP/1token satu kali, cooldown10menit, resume dan death/flee. Instance-scoped presence/local chat; global chat tetap lintas region.
+- Service shared SQLite, reward authoritative/idempotent, gate legacy, trusted production login/privacy tetap dipertahankan. Party/guild/co-op manusia, friends/whisper/trading/admin belum selesai; bukan klaim full MMORPG/production-ready.
+
+### QA aktual
+- 40/40 backend+SQLite migration; 116/116 regresi Auto-AI/intent/native/rich-info/similarity.
+- 16/16 browser gameplay checks; dijalankan lagi dari script portable dalam repo dengan hasil sama, 0 page errors. Dua guest nyata, gear, perjalanan, quest via combat sungguhan, dungeon/boss/chest, reload, cross-region chat, touch dan320/390/768/1440px.
+- Screenshot kerajaan/dungeon desktop dan desa mobile diperiksa visual. Preview health, POST-only, CSRF origin dan body limit lulus. Capture private runtime diuji dengan fixture: safety confirmation, inclusion SQLite/manifest,0600 dan no-overwrite lulus.
+- Docker build/systemd di VPS baru, physical WhatsApp acceptance, proxy produksi dan load besar belum diuji. Portabilitas source tidak sama dengan keberhasilan deploy produksi.
+
+### Paket & keamanan migrasi
+- Full source mencakup bot, website, db-mirror, standalone, aset dan package-lock; exclude secret/session/runtime DB/node_modules. `README-START-HERE-TASK47.md` dan `docs/VPS-MIGRATION-TASK47.md` menjadi petunjuk utama.
+- Docker/Caddy preview, systemd companion full stack, template env nonsecret, layout preparation no-overwrite dan capture privat disediakan. Service produksi menolak start sebelum config+SQLite dipulihkan; tidak menyamarkan kehilangan data sebagai DB kosong.
+- Manifest targeted deploy kini18file + reviewed source hashes; baseline produksi lama tetap, bukan installer fresh VPS. Website memiliki lifecycle serverless sendiri.
+- Backup Blob terbaru17Oktober2026~19:00UTC diunduh **privat**: Jadibot10file/8bot-config/**0creds.json**; bot ada legacy database.json, **tidak ada SQLite RPG/WA auth**. Arsip `.secrets/vps-migration/`, tidak masuk release. Pemulihan penuh auth+SQLite belum dapat dilakukan tanpa disk/snapshot privat VPS lama; jika auth hilang harus pairing ulang. Jadibot expired>=15menit beserta backup tetap tidak boleh dihidupkan dari arsip.
+- Permission direktori `.secrets`0700 dan file0600 dipulihkan. Secret scan menemukan satu nilai credential existing dalam catatan lama `PINDAH-SESI.md`; nilai disensor dari source/release, **tidak merotasi key** dan tidak rewrite history. History lama mungkin masih memuat nilai; jangan menganggap redaksi working tree menghapus paparan historis.
+- Seluruh pekerjaan Task47 dicatat di sini dan STATUS workspace. Git/source release dan checksum dibuat setelah review akhir; tidak memasukkan token ke log/laporan.
+
+### Verifikasi release Task47
+- ZIP kandidat 3968 file source diperiksa CRC dan SHA256 tiap file. Ekstraksi bersih + npm ci terpisah + startup server preview + health/client/guest serta header cookie Secure/HttpOnly/Strict lulus. Tidak memakai node_modules workspace untuk smoke test release.
+- Smoke test awal mendeteksi staging parsial belum menyertakan package type dan awang-lock; staging diperbaiki, Docker COPY juga dilengkapi, run final lulus. Docker engine/build tetap belum diuji.
+- Scan exact22nilai private + pola token/private-key/JWT privileged lulus tanpa temuan setelah redaksi catatan lama. Tidak menghapus history atau merotasi kredensial.
+- Source ZIP final: `Umi-Eclipse-Realms-Task47-Source.zip`, manifest per-file di dalam ZIP dan checksum terpisah; panduan utama `README-START-HERE-TASK47.md`.

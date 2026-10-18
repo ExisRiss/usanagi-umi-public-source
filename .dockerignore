@@ -1,0 +1,17 @@
+.git
+**/node_modules
+.secrets
+**/.secrets
+**/.env*
+**/config.js
+**/sessions
+**/session
+**/auth
+**/data
+**/*.sqlite*
+**/*.db
+**/database.json
+**/*token*.txt
+**/*creds*.json
+**/test-results
+**/*.log

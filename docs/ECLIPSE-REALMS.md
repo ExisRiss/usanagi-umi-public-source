@@ -1,5 +1,7 @@
 # Eclipse Realms — implementation & deployment report
 
+> **Task47 update (18 Oktober 2026):** Arena preview berjalan dengan guest dan SQLite terisolasi; Royal Capital + quest kerajaan, portal dan Hollow Crypt solo persisten ditambahkan. 40 backend/migrasi, 116 regresi dan 16 browser checks lulus. Source website/lobi sudah ditautkan; produksi belum dideploy karena VPS down. Panduan terbaru: [VPS-MIGRATION-TASK47.md](VPS-MIGRATION-TASK47.md), termasuk backup auth/SQLite yang masih hilang. Bagian Task46 di bawah adalah catatan historis; klaim produksi/full MMORPG tetap belum terpenuhi.
+
 **Task 46 · 18 Oktober 2026**
 **Status: playable vertical slice implemented and tested locally; production deployment blocked by panel HTTP 500. Not a completed MMORPG / not production-ready.**
 

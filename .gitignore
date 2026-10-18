@@ -52,3 +52,8 @@ db-mirror/trading-data.json
 # state runtime di server (berisi token sesi / nomor) — jangan di-commit
 bot/lib/trading-links.json
 .main-bot.env
+
+# Standalone QA and migration artifacts
+**/test-results/
+*.sqlite-wal
+*.sqlite-shm

@@ -41,4 +41,29 @@ export const EXP_PER_LEVEL=10000
 export const WORLD={width:100,height:100,minX:9,maxX:93,minY:23,maxY:77,forestX:52}
 
 export const WALKABLE=[[20,35,43,59],[31,55,39,77],[40,43,94,53],[64,23,93,47]]
-export const canWalk=(x,y)=>WALKABLE.some(([a,b,c,d])=>x>=a&&x<=c&&y>=b&&y<=d)
+export const canWalk=(x,y,region='greenleaf')=>(REGIONS[region]?.walkable||[]).some(([a,b,c,d])=>x>=a&&x<=c&&y>=b&&y<=d)
+
+export const REGIONS = {
+ greenleaf:{name:'Greenleaf',description:'Desa pemula, hutan perburuan dan gerbang reruntuhan.',art:'/realms/world.webp',safe:false,walkable:WALKABLE},
+ kingdom:{name:'Royal Capital',description:'Ibu kota kerajaan: komisi penjaga, pasar, healer dan summoning hall.',art:'/realms/kingdom.webp',safe:true,walkable:[[14,42,89,61],[43,24,59,78]]},
+ dungeon:{name:'Hollow Crypt',description:'Dungeon solo tersimpan: dua penjaga, boss dan peti hadiah. Tidak bercampur dengan instance pemain lain.',art:'/realms/dungeon.webp',safe:false,walkable:[[12,43,89,58],[12,43,27,77],[72,24,89,58]]},
+}
+export const PORTALS = [
+ {id:'capital-road',region:'greenleaf',name:'Jalan ke Royal Capital',x:45,y:50,to:'kingdom',spawn:{x:20,y:50}},
+ {id:'crypt-stairs',region:'greenleaf',name:'Tangga Hollow Crypt',x:84,y:26,to:'dungeon',spawn:{x:18,y:68}},
+ {id:'capital-return',region:'kingdom',name:'Gerbang Greenleaf',x:18,y:50,to:'greenleaf',spawn:{x:45,y:50}},
+ {id:'crypt-return',region:'dungeon',name:'Keluar dari crypt',x:18,y:68,to:'greenleaf',spawn:{x:84,y:29}},
+]
+NPCS.push(
+ {id:'royal',region:'kingdom',name:'Captain Edrin',role:'Komisi kerajaan · Quest',x:50,y:32},
+ {id:'royalmerchant',region:'kingdom',service:'merchant',name:'Bram the Smith',role:'Equipment & provisions',x:30,y:50},
+ {id:'royalhealer',region:'kingdom',service:'healer',name:'Royal Apothecary',role:'Pemulihan · Safe zone',x:56,y:53},
+ {id:'royalpetkeeper',region:'kingdom',service:'petkeeper',name:'Summoner Aelia',role:'Pet summoning hall',x:73,y:50},
+)
+Object.assign(MONSTERS,{
+ cryptguard:{region:'dungeon',name:'Crypt Guardian',x:42,y:50,hp:52,attack:10,defense:2,exp:180,gold:100,loot:'iron',color:'#939fa4'},
+ runebat:{region:'dungeon',name:'Runebat',x:62,y:50,hp:44,attack:11,defense:1,exp:180,gold:100,loot:'herb',color:'#c4a0d4'},
+ hollowking:{region:'dungeon',name:'The Hollow King',x:80,y:35,hp:110,attack:12,defense:2,exp:450,gold:250,loot:'diamond',color:'#9bd9cf',boss:true},
+})
+export const DUNGEON={name:'Trial of the Hollow',sequence:['cryptguard','runebat','hollowking'],reward:{gold:1000,exp:500,tokens:1},cooldown:600000}
+export const ROYAL_QUEST={name:'The King’s Commission',target:2,gold:600,exp:400,tokens:1}

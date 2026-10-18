@@ -70,7 +70,7 @@ Kamu melanjutkan pekerjaan dari sesi sebelumnya. Semua status di bawah ini SUDAH
 - Token CF tidak bisa Workers/Pages/cache-purge (9109/10000) — jangan dicoba berulang.
 
 ## SUPABASE
-- Project: tlcvkksfgdyeiypzcwdj — kunci di /home/user/.secrets/sb-keys.json: [{"api_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsY3Zra3NmZ2R5ZWl5cHpjd2RqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE0NDQ4MzgsImV4cCI6MjEwNzAyMDgzOH0.lHbfnsBQxsbntq9XfOQAysNnbw5shJYqbuH8TiC1vXg", "id": "anon", "type": "legacy", "prefix": "lHbfn", "name": "anon", "description": "Legacy anon API key", "hash": "W2oz0EDVPvJtEA9kX8wyrvS5nxAR3et0BXctrylMn90"}, {"api_key": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRsY3Zra3NmZ2R5ZWl5cHpjd2RqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MTQ0NDgzOCwiZXhwIjoyMTA3MDIwODM4fQ.htYMuK_UYhhIZVTgxgCvxnZUD
+- Supabase: kredensial asli hanya di file privat `.secrets/sb-keys.json`; tidak disalin ke source publik.
 
 ## STATUS TERAKHIR (16 Okt 2026)
 SELESAI & LIVE: bot hidup di panel baru; Panel Auto Order panel2 aktif (11 paket); halaman Saldo/Top Up/Shop/ACC Top Up terpisah; halaman Panel (konsol/files/startup); QR DANA anti-kepotong; liquid glass dua situs; wallet mobile fix.

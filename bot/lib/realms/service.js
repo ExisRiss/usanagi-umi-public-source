@@ -1,5 +1,5 @@
 import crypto from 'node:crypto'
-import {CLASSES,NPCS,MONSTERS,SHOP,PETS,QUEST,WORLD,EXP_PER_LEVEL,canWalk} from './catalog.js'
+import {CLASSES,NPCS,MONSTERS,SHOP,PETS,QUEST,WORLD,EXP_PER_LEVEL,canWalk,REGIONS,PORTALS,DUNGEON,ROYAL_QUEST} from './catalog.js'
 export class RealmError extends Error { constructor(message,status=400){super(message);this.status=status} }
 const fail=(s,status)=>{throw new RealmError(s,status)}
 const digest=s=>crypto.createHash('sha256').update(String(s)).digest('hex')
@@ -36,13 +36,15 @@ export function createRealmService({db,getUser,saveUser,now=Date.now,randomInt=c
   const u=getUser(a.jid)
   if(!u.rpg)u.rpg={};if(!u.inventory)u.inventory={};if(!u.quest)u.quest={}
   if(!u.rpg.realm)u.rpg.realm={version:1,class:null,x:30,y:56,quest:{accepted:false,kills:0,claimed:false},tokens:0,gear:{},encounter:null,lastMove:0,lastTurn:0,lastHeal:0,lastEncounter:0,summons:[]}
+  if(!REGIONS[u.rpg.realm.region])u.rpg.realm.region='greenleaf'
+  if(!u.rpg.realm.royalQuest)u.rpg.realm.royalQuest={accepted:false,kills:0,claimed:false}
   return u
  }
  function petDto(p){return p?{type:String(p.type||'cat'),name:publicText(p.name||'Pet'),level:Number(p.level)||1,exp:Number(p.exp)||0,hunger:Number(p.hunger)||0,rarity:String(p.rarity||'Companion'),stats:{attack:Number(p.stats?.attack)||3,defense:Number(p.stats?.defense)||0}}:null}
  function view(a,u=load(a)){
   const r=u.rpg.realm, inventory={}
   for(const [key,value] of Object.entries(u.inventory||{}))if(/^[a-z_]{2,32}$/.test(key)&&Number.isSafeInteger(value)&&value>0)inventory[key]=value
-  return {id:a.id,name:a.name,class:r.class,level:u.level,exp:u.exp,nextExp:(Math.floor(u.exp/EXP_PER_LEVEL)+1)*EXP_PER_LEVEL,gold:u.koin,hp:u.rpg.health,maxHp:u.rpg.maxHealth,mp:u.rpg.mana,maxMp:u.rpg.maxMana,attack:u.rpg.attack,defense:u.rpg.defense,inventory,position:{x:r.x,y:r.y,map:r.x<WORLD.forestX?'village':'forest'},quest:copy(r.quest),dailyQuests:Object.fromEntries(Object.entries(u.quest||{}).filter(([k])=>/^[a-z]+\d?$/.test(k)).map(([k,v])=>[k,{progress:Number(v.progress)||0,claimed:!!v.claimed}])),tokens:r.tokens,gear:copy(r.gear),encounter:r.encounter?copy(r.encounter):null,pet:petDto(u.rpg.pet),pets:(u.rpg.petStorage||[]).map(petDto),summons:copy(r.summons||[]),revision:r.version}
+  return {id:a.id,name:a.name,class:r.class,level:u.level,exp:u.exp,nextExp:(Math.floor(u.exp/EXP_PER_LEVEL)+1)*EXP_PER_LEVEL,gold:u.koin,hp:u.rpg.health,maxHp:u.rpg.maxHealth,mp:u.rpg.mana,maxMp:u.rpg.maxMana,attack:u.rpg.attack,defense:u.rpg.defense,inventory,position:{x:r.x,y:r.y,region:r.region,map:r.region==='greenleaf'?(r.x<WORLD.forestX?'village':'forest'):r.region},quest:copy(r.quest),royalQuest:copy(r.royalQuest),dungeon:r.dungeon?{stage:r.dungeon.stage,rewardClaimed:r.dungeon.rewardClaimed,nextEntryAt:(r.lastDungeonReward||0)+DUNGEON.cooldown}:null,dailyQuests:Object.fromEntries(Object.entries(u.quest||{}).filter(([k])=>/^[a-z]+\d?$/.test(k)).map(([k,v])=>[k,{progress:Number(v.progress)||0,claimed:!!v.claimed}])),tokens:r.tokens,gear:copy(r.gear),encounter:r.encounter?copy(r.encounter):null,pet:petDto(u.rpg.pet),pets:(u.rpg.petStorage||[]).map(petDto),summons:copy(r.summons||[]),revision:r.version}
  }
  function audit(a,kind,detail){db.prepare('INSERT INTO realm_audit(account,kind,detail,created) VALUES(?,?,?,?)').run(a.id,kind,JSON.stringify(detail),now())}
  function award(u,exp,gold){
@@ -50,7 +52,7 @@ export function createRealmService({db,getUser,saveUser,now=Date.now,randomInt=c
   u.exp=Math.min(9000000000,u.exp+exp);u.koin+=gold;u.level=Math.floor(u.exp/EXP_PER_LEVEL)+1;u.rpg.level=u.level
   if(u.level>previous){u.rpg.maxHealth=100+(u.level-1)*10;u.rpg.maxMana=100+(u.level-1)*5;u.rpg.maxStamina=100+(u.level-1)*5;u.rpg.health=u.rpg.maxHealth;u.rpg.mana=u.rpg.maxMana;u.rpg.stamina=u.rpg.maxStamina}
  }
- function near(r,id){const npc=NPCS.find(n=>n.id===id);if(!npc||distance(r,npc)>13)fail('Dekati NPC terlebih dahulu.');if(r.encounter)fail('Selesaikan pertarungan dulu.')}
+ function near(r,id){const npc=NPCS.find(n=>(n.id===id||n.service===id)&&(n.region||'greenleaf')===r.region);if(!npc||distance(r,npc)>13)fail('Dekati NPC terlebih dahulu.');if(r.encounter)fail('Selesaikan pertarungan dulu.')}
  const issueCode=db.transaction(jid=>{
   if(!/^\d{7,25}(?:@s\.whatsapp\.net|@lid)?$/.test(jid))fail('Identitas bot tidak valid.')
   jid=jid.split('@')[0]
@@ -96,14 +98,37 @@ export function createRealmService({db,getUser,saveUser,now=Date.now,randomInt=c
    if(r.encounter)fail('Selesaikan pertarungan sebelum bergerak.')
    if(now()-r.lastMove<140)fail('Gerakan terlalu cepat.',429)
    const dirs={n:[0,-3],s:[0,3],e:[3,0],w:[-3,0]};const d=dirs[input.direction];if(!d)fail('Arah tidak valid.')
-   const nx=Math.max(WORLD.minX,Math.min(WORLD.maxX,r.x+d[0])),ny=Math.max(WORLD.minY,Math.min(WORLD.maxY,r.y+d[1]));if(!canWalk(nx,ny))fail('Jalur terhalang. Ikuti plaza dan jalan hutan.');r.x=nx;r.y=ny;r.lastMove=now()
+   const nx=Math.max(WORLD.minX,Math.min(WORLD.maxX,r.x+d[0])),ny=Math.max(WORLD.minY,Math.min(WORLD.maxY,r.y+d[1]));if(!canWalk(nx,ny,r.region))fail('Jalur terhalang. Ikuti plaza dan jalan hutan.');r.x=nx;r.y=ny;r.lastMove=now()
+  }else if(input.op==='travel'){
+   if(r.encounter)fail('Tidak bisa berpindah lokasi saat bertarung.')
+   const portal=PORTALS.find(p=>p.id===input.target&&p.region===r.region)
+   if(!portal||distance(r,portal)>12)fail('Dekati gerbang lokasi yang benar terlebih dahulu.')
+   if(portal.to==='dungeon'){
+    if(!r.quest.claimed)fail('Selesaikan Cahaya di Greenleaf sebelum membuka Hollow Crypt.')
+    if(u.rpg.health<=0)fail('Pulihkan HP sebelum masuk dungeon.')
+    if(!r.dungeon||r.dungeon.rewardClaimed){
+     if(r.lastDungeonReward&&now()-r.lastDungeonReward<DUNGEON.cooldown)fail('Dungeon tersedia kembali 10 menit setelah klaim terakhir.',429)
+     r.dungeon={id:crypto.randomUUID(),stage:0,rewardClaimed:false,enteredAt:now()}
+    }
+   }
+   r.region=portal.to;r.x=portal.spawn.x;r.y=portal.spawn.y;message='Tiba di '+REGIONS[r.region].name+'.'
+  }else if(input.op==='royal-accept'){
+   near(r,'royal');if(r.royalQuest.accepted)fail('Komisi kerajaan sudah diambil.');r.royalQuest.accepted=true;message='Kalahkan 2 Briar Wolf di Greenleaf, lalu laporkan kepada Captain Edrin.'
+  }else if(input.op==='royal-claim'){
+   near(r,'royal');if(!r.royalQuest.accepted||r.royalQuest.kills<ROYAL_QUEST.target||r.royalQuest.claimed)fail('Komisi belum selesai atau hadiah sudah diambil.')
+   r.royalQuest.claimed=true;r.tokens+=ROYAL_QUEST.tokens;award(u,ROYAL_QUEST.exp,ROYAL_QUEST.gold);message='Komisi selesai: +600 koin, +400 EXP, +1 summon token.'
+  }else if(input.op==='dungeon-claim'){
+   if(r.region!=='dungeon'||!r.dungeon||r.dungeon.stage!==DUNGEON.sequence.length||r.dungeon.rewardClaimed||r.encounter)fail('Selesaikan seluruh encounter dungeon terlebih dahulu.')
+   if(distance(r,MONSTERS.hollowking)>13)fail('Dekati peti di altar boss.')
+   r.dungeon.rewardClaimed=true;r.lastDungeonReward=now();r.tokens+=DUNGEON.reward.tokens;award(u,DUNGEON.reward.exp,DUNGEON.reward.gold);message='Hollow Crypt selesai: +1000 koin, +500 EXP, +1 summon token.'
   }else if(input.op==='quest-accept'){
    near(r,'elder');if(r.quest.accepted)fail('Quest sudah diambil.');r.quest.accepted=true;message=QUEST.description
   }else if(input.op==='quest-claim'){
    near(r,'elder');if(!r.quest.accepted||r.quest.kills<QUEST.target||r.quest.claimed)fail('Objective belum selesai atau hadiah sudah diambil.')
    r.quest.claimed=true;r.tokens+=QUEST.tokens;award(u,QUEST.exp,QUEST.gold);message=`Quest selesai: +${QUEST.exp} EXP, +${QUEST.gold} koin, +1 summon token.`
   }else if(input.op==='encounter'){
-   const mob=Object.prototype.hasOwnProperty.call(MONSTERS,input.target)?MONSTERS[input.target]:null;if(!mob||distance(r,mob)>15||r.x<WORLD.forestX)fail('Dekati monster di hutan.')
+   const mob=Object.prototype.hasOwnProperty.call(MONSTERS,input.target)?MONSTERS[input.target]:null;if(!mob||(mob.region||'greenleaf')!==r.region||distance(r,mob)>15||(r.region==='greenleaf'&&r.x<WORLD.forestX))fail('Dekati monster di lokasi yang sesuai.')
+   if(r.region==='dungeon'&&(!r.dungeon||r.dungeon.rewardClaimed||DUNGEON.sequence[r.dungeon.stage]!==input.target))fail('Selesaikan encounter dungeon sesuai urutan; hadiah tidak dapat diulang.')
    if(r.encounter)fail('Masih ada pertarungan aktif.');if(u.rpg.health<=0)fail('Pulihkan HP di desa dulu.');if(now()-r.lastEncounter<2500)fail('Tunggu sebentar sebelum encounter berikutnya.',429)
    if(mob.boss&&!r.quest.claimed)fail('Selesaikan quest Cahaya di Greenleaf sebelum menantang sentinel.')
    r.encounter={id:crypto.randomUUID(),type:input.target,hp:mob.hp,maxHp:mob.hp,turn:0,phase:1};r.lastEncounter=now();message=`${mob.name} menghadang!`
@@ -111,7 +136,7 @@ export function createRealmService({db,getUser,saveUser,now=Date.now,randomInt=c
    const encounter=r.encounter;if(!encounter)fail('Tidak ada pertarungan aktif.')
    if(input.target!==encounter.id)fail('Pertarungan sudah berubah. Muat ulang state.',409)
    if(now()-r.lastTurn<550)fail('Tunggu giliran berikutnya.',429);r.lastTurn=now()
-   if(input.op==='flee'){r.encounter=null;r.x=48;r.y=55;message='Berhasil kembali ke batas desa.'}
+   if(input.op==='flee'){r.encounter=null;r.region='greenleaf';r.x=48;r.y=50;message='Berhasil kembali ke batas desa.'}
    else {
     const mob=MONSTERS[encounter.type],c=CLASSES[r.class],crit=randomInt(100)<(r.class==='archer'?25:10)
     if(input.op==='skill'&&u.rpg.mana<c.mana)fail('Mana tidak cukup.')
@@ -124,6 +149,8 @@ export function createRealmService({db,getUser,saveUser,now=Date.now,randomInt=c
     encounter.hp=Math.max(0,encounter.hp-damage);encounter.turn++;effect={damage,crit,pet,skill:input.op==='skill'}
     if(encounter.hp===0){
      award(u,mob.exp,mob.gold);u.inventory[mob.loot]=(u.inventory[mob.loot]||0)+1
+     if(r.region==='dungeon'&&DUNGEON.sequence[r.dungeon.stage]===encounter.type)r.dungeon.stage++
+     if(encounter.type==='wolf'&&r.royalQuest.accepted&&!r.royalQuest.claimed)r.royalQuest.kills=Math.min(ROYAL_QUEST.target,r.royalQuest.kills+1)
      if(encounter.type==='slime'&&r.quest.accepted&&!r.quest.claimed)r.quest.kills=Math.min(QUEST.target,r.quest.kills+1)
      if(u.quest.hunt5&&!u.quest.hunt5.claimed)u.quest.hunt5.progress=(u.quest.hunt5.progress||0)+1
      if(u.rpg.pet){const p=u.rpg.pet;p.exp=(p.exp||0)+15;p.hunger=Math.max(0,(p.hunger||0)-1);if(p.exp>=p.level*100){p.exp-=p.level*100;p.level++;if(!p.stats)p.stats={attack:3,defense:2,luck:3};p.stats.attack+=2;p.stats.defense++}}
@@ -133,7 +160,7 @@ export function createRealmService({db,getUser,saveUser,now=Date.now,randomInt=c
      encounter.phase=mob.boss&&encounter.hp<mob.hp/2?2:1
      const incoming=Math.max(1,mob.attack+(encounter.phase===2?7:0)-(u.rpg.defense||0)-c.defense-(armor?.defense||0))
      u.rpg.health=Math.max(0,u.rpg.health-incoming);effect.incoming=incoming;message=`${damage} damage${crit?' · critical':''}. Kamu menerima ${incoming}.`
-     if(u.rpg.health===0){r.encounter=null;r.x=40;r.y=45;effect.defeat=true;message='Kamu tumbang. Kembali ke desa; minta pemulihan Elia.'}
+     if(u.rpg.health===0){r.encounter=null;r.region='greenleaf';r.x=40;r.y=45;effect.defeat=true;message='Kamu tumbang. Kembali ke desa; minta pemulihan Elia.'}
     }
    }
   }else if(input.op==='heal'){
@@ -167,20 +194,21 @@ export function createRealmService({db,getUser,saveUser,now=Date.now,randomInt=c
   if(input.op!=='move')audit(a,input.op,{message,gold:u.koin,exp:u.exp})
   return result
  })
+ function room(id){const r=load(account(id)).rpg.realm;return r.region==='dungeon'?'dungeon:'+r.dungeon?.id:r.region==='greenleaf'?(r.x<WORLD.forestX?'village':'forest'):r.region}
  function touch(id){presence.set(id,now())}
- function online(id){const self=snapshot(id),list=[];for(const [pid,last]of presence){if(now()-last>20000){presence.delete(pid);continue}const p=snapshot(pid);if(p.class&&p.position.map===self.position.map)list.push({id:p.id,name:p.name,class:p.class,position:p.position,pet:p.pet?{type:p.pet.type,name:p.pet.name}:null})}return list.slice(0,100)}
+ function online(id){const self=snapshot(id),list=[];for(const [pid,last]of presence){if(now()-last>20000){presence.delete(pid);continue}const p=snapshot(pid);if(p.class&&room(pid)===room(id))list.push({id:p.id,name:p.name,class:p.class,position:p.position,pet:p.pet?{type:p.pet.type,name:p.pet.name}:null})}return list.slice(0,100)}
  function chatHistory(id,{after=0,before=0,channel='global'}={}){
   if(!['global','local'].includes(channel))fail('Channel belum tersedia.')
   if(!integer(Number(after),0,Number.MAX_SAFE_INTEGER)||!integer(Number(before),0,Number.MAX_SAFE_INTEGER))fail('Cursor tidak valid.')
   const state=snapshot(id)
-  const rows=db.prepare(`SELECT c.id,c.account AS playerId,a.name,c.text,c.channel,c.created FROM realm_chat c JOIN realm_accounts a ON a.id=c.account WHERE c.channel=? AND (?='global' OR c.map=?) AND c.id>? AND (?=0 OR c.id<?) AND c.created>? AND NOT EXISTS(SELECT 1 FROM realm_blocks b WHERE b.account=? AND b.target=c.account) ORDER BY c.id DESC LIMIT 50`).all(channel,channel,state.position.map,Number(after),Number(before),Number(before),now()-7*86400000,id)
+  const rows=db.prepare(`SELECT c.id,c.account AS playerId,a.name,c.text,c.channel,c.created FROM realm_chat c JOIN realm_accounts a ON a.id=c.account WHERE c.channel=? AND (?='global' OR c.map=?) AND c.id>? AND (?=0 OR c.id<?) AND c.created>? AND NOT EXISTS(SELECT 1 FROM realm_blocks b WHERE b.account=? AND b.target=c.account) ORDER BY c.id DESC LIMIT 50`).all(channel,channel,room(id),Number(after),Number(before),Number(before),now()-7*86400000,id)
   return rows.reverse()
  }
  const chat=db.transaction((id,input)=>{
   const a=account(id),state=snapshot(id);if(!state.class)fail('Buat karakter dahulu.');if(a.muted_until>now())fail('Chat sedang dibatasi moderator.',403)
   if(!input||!['global','local'].includes(input.channel)||typeof input.text!=='string'||input.text.length>240||!input.text.trim())fail('Pesan 1–240 karakter diperlukan.')
   const last=db.prepare('SELECT created FROM realm_chat WHERE account=? ORDER BY id DESC LIMIT 1').get(id);if(last&&now()-last.created<1500)fail('Jeda chat minimal 1,5 detik.',429)
-  const text=publicText(input.text.trim());db.prepare('INSERT INTO realm_chat(account,channel,map,text,created) VALUES(?,?,?,?,?)').run(id,input.channel,state.position.map,text,now());db.prepare('DELETE FROM realm_chat WHERE created<?').run(now()-7*86400000)
+  const text=publicText(input.text.trim());db.prepare('INSERT INTO realm_chat(account,channel,map,text,created) VALUES(?,?,?,?,?)').run(id,input.channel,room(id),text,now());db.prepare('DELETE FROM realm_chat WHERE created<?').run(now()-7*86400000)
   return {ok:true}
  })
  function block(id,target){if(typeof target!=='string'||! /^[a-f0-9-]{36}$/.test(target))fail('Player ID tidak valid.');if(id===target)fail('Tidak bisa block diri sendiri.');account(target);db.prepare('INSERT OR IGNORE INTO realm_blocks VALUES(?,?)').run(id,target);return {ok:true}}
