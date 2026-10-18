@@ -23,6 +23,7 @@ function fixture(options={}){
  return {jid,name,id,service,act,position,token:login.token,tick:ms=>time+=ms}
 }
 function defeat(x,type='slime'){
+ x.tick(2500) // Wait for the authoritative per-player respawn window.
  const e=x.act('encounter',{target:type}).state.encounter
  for(let i=0;i<40;i++){const result=x.act('attack',{target:e.id});if(!result.state.encounter)return result}
  throw Error('encounter did not end')

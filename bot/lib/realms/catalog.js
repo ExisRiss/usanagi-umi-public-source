@@ -67,3 +67,13 @@ Object.assign(MONSTERS,{
 })
 export const DUNGEON={name:'Trial of the Hollow',sequence:['cryptguard','runebat','hollowking'],reward:{gold:1000,exp:500,tokens:1},cooldown:600000}
 export const ROYAL_QUEST={name:'The King’s Commission',target:2,gold:600,exp:400,tokens:1}
+
+// Shared interaction/cadence rules. Client requests intent; server owns outcomes.
+export const COMBAT = {playerCooldownMs:550,enemyIntervalMs:2200,encounterRange:15,npcRange:13,aggroRange:6,respawnMs:2500}
+export const NPC_DIALOGUE = {
+ elder:'Selamat datang, petualang. Moss Slime mengganggu hutan. Ambil quest, kalahkan tiga slime, lalu kembali kepadaku.',
+ merchant:'Selamat datang di tokoku. Kamu bisa membeli potion dan equipment, atau menjual hasil petualangan.',
+ healer:'Beristirahatlah sejenak. Aku bisa memulihkan HP dan mana agar kamu siap kembali bertualang.',
+ petkeeper:'Companion akan menemanimu. Gunakan summon token, lalu pilih pet yang ingin kamu ajak bertualang.',
+ royal:'Kerajaan membutuhkan bantuanmu. Kalahkan dua Briar Wolf di Greenleaf dan kembali untuk menerima komisi.',
+}

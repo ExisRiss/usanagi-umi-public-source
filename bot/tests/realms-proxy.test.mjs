@@ -18,7 +18,7 @@ test('origin forwarding requires exact public hostname and constant-time key mat
 })
 test('real HTTP relay preserves cookies, overwrites spoofed relay headers and rejects untrusted origin',async()=>{
  const oldKey=process.env.UMI_GAME_TOKEN,oldHost=process.env.UMI_REALMS_PUBLIC_HOST;process.env.UMI_GAME_TOKEN=secret;process.env.UMI_REALMS_PUBLIC_HOST=publicHost
- const service={redeem:code=>{assert.equal(code,'unit-login');return{token:'unit-session-token',state:{id:'public-test-id'}}},authenticate:token=>{if(token!=='unit-session-token')throw Object.assign(Error('Unauthorized'),{status:401});return{id:'public-test-id'}},snapshot:()=>({id:'public-test-id',gold:100})}
+ const service={redeem:code=>{assert.equal(code,'unit-login');return{token:'unit-session-token',state:{id:'public-test-id'}}},authenticate:token=>{if(token!=='unit-session-token')throw Object.assign(Error('Unauthorized'),{status:401});return{id:'public-test-id'}},snapshot:()=>({id:'public-test-id',gold:100}),advance:()=>({id:'public-test-id',gold:100})}
  const bot=http.createServer(createRealmHttp(()=>service));await new Promise(r=>bot.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+bot.address().port
  const game=http.createServer(createRealmProxy({origin,secret,publicHost}));await new Promise(r=>game.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+game.address().port
  try{

@@ -3,7 +3,7 @@
     "bot": "serverjadibotVip",
     "game": "servergameVip"
   },
-  "note": "Task58: replace stalled single-provider amfind with bounded public TikTok caption/comments/replies lookup, paced fallback, creator attribution and URL validation. Preserve Task55-57, active sessions, keys, RPG, main/autoread OFF. Diagnostic is read-only with mocked WA transport.",
+  "note": "Task59: authoritative timed monster combat, NPC dialogue and actual desktop/mobile interaction fixes. Code-only six runtime files; preserve keys, sessions, player progression, Task55-58, main/autoread OFF. No preview server or QA data deployed.",
   "files": [
     {
       "role": "bot",
@@ -171,14 +171,14 @@
       "source": "bot/lib/realms/catalog.js",
       "remote": "/lib/realms/catalog.js",
       "beforeSha256": "4cb233647b74bb7e4396cb49042de69316366460fbbd4363b642c9eff33dde8d",
-      "sourceSha256": "4cb233647b74bb7e4396cb49042de69316366460fbbd4363b642c9eff33dde8d"
+      "sourceSha256": "434245d12098500e0652d09a5e01cbcdbf36e2e1b0414b20ccc4124016029f01"
     },
     {
       "role": "bot",
       "source": "bot/lib/realms/service.js",
       "remote": "/lib/realms/service.js",
       "beforeSha256": "764bc0dda27e5cbe07e2eb6621b77cfd3a471ea28ba94618bb08c07347e027d2",
-      "sourceSha256": "764bc0dda27e5cbe07e2eb6621b77cfd3a471ea28ba94618bb08c07347e027d2"
+      "sourceSha256": "bd9c5cedc16cc4d6c0f5fe6cef3265443da16faa918b144ebd5538590b622ac8"
     },
     {
       "role": "bot",
@@ -199,28 +199,28 @@
       "source": "bot/lib/realms/http.js",
       "remote": "/lib/realms/http.js",
       "beforeSha256": "becba779e77e7858019fda64917b0fdbfeca0ca33d5a330549f9011f2000cb74",
-      "sourceSha256": "becba779e77e7858019fda64917b0fdbfeca0ca33d5a330549f9011f2000cb74"
+      "sourceSha256": "dad05da3512501ef75f9f06232965d41441f47ff7dbdc97bf89c7aad5ad2a98b"
     },
     {
       "role": "bot",
       "source": "bot/public/realms/index.html",
       "remote": "/public/realms/index.html",
       "beforeSha256": "e00dab77c84cbaad577d76abb8949657d628d037bcf68be601e911ded156a340",
-      "sourceSha256": "e00dab77c84cbaad577d76abb8949657d628d037bcf68be601e911ded156a340"
+      "sourceSha256": "6983c7a43c291132f0327b394088b11521cd8da8fe3a0fc682b6cc73011389db"
     },
     {
       "role": "bot",
       "source": "bot/public/realms/app.js",
       "remote": "/public/realms/app.js",
       "beforeSha256": "8fae075f21486287e52cf4e7ba8f4482e1c4344d8b5f423bd2f0b4385b997e7d",
-      "sourceSha256": "8fae075f21486287e52cf4e7ba8f4482e1c4344d8b5f423bd2f0b4385b997e7d"
+      "sourceSha256": "dd6fa80c326b3ecb3d51ad6664d0a0b0662599ecfe1af584568edf66fdfcc3e7"
     },
     {
       "role": "bot",
       "source": "bot/public/realms/style.css",
       "remote": "/public/realms/style.css",
       "beforeSha256": "e9d8e15cc0ba339d059154d40f7f82dfe19bf7c61218c69c64cc6c1268cc9bb9",
-      "sourceSha256": "e9d8e15cc0ba339d059154d40f7f82dfe19bf7c61218c69c64cc6c1268cc9bb9"
+      "sourceSha256": "95177a1b6482821440d4cd410ccfa61028817fa2e03fb0d2610a55b0033a7c60"
     },
     {
       "role": "bot",
@@ -422,21 +422,21 @@
       "role": "bot",
       "source": "bot/plugins/tools/amfind.js",
       "remote": "/plugins/tools/amfind.js",
-      "beforeSha256": "efc347c9429aa61a6f1f1bb9036465c3c6fc8737d18bf9b65b1f4a1abc0e7ed9",
+      "beforeSha256": "6c4bd7fc1b0b800962762634ce68bfb9fb5f6c2f716fc99dc4cbbe3fc20cdb89",
       "sourceSha256": "6c4bd7fc1b0b800962762634ce68bfb9fb5f6c2f716fc99dc4cbbe3fc20cdb89"
     },
     {
       "role": "bot",
       "source": "bot/lib/amfind.js",
       "remote": "/lib/amfind.js",
-      "beforeSha256": null,
+      "beforeSha256": "7c1fd976d37f5bd864a7f23d102b7997011cbccd11474dd667eada934e57ed7a",
       "sourceSha256": "7c1fd976d37f5bd864a7f23d102b7997011cbccd11474dd667eada934e57ed7a"
     },
     {
       "role": "bot",
       "source": "bot/tools/check-amfind.mjs",
       "remote": "/tools/check-amfind.mjs",
-      "beforeSha256": null,
+      "beforeSha256": "85540f1c3cb4321dfc12f18eff2fd0a04d3052d284a5cc6fad446f18173ae771",
       "sourceSha256": "85540f1c3cb4321dfc12f18eff2fd0a04d3052d284a5cc6fad446f18173ae771"
     }
   ]

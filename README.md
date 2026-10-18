@@ -4,6 +4,13 @@ This repository contains the **sanitized source template** for the Usanagi Umi W
 
 > **Security notice:** This is intentionally not a production backup. WhatsApp sessions, phone numbers, pairing codes, database/runtime data, Pterodactyl/GitHub/Vercel credentials, API keys, environment files, deployment archives, and owner-specific configuration have been removed or replaced with placeholders.
 
+## Combat dan NPC website RPG — Task59 (18 Oktober 2026)
+
+- Klik/tap monster sekarang berjalan mendekat, memulai encounter dan menyerang. Monster punya jadwal serangan server sendiri; multi-tab tidak menggandakan damage. NPC bisa diajak bicara lewat kepala/badan/label atau tombol Target sekitar.
+- Perbaiki target boss/portal bertumpuk, kartu quest penghalang klik, pergantian rute dan cooldown antar-encounter. Layanan quest, shop/equip, healer, pet, capital dan dungeon tetap memakai progres yang sama.
+- 374 tes otomatis dan 23 pemeriksaan browser nyata desktop/mobile PASS. Enam runtime file di-deploy code-only; 62/62 SHA cocok, empat health endpoint sehat. Main/autoread tetap OFF; tidak reset progres/sesi.
+- Gameplay diuji pada SQLite terisolasi; produksi diverifikasi source, metadata, login UI dan kesehatan, bukan bermain atas akun pengguna. [Detail Task59](docs/REALMS-COMBAT-NPC-TASK59.md).
+
 ## Amfind tanpa ketergantungan endpoint yang timeout — Task58 (18 Oktober 2026)
 
 - `/amfind` dan `/amfinder` mencari caption, komentar, serta balasan kreator dengan fallback, validasi URL, antrean rate-limit, dedup/cache dan batas waktu. Format Markdown dan trailing slash didukung; kegagalan provider tidak disamarkan menjadi “preset tidak ada”.

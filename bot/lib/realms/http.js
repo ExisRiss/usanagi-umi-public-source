@@ -5,7 +5,7 @@ import {fileURLToPath} from 'node:url'
 import {withRealmGate} from './gate.js'
 import {RealmError} from './service.js'
 import {realmRequestHost} from './proxy-auth.js'
-import {REALM_NAME,CLASSES,NPCS,MONSTERS,SHOP,PETS,QUEST,WORLD,WALKABLE,REGIONS,PORTALS,DUNGEON,ROYAL_QUEST} from './catalog.js'
+import {REALM_NAME,CLASSES,NPCS,MONSTERS,SHOP,PETS,QUEST,WORLD,WALKABLE,REGIONS,PORTALS,DUNGEON,ROYAL_QUEST,COMBAT} from './catalog.js'
 const ROOT=fileURLToPath(new URL('../../public/realms/',import.meta.url))
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.webp':'image/webp','.svg':'image/svg+xml'}
 const allowed=new Set(['index.html','app.js','style.css','world.webp','kingdom.webp','dungeon.webp'])
@@ -32,7 +32,7 @@ export function createRealmHttp(getService,{preview=false,verifyPlatformToken=ve
     if(origin&&new URL(origin).host!==realmRequestHost(req))throw new RealmError('Origin ditolak.',403)
     if(req.headers['sec-fetch-site']==='cross-site')throw new RealmError('Permintaan lintas situs ditolak.',403)
    }
-   if(route==='/realms/api/meta'&&req.method==='GET')return send(res,200,{name:REALM_NAME,classes:CLASSES,npcs:NPCS,monsters:MONSTERS,shop:SHOP,pets:PETS,quest:QUEST,world:WORLD,walkable:WALKABLE,regions:REGIONS,portals:PORTALS,dungeon:DUNGEON,royalQuest:ROYAL_QUEST,preview,recoveryNotice:String(process.env.UMI_REALMS_RECOVERY_NOTICE||''),phase:'world-expansion',channels:['global','local']})
+   if(route==='/realms/api/meta'&&req.method==='GET')return send(res,200,{name:REALM_NAME,classes:CLASSES,npcs:NPCS,monsters:MONSTERS,shop:SHOP,pets:PETS,quest:QUEST,world:WORLD,walkable:WALKABLE,regions:REGIONS,portals:PORTALS,dungeon:DUNGEON,royalQuest:ROYAL_QUEST,combat:COMBAT,preview,recoveryNotice:String(process.env.UMI_REALMS_RECOVERY_NOTICE||''),phase:'world-expansion',channels:['global','local']})
    const ip=String(req.headers['cf-connecting-ip']||req.socket.remoteAddress||'').slice(0,80)
    if(route==='/realms/api/login'&&req.method==='POST'){
     rate('login:'+ip,8,60000);const input=await body(req)
@@ -48,8 +48,8 @@ export function createRealmHttp(getService,{preview=false,verifyPlatformToken=ve
    const service=getService(),session=token(req),a=service.authenticate(session)
    rate('api:'+a.id,650)
    if(route==='/realms/api/logout'&&req.method==='POST'){service.logout(session);res.setHeader('Set-Cookie','realm_session=; Path=/realms; HttpOnly; SameSite=Strict; Max-Age=0');return send(res,200,{ok:true})}
-   if(route==='/realms/api/state'&&req.method==='GET')return send(res,200,await withRealmGate(()=>({state:service.snapshot(a.id)})))
-   if(route==='/realms/api/action'&&req.method==='POST'){const input=await body(req);return send(res,200,await withRealmGate(()=>service.act(a.id,input)))}
+   if(route==='/realms/api/state'&&req.method==='GET')return send(res,200,await withRealmGate(()=>({state:service.advance(a.id)})))
+   if(route==='/realms/api/action'&&req.method==='POST'){const input=await body(req);return send(res,200,await withRealmGate(()=>{service.advance(a.id);return service.act(a.id,input)}))}
    if(route==='/realms/api/leaderboard'&&req.method==='GET')return send(res,200,await withRealmGate(()=>({players:service.leaderboard()})))
    if(route==='/realms/api/chat'&&req.method==='GET')return send(res,200,await withRealmGate(()=>({messages:service.chatHistory(a.id,{channel:url.searchParams.get('channel')||'global',before:Number(url.searchParams.get('before')||0),after:Number(url.searchParams.get('after')||0)})})))
    if(route==='/realms/api/chat'&&req.method==='POST'){rate('chat:'+a.id,20);const input=await body(req);return send(res,200,await withRealmGate(()=>service.chat(a.id,input)))}
@@ -60,7 +60,7 @@ export function createRealmHttp(getService,{preview=false,verifyPlatformToken=ve
     streams.set(a.id,(streams.get(a.id)||0)+1)
     res.writeHead(200,{'Content-Type':'text/event-stream','Cache-Control':'no-store','Connection':'keep-alive','X-Accel-Buffering':'no'})
     let busy=false,closed=false
-    const tick=async()=>{if(busy||closed)return;busy=true;try{service.authenticate(session);await withRealmGate(()=>{if(closed)return;service.touch(a.id);if(res.writableLength>128000){res.end();return}res.write('event: world\ndata: '+JSON.stringify({state:service.snapshot(a.id),players:service.online(a.id),global:service.chatHistory(a.id),local:service.chatHistory(a.id,{channel:'local'})})+'\n\n')})}catch{res.end()}finally{busy=false}}
+    const tick=async()=>{if(busy||closed)return;busy=true;try{service.authenticate(session);await withRealmGate(()=>{if(closed)return;service.touch(a.id);if(res.writableLength>128000){res.end();return}res.write('event: world\ndata: '+JSON.stringify({state:service.advance(a.id),players:service.online(a.id),global:service.chatHistory(a.id),local:service.chatHistory(a.id,{channel:'local'})})+'\n\n')})}catch{res.end()}finally{busy=false}}
     const interval=setInterval(tick,1200);interval.unref();res.on('close',()=>{closed=true;clearInterval(interval);streams.set(a.id,Math.max(0,(streams.get(a.id)||1)-1))});tick();return
    }
    return send(res,404,{error:'Endpoint tidak ditemukan.'})
