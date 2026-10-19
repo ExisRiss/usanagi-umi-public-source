@@ -26,6 +26,7 @@ import { collectUserIdentityKeys, mergeUserIdentityRecords } from './lib/user-id
 import { getActivePrefix } from './core/awang-prefix.js'
 import { prefixStorageKey, isPluginDisabled } from './lib/bot-config.js'
 import { limitsEnabled } from './lib/limit-mode.js'
+import { canUseOwnerPlugin } from './lib/owner-policy.js'
 import {
   isGroupAdmin as resolveGroupAdmin,
   isBotAdmin as resolveBotGroupAdmin,
@@ -671,16 +672,31 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 					if (pluginBasename != 'owner-unbanchat.js' && pluginBasename != 'owner-exec.js' && pluginBasename != 'owner-exec2.js' && pluginBasename != 'tools-delete.js' && chat?.isBanned) return; // Except this
 					if (pluginBasename != 'owner-unbanuser.js' && user?.banned) return;
 				}
+				// Fitur yang menyentuh website/platform (boost saham, katalog
+				// plugin, data lintas akun) tetap milik owner platform. Pemilik
+				// sesi Jadibot tidak boleh memakainya walau punya akses penuh
+				// ke fitur bot miliknya.
+				if (plugin.platformOnly && botConfig?.type === 'jadibot' && !isROwner) {
+					fail('platform', m, this);
+					continue;
+				}
 				if (plugin.rowner && plugin.owner && !(isROwner || isOwner)) {
 					// Both Owner
 					fail('owner', m, this);
 					continue;
 				}
-                // A small set of explicitly marked commands may be managed by
-                // the owner of the current Jadibot session. Main-bot rowner
-                // policy remains unchanged for those same commands.
-                const jadibotOwnerAllowed = plugin.jadibotOwner === true && botConfig?.type === 'jadibot' && isOwner;
-				if (plugin.rowner && !isROwner && !jadibotOwnerAllowed) {
+                // Owner sesi Jadibot memakai seluruh fitur bot miliknya,
+                // termasuk perintah rowner seperti .sitagrup / .kudeta.
+                // Pengecualian hanya plugin di lib/owner-policy.js.
+                const jadibotOwnerAllowed =
+                    plugin.jadibotOwner === true && botConfig?.type === 'jadibot' && isOwner &&
+                    !plugin.platformOnly;
+                const jadibotOwnerFull = canUseOwnerPlugin(pluginBasename, {
+                    isROwner,
+                    isJadibot: botConfig?.type === 'jadibot',
+                    isOwner,
+                });
+				if (plugin.rowner && !isROwner && !jadibotOwnerAllowed && !jadibotOwnerFull) {
 					// Real Owner
 					fail('rowner', m, this);
 					continue;
@@ -1401,6 +1417,8 @@ global.dfail = (type, m, conn) => {
     rowner: (m, conn) => conn.reply(m.chat, `Ara~ command ini hanya untuk developer bot`, m),
 
     owner: (m, conn) => conn.reply(m.chat, `Nee~ command ini khusus owner`, m),
+
+    platform: (m, conn) => conn.reply(m.chat, `Ara~ fitur ini bagian dari website/platform, jadi hanya developer bot yang bisa memakai`, m),
 
     mods: (m, conn) => conn.reply(m.chat, `Hehe~ hanya moderator yang boleh pakai fitur ini`, m),
 

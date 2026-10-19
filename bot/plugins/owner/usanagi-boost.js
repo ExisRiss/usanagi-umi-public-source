@@ -174,6 +174,8 @@ handler.help = ['boost <saham> <menit>', 'boosttrd [menit]', 'booststop', 'boost
 handler.tags = ['owner', 'game']
 handler.command = /^(boost|boosttrd|booststop|boostoff|boostinfo)$/i
 handler.owner = true
+// Website/game: hanya owner platform (lihat lib/owner-policy.js).
+handler.platformOnly = true
 handler.limit = false
 
 export default handler

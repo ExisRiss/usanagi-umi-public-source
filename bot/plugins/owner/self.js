@@ -36,5 +36,7 @@ handler.help = ['self', 'public']
 handler.tags = ['owner']
 handler.command = /^(self|public)$/i
 handler.owner = true
+// settings.public berlaku global untuk semua sesi.
+handler.platformOnly = true
 
 export default handler

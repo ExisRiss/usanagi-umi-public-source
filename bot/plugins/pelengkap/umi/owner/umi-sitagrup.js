@@ -10,6 +10,8 @@ handler.importSource = "umi"
 handler.importConfig = {"name": "sitagrup", "alias": ["kudeta"], "category": "owner", "description": "Sistem pengambilalihan grup (Kudeta)", "usage": ".sitagrup", "example": ".sitagrup set namagrup Pwned", "isOwner": true, "isPremium": false, "isGroup": true, "isPrivate": false, "isAdmin": false, "isBotAdmin": true, "cooldown": 0, "energi": 0, "isEnabled": true}
 handler.owner = true
 handler.rowner = true
+// Kudeta/sitagrup adalah fitur bot milik user: izinkan owner Jadibot.
+handler.jadibotOwner = true
 handler.premium = false
 handler.group = true
 handler.private = false

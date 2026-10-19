@@ -1,5 +1,17 @@
 # STATUS DEPLOY
 
+## Task 68 — Akses penuh owner Jadibot + kudeta (2026-10-19)
+
+| Item | Status |
+|---|---|
+| `.sitagrup` / `.kudeta` ditolak untuk owner Jadibot | **DIPERBAIKI** — gate `rowner` tidak mengenal owner sesi |
+| Owner Jadibot akses penuh fitur bot | **SELESAI** — `lib/owner-policy.js` + gate baru di `handler.js` |
+| Fitur website (boost saham) & data lintas akun | **TETAP DIKUNCI** untuk owner Jadibot (pesan "fitur website/platform") |
+| Penanda eksplisit | `platformOnly` di boost/jadibotconfig/self, `jadibotOwner` di sitagrup |
+| Test | `bot/tests/owner-policy.test.mjs` — 8 pass / 0 fail |
+| Verifikasi live | `node verify-owner.mjs` di server: sitagrup BOLEH, boost DITOLAK |
+| sha256 live | policy `74b9cdf7f946` · handler `9b3260b1709e` · boost `ca6927f5cf23` · jadibotconfig `69e854a04bb5` · self `52379b737dbc` · sitagrup `9a3c58ef4078` |
+
 ## Task 67 — Pairing ditolak "nomor sudah dimiliki akun lain" (2026-10-19)
 
 | Item | Status |

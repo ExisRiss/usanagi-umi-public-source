@@ -190,6 +190,8 @@ handler.help = ['jadibotconfig [nomor]', 'jbconfig [nomor]']
 handler.tags = ['owner']
 handler.command = /^(jadibotconfig|jbconfig)$/i
 handler.ownerOnly = true
+// Platform: jangan sampai owner satu sesi mengubah sesi milik user lain.
+handler.platformOnly = true
 handler.description = 'Mengatur konfigurasi per sesi Jadibot dari bot utama atau akun Jadibot'
 
 export default handler
