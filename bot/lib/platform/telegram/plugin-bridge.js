@@ -196,12 +196,19 @@ export async function runPluginOnTelegram(ctx, parsed) {
   if (!found) return { handled: false }
 
   const { key, plugin } = found
-  // Plugin khusus owner tetap dijaga RBAC dari database, bukan dari teks.
-  if (plugin.owner && !['owner', 'developer'].includes(ctx.role)) {
-    await ctx.send('⛔ Fitur ini khusus owner.')
+  // Penjaga fitur memakai role database — bukan teks perintah.
+  const rank = { owner: 0, developer: 1, admin: 2, reseller: 3, user: 4 }
+  const roleRank = rank[ctx.role] ?? 9
+  const deny = async reason => {
+    await ctx.send(`⛔ ${reason}`)
     audit({ actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'telegram.plugin.denied', resource: name, result: 'denied', meta: { role: ctx.role } })
     return { handled: true, plugin: key, denied: true }
   }
+  if (plugin.owner && roleRank > 1) return deny('Fitur ini khusus owner/developer.')
+  if (plugin.admin && roleRank > 2) return deny('Fitur ini khusus admin ke atas.')
+  // Premium tidak punya padanan di platform (belum ada langganan tercatat),
+  // jadi ditolak jujur daripada memberi akses gratis diam-diam.
+  if (plugin.premium) return deny('Fitur premium belum tersedia untuk akun platform.')
 
   const message = { message_id: ctx.messageId || null, text: `/${name} ${(parsed.args || []).join(' ')}`.trim() }
   const m = makeMessage(ctx, message)
