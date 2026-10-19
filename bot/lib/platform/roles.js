@@ -67,6 +67,15 @@ export function roleRank(role) {
   return ROLES.indexOf(normalizeRole(role))
 }
 
+/**
+ * Apakah `a` lebih tinggi dari `b`?
+ * Catatan: ROLES disusun dari tertinggi ke terendah, jadi indeks KECIL = lebih
+ * tinggi. Helper ini ada supaya pemanggil tidak salah arah perbandingan.
+ */
+export function outranks(a, b) {
+  return roleRank(a) < roleRank(b)
+}
+
 /** Hanya owner yang boleh memberi/mencabut role owner. */
 export function canAssignRole(actorRole, targetRole) {
   const actor = normalizeRole(actorRole)

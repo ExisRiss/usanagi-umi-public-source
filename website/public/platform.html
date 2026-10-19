@@ -25,6 +25,8 @@
       <button type="button" class="nav-item is-active" data-view="dashboard"><span aria-hidden="true">▦</span> Ringkasan</button>
       <button type="button" class="nav-item" data-view="telegram"><span aria-hidden="true">✈</span> Telegram</button>
       <button type="button" class="nav-item" data-view="servers"><span aria-hidden="true">▤</span> Server</button>
+      <button type="button" class="nav-item" data-view="rpg"><span aria-hidden="true">🎮</span> RPG</button>
+      <button type="button" class="nav-item" data-view="saham"><span aria-hidden="true">💹</span> Saham</button>
       <button type="button" class="nav-item" data-view="users"><span aria-hidden="true">◉</span> Pengguna</button>
       <button type="button" class="nav-item" data-view="audit"><span aria-hidden="true">⌘</span> Audit</button>
       <button type="button" class="nav-item" data-view="media"><span aria-hidden="true">⇪</span> Media</button>
@@ -127,6 +129,27 @@
         </div>
       </section>
 
+      <section class="view" data-view="rpg" hidden>
+        <div class="grid two">
+          <div class="card">
+            <div class="card-head"><h2>Profil RPG</h2><span class="muted" id="rpgMeta"></span></div>
+            <div id="rpgProfile"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h2>Papan peringkat</h2></div>
+            <div id="rpgBoard" class="list compact"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="view" data-view="saham" hidden>
+        <div class="card">
+          <div class="card-head"><h2>Pasar UMI TRADE</h2><span class="muted" id="stockMeta"></span></div>
+          <p class="muted">Data diambil dari service website yang sama (bukan harga karangan).</p>
+          <div class="table-wrap" id="stockTable"></div>
+        </div>
+      </section>
+
       <section class="view" data-view="users" hidden>
         <div class="card">
           <div class="card-head"><h2>Pengguna &amp; peran</h2><span class="muted" id="userMeta"></span></div>
@@ -150,7 +173,7 @@
       <section class="view" data-view="media" hidden>
         <div class="card">
           <div class="card-head"><h2>Media → URL</h2><span class="muted" id="mediaMeta"></span></div>
-          <p class="muted">Media dibuat lewat bot Telegram (kirim foto/video/dokumen) atau perintah <span class="mono">/to-url</span> di WhatsApp. Panel ini menampilkan berkas yang benar-benar tersimpan dan membuat tautan bertanda tangan.</p>
+          <p class="muted">Media dibuat lewat bot Telegram (kirim foto/video/dokumen) atau perintah <span class="mono">/to-url</span> di WhatsApp. <b>Disimpan permanen</b> — tautan tidak kedaluwarsa, penghapusan hanya manual. Panel ini menampilkan berkas yang benar-benar tersimpan.</p>
           <div class="table-wrap" id="mediaTable"></div>
         </div>
       </section>

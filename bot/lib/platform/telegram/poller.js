@@ -17,6 +17,7 @@ import { resolveContext } from '../identity.js'
 import { redact } from '../secrets.js'
 import { CommandRouter } from './router.js'
 import { registerCommands, handleMediaMessage } from './commands.js'
+import { recordChat } from '../chats.js'
 
 const MAX_BACKOFF_MS = 60000
 const BASE_BACKOFF_MS = 1000
@@ -123,6 +124,11 @@ export class TelegramAdapter {
   /** Proses satu update. Tidak melempar: error dicatat dan dilaporkan. */
   async processUpdate(update) {
     const db = platformDb()
+    // Catat chat (terutama grup) supaya arsip bisa dikirim ke grup yang benar.
+    const chat = update.message?.chat || update.edited_message?.chat || update.callback_query?.message?.chat || null
+    if (chat?.id) {
+      try { recordChat(chat) } catch (error) { this.logger.warn?.('[TELEGRAM] gagal mencatat chat:', error.message) }
+    }
     const inserted = db.prepare('INSERT OR IGNORE INTO telegram_updates(bot_id, update_id, seen_at) VALUES(?,?,?)')
       .run(this.botRowId, Number(update.update_id), Date.now())
     if (!inserted.changes) return { duplicate: true }

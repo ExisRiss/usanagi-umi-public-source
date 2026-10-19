@@ -58,7 +58,7 @@ export function categoryOf(mime) {
   return 'document'
 }
 
-export function storeMedia(buffer, { userId, platform = 'telegram', name = null, ttlMs = DEFAULT_TTL_MS, isPublic = false, actor = {} } = {}) {
+export function storeMedia(buffer, { userId, platform = 'telegram', name = null, ttlMs = DEFAULT_TTL_MS, permanent = false, isPublic = false, actor = {} } = {}) {
   if (!Buffer.isBuffer(buffer) || !buffer.length) throw Object.assign(new Error('Berkas kosong.'), { status: 400 })
   const kind = sniff(buffer)
   if (!kind) throw Object.assign(new Error('Format berkas tidak dikenali. Hanya gambar, video, audio, PDF, dan ZIP.'), { status: 415 })
@@ -72,7 +72,7 @@ export function storeMedia(buffer, { userId, platform = 'telegram', name = null,
   fs.writeFileSync(file, buffer, { mode: 0o600 })
   const sha256 = crypto.createHash('sha256').update(buffer).digest('hex')
   const now = Date.now()
-  const expiresAt = ttlMs === 0 ? null : now + Math.max(60000, Number(ttlMs) || DEFAULT_TTL_MS)
+  const expiresAt = permanent || ttlMs === 0 ? null : now + Math.max(60000, Number(ttlMs) || DEFAULT_TTL_MS)
   platformDb().prepare(`INSERT INTO platform_media(id, user_id, platform, name, mime, bytes, sha256, path, is_public, created_at, expires_at)
     VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
     id, String(userId || 'anonymous'), platform,
@@ -94,11 +94,14 @@ export function storeMedia(buffer, { userId, platform = 'telegram', name = null,
  * @param {string} id
  * @param {{baseUrl?:string, userId?:string, ttlMs?:number}} options
  */
-export function mediaUrl(id, { baseUrl = '', userId = null, ttlMs = DEFAULT_TTL_MS } = {}) {
+export function mediaUrl(id, { baseUrl = '', userId = null, ttlMs = DEFAULT_TTL_MS, permanent = false } = {}) {
   const row = platformDb().prepare('SELECT * FROM platform_media WHERE id = ? AND deleted_at IS NULL').get(String(id))
   if (!row) throw Object.assign(new Error('Media tidak ditemukan.'), { status: 404 })
   const owner = String(userId || row.user_id)
-  const exp = Date.now() + Math.max(60000, Number(ttlMs) || DEFAULT_TTL_MS)
+  // `e=0` = tautan permanen: tanda tangan tetap wajib, tetapi tanpa batas waktu.
+  // Dipakai fitur to-URL supaya berkas tidak mati setelah 7 hari.
+  const isPermanent = permanent || ttlMs === 0 || row.expires_at === null
+  const exp = isPermanent ? 0 : Date.now() + Math.max(60000, Number(ttlMs) || DEFAULT_TTL_MS)
   const sig = signMedia(row.id, exp, owner)
   const base = String(baseUrl || process.env.PLATFORM_PUBLIC_BASE_URL || '').replace(/\/+$/, '')
   return `${base}/api/platform-system/media/${row.id}?e=${exp}&u=${encodeURIComponent(owner)}&s=${sig}`
@@ -111,7 +114,9 @@ export function resolveSigned(id, { expiresAt, userId, signature, now = Date.now
     throw Object.assign(new Error('Tautan media wajib memakai tanda tangan.'), { status: 403 })
   }
   const exp = Number(expiresAt)
-  if (!Number.isFinite(exp) || exp < now) throw Object.assign(new Error('Tautan media sudah kedaluwarsa.'), { status: 410 })
+  if (!Number.isFinite(exp) || exp < 0) throw Object.assign(new Error('Tautan media tidak valid.'), { status: 403 })
+  // exp = 0 berarti permanen; selain itu wajib belum lewat.
+  if (exp !== 0 && exp < now) throw Object.assign(new Error('Tautan media sudah kedaluwarsa.'), { status: 410 })
   if (row.expires_at && Number(row.expires_at) < now) throw Object.assign(new Error('Media sudah kedaluwarsa.'), { status: 410 })
   if (!verifyMedia(row.id, exp, String(userId || ''), signature)) {
     throw Object.assign(new Error('Tanda tangan tautan media tidak valid.'), { status: 403 })
@@ -134,6 +139,7 @@ export function listMedia({ userId = null, limit = 50 } = {}) {
     bytes: row.bytes,
     createdAt: new Date(row.created_at).toISOString(),
     expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,
+    permanent: row.expires_at === null || row.expires_at === undefined,
   }))
 }
 

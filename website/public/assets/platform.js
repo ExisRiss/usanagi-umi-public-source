@@ -149,6 +149,8 @@
     users: 'platform.users.read',
     audit: 'platform.audit.read',
     media: 'media.upload',
+    rpg: 'rpg.read',
+    saham: 'stock.read',
     reseller: 'reseller.read',
     link: 'session.own',
     dashboard: 'session.own',
@@ -168,6 +170,8 @@
     dashboard: ['Ringkasan', 'Satu backend, satu sumber data, dua antarmuka.'],
     telegram: ['Telegram', 'Konfigurasi bot, validasi token, dan status koneksi.'],
     servers: ['Server', 'Maksimum 10 slot. Slot kosong tidak dipantau.'],
+    rpg: ['RPG', 'Profil dan papan peringkat dari mesin RPG yang sama dengan WhatsApp.'],
+    saham: ['Saham', 'Pasar dari service website yang sama — tanpa harga karangan.'],
     users: ['Pengguna', 'Peran disimpan di database dan diverifikasi backend.'],
     audit: ['Audit', 'Semua aksi sensitif tercatat tanpa rahasia.'],
     media: ['Media → URL', 'Tautan bertanda tangan dari media yang benar-benar tersimpan.'],
@@ -190,6 +194,8 @@
       if (view === 'dashboard') await loadDashboard()
       if (view === 'telegram') await loadBots()
       if (view === 'servers') await loadServers()
+      if (view === 'rpg') await loadRpg()
+      if (view === 'saham') await loadSaham()
       if (view === 'users') await loadUsers()
       if (view === 'audit') await loadAudit()
       if (view === 'media') await loadMedia()
@@ -393,6 +399,60 @@
     }
   }
 
+  /* ------------------------------------------------------------ rpg */
+  async function loadRpg() {
+    const data = await api('rpg/summary')
+    const rpg = data.rpg || {}
+    $('#rpgMeta').textContent = rpg.active ? 'mesin aktif' : 'mesin tidak aktif'
+    if (!data.linked || !data.profile?.hasProfile) {
+      $('#rpgProfile').innerHTML = `<div class="empty">
+        <p><strong>${data.linked ? 'Belum ada progres RPG untuk nomor ini.' : 'Akun WhatsApp belum tertaut.'}</strong></p>
+        <p class="muted">${data.linked
+          ? 'Main lewat bot WhatsApp dulu, lalu muat ulang halaman ini.'
+          : 'Buka menu Tautkan Telegram, ikuti kodenya, lalu main RPG lewat WhatsApp.'}</p>
+      </div>`
+    } else {
+      const p = data.profile
+      $('#rpgProfile').innerHTML = `
+        <div class="kv">
+          <dt>Nomor</dt><dd><span class="mono">${esc(p.jid || data.jid || '')}</span></dd>
+          <dt>Level</dt><dd>${fmt(p.level)}</dd>
+          <dt>EXP</dt><dd>${fmt(p.exp)}</dd>
+          <dt>Koin</dt><dd>${fmt(p.koin)}</dd>
+          <dt>Inventori</dt><dd>${fmt(p.inventoryCount)} jenis · ${fmt(p.totalItems)} item</dd>
+        </div>`
+    }
+    const board = data.leaderboard || []
+    $('#rpgBoard').innerHTML = board.length
+      ? board.map((row, index) => `<div class="row"><div><strong>#${index + 1} ${esc(row.name || row.username || '—')}</strong><br><small>level ${fmt(row.level)}</small></div><span class="badge info">${fmt(row.koin)} koin</span></div>`).join('')
+      : '<div class="empty">Papan peringkat belum tersedia.</div>'
+  }
+
+  /* ------------------------------------------------------------ saham */
+  async function loadSaham() {
+    const data = await api('stock/status')
+    if (data.ok === false) {
+      $('#stockMeta').textContent = 'tidak siap'
+      $('#stockTable').innerHTML = `<div class="error-box">${esc(data.error || 'Service saham belum siap.')}${data.ready === false ? ' — token game belum ada di server.' : ''}</div>`
+      return
+    }
+    const stocks = data.stocks || []
+    $('#stockMeta').textContent = `${DataCount(stocks.length)} emiten · ${data.session ? (data.session.open ? 'sesi buka' : 'sesi tutup') : 'sesi tidak diketahui'}`
+    $('#stockTable').innerHTML = stocks.length ? `
+      <table>
+        <thead><tr><th>Kode</th><th>Harga</th><th>Perubahan</th><th>%</th></tr></thead>
+        <tbody>${stocks.slice(0, 60).map(item => `
+          <tr>
+            <td><strong>${esc(item.symbol)}</strong>${item.name ? `<br><small>${esc(item.name)}</small>` : ''}</td>
+            <td class="mono">${fmt(item.price)}</td>
+            <td class="mono ${Number(item.change) >= 0 ? '' : 'neg'}">${Number(item.change) >= 0 ? '+' : ''}${fmt(item.change)}</td>
+            <td><span class="badge ${Number(item.changePercent) >= 0 ? 'ok' : 'bad'}">${Number(item.changePercent).toFixed(2)}%</span></td>
+          </tr>`).join('')}</tbody>
+      </table>` : '<div class="empty">API tidak mengembalikan emiten.</div>'
+  }
+
+  function DataCount(n) { return Number(n || 0).toLocaleString('id-ID') }
+
   /* ------------------------------------------------------------ users */
   async function loadUsers() {
     const data = await api('users?limit=50')
@@ -465,7 +525,7 @@
             <td><span class="badge">${esc(item.mime)}</span></td>
             <td>${bytes(item.bytes)}</td>
             <td><small>${when(item.createdAt)}</small></td>
-            <td><small>${item.expiresAt ? when(item.expiresAt) : 'permanen'}</small></td>
+            <td>${item.permanent || !item.expiresAt ? '<span class="badge ok">permanen</span>' : `<small>${when(item.expiresAt)}</small>`}</td>
             <td class="actions">
               <button class="btn btn-sm" data-link="${esc(item.id)}">Buat tautan</button>
               <button class="btn btn-sm btn-danger" data-media="${esc(item.id)}">Hapus</button>
@@ -480,7 +540,7 @@
     const box = $('#linkOut')
     box.innerHTML = `<div class="code-box" style="margin-top:12px;font-size:12px;letter-spacing:0">
       <a href="${esc(data.url)}" target="_blank" rel="noopener noreferrer">${esc(data.url)}</a></div>
-      <p class="hint">Berlaku sampai ${when(data.expiresAt)}. Tautan bertanda tangan — hanya bekerja untuk akun ini.</p>`
+      <p class="hint">${data.permanent ? 'Tautan <b>permanen</b> — tidak kedaluwarsa.' : `Berlaku sampai ${when(data.expiresAt)}.`} Tautan bertanda tangan dan terikat ke akun ini.</p>`
     try {
       await navigator.clipboard.writeText(data.url)
       toast('Tautan disalin ke clipboard.')

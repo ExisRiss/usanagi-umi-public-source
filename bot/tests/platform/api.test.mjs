@@ -218,11 +218,19 @@ test('media: upload butuh izin, URL bertanda tangan bisa diakses tanpa secret', 
   assert.equal(del.statusCode, 403, 'pengguna lain tidak boleh menghapus media')
 
   // Panel membuat ulang tautan bertanda tangan lewat route khusus.
+  // Default sekarang PERMANEN (e=0); perilaku lama bisa diminta dengan ?permanent=0.
   const link = await call(`/api/platform-system/media/${uploaded.json.media.id}/link`, { method: 'POST', user: user.userId })
   assert.equal(link.statusCode, 200, link.body.toString())
   assert.match(link.json.url, new RegExp(`/api/platform-system/media/${uploaded.json.media.id}\\?e=\\d+&u=`))
   assert.equal(new URL(link.json.url).searchParams.get('u'), user.userId)
-  assert.ok(link.json.expiresAt, 'tautan membawa masa berlaku')
+  assert.equal(new URL(link.json.url).searchParams.get('e'), '0', 'tautan default permanen')
+  assert.equal(link.json.permanent, true)
+  assert.equal(link.json.expiresAt, null)
+
+  const temporary = await call(`/api/platform-system/media/${uploaded.json.media.id}/link?permanent=0`, { method: 'POST', user: user.userId })
+  assert.equal(temporary.statusCode, 200)
+  assert.ok(temporary.json.expiresAt, 'mode sementara tetap membawa masa berlaku')
+  assert.notEqual(new URL(temporary.json.url).searchParams.get('e'), '0')
 
   const stranger = await call(`/api/platform-system/media/${uploaded.json.media.id}/link`, { method: 'POST', user: other.userId })
   assert.equal(stranger.statusCode, 403, 'pengguna lain tidak boleh membuat tautan media orang')

@@ -10,7 +10,7 @@
  */
 import { getDb } from '../../core/awang-sqlite.js'
 
-export const SCHEMA_VERSION = 2
+export const SCHEMA_VERSION = 3
 
 const MIGRATIONS = [
   {
@@ -161,6 +161,22 @@ const MIGRATIONS = [
         updated_at INTEGER NOT NULL,
         result TEXT
       )`,
+    ],
+  },
+  {
+    version: 3,
+    statements: [
+      // Chat Telegram yang pernah dilihat bot (grup/channel/pribadi). Dipakai
+      // untuk mengirim berkas ke grup arsip tanpa menebak chat id.
+      `CREATE TABLE IF NOT EXISTS platform_chats (
+        chat_id TEXT PRIMARY KEY,
+        type TEXT NOT NULL,
+        title TEXT,
+        username TEXT,
+        first_seen_at INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS platform_chats_type ON platform_chats(type, last_seen_at DESC)`,
     ],
   },
 ]

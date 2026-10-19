@@ -15,7 +15,7 @@ import path from 'node:path'
 import { platformDb } from './db.js'
 import { audit } from './audit.js'
 import { hashToken, linkCode } from './secrets.js'
-import { normalizeRole } from './roles.js'
+import { normalizeRole, outranks } from './roles.js'
 
 const LINK_TTL_MS = 10 * 60 * 1000
 const MAX_ATTEMPTS = 5
@@ -94,8 +94,21 @@ export function resolveContext({ platform, platformUserId, username = null, disp
   if (identity) {
     db.prepare('UPDATE platform_identities SET last_seen_at = ?, username = COALESCE(?, username) WHERE platform = ? AND platform_user_id = ?')
       .run(Date.now(), username, String(platform), String(platformUserId))
-    const user = getUser(identity.user_id)
+    let user = getUser(identity.user_id)
     if (user?.status === 'banned') throw Object.assign(new Error('Akun ini diblokir.'), { status: 403 })
+    // Owner/developer/admin dari environment selalu menang atas role tersimpan
+    // yang lebih rendah, supaya menambah ID ke TELEGRAM_OWNER_IDS cukup lewat
+    // konfigurasi dan langsung berlaku tanpa migrasi data manual.
+    const envRole = bootstrapRole(platform, platformUserId, env)
+    if (envRole && outranks(envRole, user?.role)) {
+      db.prepare('UPDATE platform_users SET role = ?, updated_at = ? WHERE id = ?').run(envRole, Date.now(), identity.user_id)
+      audit({
+        actorUserId: identity.user_id, platform, platformUserId,
+        action: 'rbac.role.bootstrap', resource: identity.user_id,
+        meta: { from: user?.role || null, to: envRole },
+      })
+      user = getUser(identity.user_id)
+    }
     return { identity, user, role: normalizeRole(user?.role), userId: identity.user_id }
   }
   const role = normalizeRole(bootstrapRole(platform, platformUserId, env) || 'user')

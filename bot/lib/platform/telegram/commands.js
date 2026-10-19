@@ -10,6 +10,7 @@ import * as stock from '../stock.js'
 import * as rpg from '../rpg.js'
 import * as media from '../media.js'
 import * as wa from '../wa.js'
+import * as chats from '../chats.js'
 import { consumeLinkCode, whatsappJidFor, getUser } from '../identity.js'
 
 const rupiah = value => Number(value || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })
@@ -129,7 +130,9 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
         '/profile — identitas & tautan akun',
         '/status — status nyata layanan',
         '/link KODE — tautkan akun web ke Telegram',
-        '/tourl — kirim foto/video, dapat tautan',
+        '/tourl — kirim foto/video, dapat tautan permanen',
+        '/files — daftar & hapus berkas media saya',
+        '/health — kesehatan integrasi',
         '',
         '<b>Layanan</b>',
         '/jadibot — sesi WhatsApp milikmu',
@@ -455,9 +458,61 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
         'Kirim foto, video (≤20 MB lewat Telegram), atau dokumen PDF/ZIP.',
         'Bot menyimpan di penyimpanan internal dan membalas tautan bertanda tangan.',
         '',
+        `<b>Disimpan permanen</b> — tautan tidak kedaluwarsa dan berkas tidak dihapus otomatis.`,
         `Batas internal: gambar ${media.MAX_BYTES.image / 1048576} MB · video ${media.MAX_BYTES.video / 1048576} MB · dokumen ${media.MAX_BYTES.document / 1048576} MB.`,
-        'Tautan kedaluwarsa 7 hari; berkas tidak dieksekusi dan nama objek acak.',
+        'Hapus kapan saja lewat tombol di balasan upload atau /files.',
+        'Nama objek acak dan berkas tidak pernah dieksekusi.',
       ].join('\n'))
+    },
+  })
+
+  /* ─────────────── FILES (media permanen) ─────────────── */
+  define('files', {
+    description: 'Daftar berkas media permanen milikmu',
+    permission: 'media.upload',
+    handler: async (ctx) => {
+      const mine = media.listMedia({ userId: ctx.userId, limit: 10 })
+      if (!mine.length) {
+        return ctx.send([
+          '🗂 <b>BERKAS SAYA</b>', '',
+          '<i>Belum ada berkas.</i>',
+          'Kirim foto/video/dokumen langsung ke bot, atau /tourl untuk panduan.',
+        ].join('\n'))
+      }
+      const base = publicBase(ctx)
+      const lines = ['🗂 <b>BERKAS SAYA</b>', `Total tampil: ${mine.length} · simpan permanen`, '']
+      const rows = []
+      for (const item of mine) {
+        const url = media.mediaUrl(item.id, { baseUrl: base, userId: ctx.userId, permanent: true })
+        lines.push(`• <a href="${escapeHtml(url)}">${escapeHtml(item.name || item.id)}</a> · ${bytes(item.bytes)}`)
+        lines.push(`  <code>${item.id}</code> · ${item.mime} · ${item.permanent ? 'permanen' : `sampai ${new Date(item.expiresAt).toLocaleDateString('id-ID')}`}`)
+        const token = createCallback({
+          userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId,
+          action: 'media.delete', payload: { id: item.id },
+        })
+        rows.push([{ text: `🗑 Hapus ${String(item.name || item.id).slice(0, 24)}`, callback_data: `cb:${token}` }])
+      }
+      lines.push('', `${base}/api/platform-system/media/<id> — wajib memakai tautan bertanda tangan utuh.`)
+      return ctx.send(lines.join('\n'), { disable_web_page_preview: true, reply_markup: inline(rows) })
+    },
+  })
+
+  /* ─────────────── HEALTH ─────────────── */
+  define('health', {
+    description: 'Kesehatan integrasi (RPG, saham, Telegram, panel)',
+    handler: async (ctx) => {
+      const rows = globalThis.__umiPlatformAudit?.getHealth?.() || []
+      const main = wa.mainBotState()
+      const lines = ['🩺 <b>KESEHATAN INTEGRASI</b>', '']
+      lines.push(`${main.connected ? '🟢' : '🟡'} <b>whatsapp</b> · ${main.connection} · ${duration(main.uptimeSeconds * 1000)}`)
+      if (!rows.length) lines.push('<i>Belum ada pemeriksaan integrasi tercatat.</i>')
+      for (const row of rows) {
+        const icon = row.status === 'ok' ? '🟢' : row.status === 'error' ? '🔴' : '🟡'
+        lines.push(`${icon} <b>${escapeHtml(row.name)}</b> · ${escapeHtml(row.detail || row.status)}`)
+        lines.push(`└ ${new Date(row.checkedAt).toLocaleString('id-ID')}`)
+      }
+      lines.push('', '<i>Status di atas dibaca dari tabel integration_health di backend yang sama.</i>')
+      return ctx.send(lines.join('\n'))
     },
   })
 
@@ -499,6 +554,19 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
         return ctx.send(lines.join('\n'))
       }
 
+      if (sub === 'chats') {
+        if (!can(ctx.role, 'platform.audit.read')) return ctx.send('⛔ Butuh izin platform.audit.read.')
+        const rows = chats.listChats({ limit: 20 })
+        const lines = ['💬 <b>CHAT TERLIHAT</b>', '']
+        if (!rows.length) lines.push('<i>Belum ada chat tercatat. Tambahkan bot ke grup, lalu kirim /start di sana.</i>')
+        for (const chat of rows) {
+          lines.push(`${chat.isGroup ? '👥' : '👤'} <b>${escapeHtml(chat.title || chat.username || chat.chatId)}</b>`)
+          lines.push(`  <code>${chat.chatId}</code> · ${chat.type} · terakhir ${new Date(chat.lastSeenAt).toLocaleString('id-ID')}`)
+        }
+        lines.push('', 'Gunakan /admin chats untuk memastikan bot sudah mengenali grup arsip.')
+        return ctx.send(lines.join('\n'))
+      }
+
       if (sub === 'health') {
         const rows = globalThis.__umiPlatformAudit.getHealth()
         const lines = ['🩺 <b>HEALTH INTEGRASI</b>', '']
@@ -512,6 +580,7 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
         '/admin bot — konfigurasi bot Telegram',
         '/admin users — daftar pengguna & role',
         '/admin audit — audit log terbaru',
+        '/admin chats — grup/chat yang dikenal bot',
         '/admin health — status integrasi',
         '', 'Aksi tulis (ganti token, ubah role, slot server) dilakukan di panel web: /panel',
       ]
@@ -600,6 +669,19 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
     }
   })
 
+  router.registerCallback('media.delete', async (ctx, payload) => {
+    if (!payload?.id) return ctx.send('❌ ID berkas tidak ada di tombol ini.')
+    const result = media.deleteMedia(payload.id, {
+      userId: ctx.userId, role: ctx.role,
+      actor: { platform: 'telegram', platformUserId: ctx.platformUserId },
+    })
+    audit({
+      actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId,
+      action: 'media.delete', resource: `media:${result.deleted}`, meta: { via: 'telegram-button' },
+    })
+    return ctx.send(`🗑 Berkas <code>${escapeHtml(result.deleted)}</code> dihapus permanen. Tautan lama tidak berlaku lagi.`)
+  })
+
   return router
 }
 
@@ -612,21 +694,31 @@ export async function handleMediaMessage(ctx, message, { baseUrl = '' } = {}) {
   const name = message[kind].file_name || (kind === 'photo' ? 'foto.jpg' : null)
   await ctx.sendChatAction('upload_document')
   const { buffer } = await ctx.downloadFile(fileId)
+  // To-URL menyimpan PERMANEN: berkas tidak dihapus prune harian dan tautannya
+  // memakai tanda tangan tanpa masa berlaku (e=0). Penghapusan hanya manual.
   const stored = media.storeMedia(buffer, {
-    userId: ctx.userId, platform: 'telegram', name,
+    userId: ctx.userId, platform: 'telegram', name, permanent: true,
     actor: { platformUserId: ctx.platformUserId },
   })
-  const url = media.mediaUrl(stored.id, { baseUrl: baseUrl || publicBase(ctx), userId: ctx.userId })
+  const url = media.mediaUrl(stored.id, { baseUrl: baseUrl || publicBase(ctx), userId: ctx.userId, permanent: true })
+  const removeToken = createCallback({
+    userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId,
+    action: 'media.delete', payload: { id: stored.id },
+  })
   return ctx.send([
-    '✅ <b>Upload berhasil</b>', '',
+    '✅ <b>Upload berhasil · disimpan permanen</b>', '',
     `Tipe : <code>${stored.mime}</code>`,
     `Ukuran: ${bytes(stored.bytes)}`,
+    `ID   : <code>${stored.id}</code>`,
     `SHA256: <code>${stored.sha256.slice(0, 24)}…</code>`,
-    stored.expiresAt ? `Kedaluwarsa: ${new Date(stored.expiresAt).toLocaleString('id-ID')}` : null,
+    'Masa simpan: <b>permanen</b> (tidak kedaluwarsa)',
     '',
     `<a href="${escapeHtml(url)}">Buka media</a>`,
     `<code>${escapeHtml(url)}</code>`,
-  ].filter(Boolean).join('\n'), { disable_web_page_preview: true })
+  ].join('\n'), {
+    disable_web_page_preview: true,
+    reply_markup: inline([[{ text: '🗑 Hapus berkas', callback_data: `cb:${removeToken}` }]]),
+  })
 }
 
 function publicBase(ctx) {

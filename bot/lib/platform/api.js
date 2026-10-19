@@ -17,6 +17,7 @@ import { audit, listAudit, getHealth } from './audit.js'
 import * as bots from './telegram/bots.js'
 import * as servers from './servers.js'
 import * as media from './media.js'
+import * as chats from './chats.js'
 import * as stock from './stock.js'
 import * as rpg from './rpg.js'
 import { mainBotState, listSessions } from './wa.js'
@@ -283,6 +284,12 @@ export async function handlePlatformApi(req, res, pathname, search, env = proces
       return send(res, 200, await servers.serverOverview({ actor }))
     }
 
+    if (route === '/chats' && method === 'GET') {
+      // Chat yang pernah melihat bot (untuk mengarahkan arsip ke grup tertentu).
+      requirePerm(actor.userId, 'platform.audit.read')
+      return send(res, 200, { items: chats.listChats({ limit: Number(search.get('limit') || 50) }) })
+    }
+
     if (route === '/users' && method === 'GET') {
       requirePerm(actor.userId, 'platform.users.read')
       return send(res, 200, listUsers({
@@ -365,17 +372,20 @@ export async function handlePlatformApi(req, res, pathname, search, env = proces
       if (String(row.user_id) !== String(actor.userId) && !['owner', 'developer', 'admin'].includes(role)) {
         return send(res, 403, { error: 'Anda tidak berhak membagikan media ini.' })
       }
-      const ttlMs = media.DEFAULT_TTL_MS
-      const url = media.mediaUrl(mediaLink[1], { baseUrl: PUBLIC_BASE(), userId: actor.userId, ttlMs })
+      // Default permanen (e=0). Panel bisa minta tautan sementara dengan
+      // ?permanent=0 supaya perilaku lama tetap tersedia.
+      const permanent = search.get('permanent') !== '0'
+      const ttlMs = permanent ? 0 : media.DEFAULT_TTL_MS
+      const url = media.mediaUrl(mediaLink[1], { baseUrl: PUBLIC_BASE(), userId: actor.userId, ttlMs, permanent })
       audit({
         actorUserId: actor.userId,
         platform: 'web',
         platformUserId: actor.platformUserId,
         action: 'media.link.create',
         resource: `media:${mediaLink[1]}`,
-        meta: { owner: row.user_id, ttlMs },
+        meta: { owner: row.user_id, permanent },
       })
-      return send(res, 200, { ok: true, url, expiresAt: new Date(Date.now() + ttlMs).toISOString() })
+      return send(res, 200, { ok: true, url, permanent, expiresAt: permanent ? null : new Date(Date.now() + ttlMs).toISOString() })
     }
 
     const mediaDelete = route.match(/^\/media\/([a-f0-9]{24})$/)
