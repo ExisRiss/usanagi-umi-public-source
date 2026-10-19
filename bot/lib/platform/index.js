@@ -4,6 +4,8 @@
  * Dipanggil dari `main.js` setelah HTTP API bot hidup. Tidak menyentuh socket
  * WhatsApp: adapter Telegram hanya membaca status yang sudah ada.
  */
+// Muat `.platform.env` lebih dulu (rahasia tidak dititipkan ke file tracked).
+import './env.js'
 import { migrate, platformDb } from './db.js'
 import { audit, getHealth } from './audit.js'
 import * as identity from './identity.js'
