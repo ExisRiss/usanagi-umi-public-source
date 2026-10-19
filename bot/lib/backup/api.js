@@ -18,6 +18,7 @@ import {
 } from './store.js'
 import { runBackup, verifyBackup, newBackupId, isBackupRunning } from './pipeline.js'
 import { listArchive, sha256File } from './archive.js'
+import { decryptFile, readHeader } from './crypto.js'
 import { collectServer, collectStatus, telegramChats } from './status.js'
 import { configureScheduler, schedulerSnapshot } from './scheduler.js'
 import { createRestore, confirmRestore, cancelRestore, getRestore, listRestores } from './restore.js'
@@ -81,8 +82,8 @@ function intParam(search, name, fallback, min, max) {
 
 async function handleUpload(req, res, cfg) {
   const p = ensureLayout(cfg)
-  const id = newBackupId()
-  const target = path.join(p.archives, `backup_${id}_upload.tar.gz`)
+  let id = newBackupId()
+  let target = path.join(p.archives, `backup_${id}_upload.tar.gz`)
   const length = Number(req.headers['content-length'] || 0)
   if (length > MAX_UPLOAD_BYTES) return send(res, 413, { error: 'Arsip lebih dari 200 MB.' })
   const stream = fs.createWriteStream(target, { mode: 0o600 })
@@ -101,16 +102,49 @@ async function handleUpload(req, res, cfg) {
       stream.on('finish', resolve)
       stream.on('error', reject)
     })
-    const entries = await listArchive(target)
+    // Arsip boleh terenkripsi (format .enc buatan sistem ini sendiri).
+    let encrypted = false
+    let plain = target
+    try {
+      readHeader(target)
+      encrypted = true
+    } catch {}
+    if (encrypted) {
+      if (!cfg.encryption.key) {
+        fs.rmSync(target, { force: true })
+        throw Object.assign(new Error('Arsip terenkripsi diunggah tetapi BACKUP_ENCRYPTION_KEY belum diatur di server.'), { status: 409 })
+      }
+      // Simpan berkas terenkripsi apa adanya; buka salinan sementara hanya untuk validasi.
+      fs.renameSync(target, `${target}.enc`)
+      target = `${target}.enc`
+      plain = path.join(p.tmp, `${id}-upload-plain.tar.gz`)
+      await decryptFile(target, plain, cfg.encryption.key)
+    }
+    const entries = await listArchive(plain)
     if (!entries.some(entry => entry.name === 'manifest.json')) {
       throw Object.assign(new Error('Arsip tidak berisi manifest.json backup ini.'), { status: 400 })
     }
     const verifyDir = path.join(p.tmp, `${id}-upload-verify`)
     fs.mkdirSync(verifyDir, { recursive: true })
     const { extractArchive } = await import('./archive.js')
-    await extractArchive({ file: target, cwd: verifyDir, filter: name => name === 'manifest.json' })
+    await extractArchive({ file: plain, cwd: verifyDir, filter: name => name === 'manifest.json' })
     const manifest = JSON.parse(fs.readFileSync(path.join(verifyDir, 'manifest.json'), 'utf8'))
     fs.rmSync(verifyDir, { recursive: true, force: true })
+    if (encrypted) fs.rmSync(plain, { force: true })
+
+    // Pakai identitas asli arsip supaya manifest.id cocok saat restore.
+    // Tanpa ini, arsip hasil unggah tidak akan pernah bisa dipulihkan.
+    // Bila id itu sudah terdaftar (unggah ulang), JANGAN menimpa catatan
+    // lama: buat catatan baru dan tautkan lewat manifestId.
+    const manifestId = /^bk_[0-9]{8,20}_[0-9a-f]{4,16}$/.test(String(manifest.id || '')) ? String(manifest.id) : null
+    const { getBackup } = await import('./store.js')
+    if (manifestId && manifestId !== id && !getBackup(cfg, manifestId)) {
+      const suffix = path.extname(target) === '.enc' ? '.enc' : ''
+      const renamed = path.join(p.archives, `backup_${manifestId}_upload.tar.gz${suffix}`)
+      fs.renameSync(target, renamed)
+      target = renamed
+      id = manifestId
+    }
     const checksum = await sha256File(target)
     const record = {
       id,
@@ -123,9 +157,9 @@ async function handleUpload(req, res, cfg) {
       actor: actorOf(req),
       storageBackend: 'local',
       storagePath: path.relative(cfg.root, target),
-      sizeBytes: written,
+      sizeBytes: fs.statSync(target).size,
       checksum,
-      encrypted: false,
+      encrypted,
       verifyStatus: 'verified',
       verifiedAt: new Date().toISOString(),
       startedAt: manifest.createdAt || new Date().toISOString(),

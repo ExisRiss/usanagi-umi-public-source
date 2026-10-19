@@ -17,14 +17,14 @@ Dibangun di atas arsitektur yang sudah ada, bukan project baru:
 | Dashboard | `website/backup.html` + `assets/backup.js|css` |
 | Bot Telegram | `bot/lib/backup/telegram.js` (long polling, siap diaktifkan) |
 | Dokumentasi | `docs/BACKUP-SYSTEM.md`, `BACKUP-RESTORE.md`, `BACKUP-API.md`, `BACKUP-TELEGRAM.md` |
-| Tes | `bot/tests/backup/*` — **47 tes lulus** |
+| Tes | `bot/tests/backup/*` — **51 tes lulus** |
 
 ## 2. File
 
 **Baru**
 - `bot/lib/backup/{config,log,store,archive,crypto,sources,retention,external,pipeline,restore,scheduler,status,telegram,service,api}.js`
 - `bot/scripts/backup-worker.js`, `bot/.backup-system.example.env`
-- `bot/tests/backup/{helpers,archive,crypto,retention,scheduler,pipeline,restore,api}.test.mjs`
+- `bot/tests/backup/{helpers,archive,crypto,retention,scheduler,pipeline,restore,api,upload}.test.mjs`
 - `website/api/backup.js`, `website/public/backup.html`, `website/public/assets/backup.{js,css}`
 - `docs/BACKUP-*.md`, laporan ini, `live-patch/2026-10-19-backup-system/`
 
@@ -41,7 +41,7 @@ Dibangun di atas arsitektur yang sudah ada, bukan project baru:
 ### Automated (PASS)
 ```
 cd bot && node --test tests/backup/
-# tests 47 · pass 47 · fail 0
+# tests 51 · pass 51 · fail 0
 ```
 Mencakup: arsip & path traversal, enkripsi (roundtrip + tamper), retensi (144/harian/mingguan/bulanan), slot 10 menit & 144/hari, lock anti-paralel, backup kosong/kapasitas penuh, restore penuh (data SQLite benar-benar kembali), dry-run, checksum salah ditolak, otorisasi API.
 
@@ -50,6 +50,9 @@ Mencakup: arsip & path traversal, enkripsi (roundtrip + tamper), retensi (144/ha
 |---|---|
 | Scheduler start | `next 11:40:05Z`, interval 10 menit |
 | Backup terjadwal | `bk_20261019114019449_3c6e5888` · 3,95 MB · verified |
+| Backup terjadwal lanjutan (12:00Z) | `bk_20261019120011614_ff3e4e0f` · 4,08 MB · verified · eksternal verified |
+| Unggah arsip terenkripsi | `201`, id & manifest cocok, tersimpan `.enc`, dry-run restore 23/23 checksum |
+| Unggah ulang (id sudah ada) | record baru + `manifestId`, catatan lama utuh, dry-run 23/23 |
 | Catch-up setelah restart | `bk_20261019113819441_35a53aa7` · verified |
 | Backup manual API | `202` + polling status → completed |
 | Verifikasi ulang arsip | `ok:true`, checksum cocok, 5 entri |
@@ -100,3 +103,7 @@ tidak bisa dibuka. Simpan salinan offline.
 - Restore database butuh restart bot (aman: tidak menimpa file SQLite yang sedang terbuka).
 - `creds.json` sesi WhatsApp sengaja tidak dibackup; setelah restore sesi dipindai ulang.
 - `.backup-system.env` sebaiknya `chmod 600` di server.
+- Saat uji unggah, satu arsip uji memakai id backup terjadwal 11:50 sehingga record
+  `bk_20261019115011858_d2e776b3` kini bertanda `reason: upload`. Isi arsipnya identik
+  (checksum `f9d2cb21…` cocok, 25 entri); duplikat di disk sudah dihapus setelah verifikasi.
+  Unggahan berikutnya tidak menimpa record lama (lihat `manifestId`).

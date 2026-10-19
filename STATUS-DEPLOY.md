@@ -9,11 +9,11 @@
 | Enkripsi AES-256-GCM | **LIVE** — `BACKUP_ENCRYPTION_KEY` di `.secrets/task69-backup.env` |
 | Retensi 144 / 7 / 4 / 3 | **LIVE** — plus hapus salinan eksternal saat kedaluwarsa |
 | Salinan eksternal (Vercel Blob privat) | **LIVE** — mode hourly, unggah + HEAD verify (sha256 unduhan identik) |
-| REST API `/api/backup-system/*` | **LIVE** — 22 endpoint, `x-backup-secret` |
+| REST API `/api/backup-system/*` | **LIVE** — 22 endpoint, `x-backup-secret`, unggah arsip `.enc` terverifikasi |
 | Dashboard `/backup` | **LIVE** — Vercel `dpl_8mdPWqRVMV7aeW3M1xs2WGLUWQp5`, login owner via Supabase |
 | Restore + konfirmasi 2 langkah | **LIVE** — dry-run produksi 3/3 checksum cocok |
 | Bot Telegram | **BLOCKED** — `TELEGRAM_BOT_TOKEN` belum diisi |
-| Tes otomatis | **47 lulus / 0 gagal** |
+| Tes otomatis | **51 lulus / 0 gagal** (termasuk unggah arsip polos & terenkripsi) |
 | Commit | `699d728` (lihat git log) |
 
 Kredensial: `.secrets/task69-backup.env` (chmod 600, tidak di-commit).

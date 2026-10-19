@@ -97,7 +97,10 @@ async function stageArchive(cfg, record) {
   const manifestPath = path.join(stage, 'manifest.json')
   if (!fs.existsSync(manifestPath)) throw Object.assign(new Error('Arsip tidak punya manifest.json.'), { status: 409 })
   const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-  if (manifest.id !== record.id) throw Object.assign(new Error('Manifest arsip bukan milik backup ini.'), { status: 409 })
+  // manifestId dipakai untuk arsip hasil unggah ulang yang mendapat id baru.
+  if (manifest.id !== record.id && manifest.id !== record.manifestId) {
+    throw Object.assign(new Error('Manifest arsip bukan milik backup ini.'), { status: 409 })
+  }
   return { stage, entries, manifest, file, checksum }
 }
 

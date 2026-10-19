@@ -23,11 +23,23 @@ lalu meneruskan dengan secret di sisi server.
 | GET | `/backups/:id/download` | Unduh arsip (stream) |
 | DELETE | `/backups/:id?confirm=1` | Hapus arsip + record |
 | POST | `/backups/:id/verify` | Verifikasi ulang checksum + isi arsip |
-| POST | `/backups/upload` | Unggah arsip `.tar.gz` (≤ 200 MB, wajib berisi manifest) |
+| POST | `/backups/upload` | Unggah arsip `.tar.gz` / `.tar.gz.enc` (≤ 200 MB, wajib berisi manifest) |
 
 `POST /backups` mengembalikan `202` seketika lalu bekerja di latar belakang.
 Pantau dengan `/backups/:id/status` (`stage`: preparing → collecting → archiving
 → encrypting → verifying → uploading → completed).
+
+### Unggah arsip
+
+`POST /backups/upload` menerima body biner (`Content-Type: application/gzip`).
+Arsip terenkripsi (`.enc`, format AES-256-GCM sistem ini) otomatis dikenali dari
+header dan didekripsi sementara untuk validasi — server wajib punya
+`BACKUP_ENCRYPTION_KEY` yang sama; tanpa kunci jawabannya `409`.
+
+Arsip divalidasi dengan `manifest.json`, lalu id record mengikuti `manifest.id`
+bila id itu belum terdaftar. Kalau id sudah ada (unggah ulang arsip yang sama),
+record baru dibuat dengan `manifestId` sebagai tautan ke arsip asal, sehingga
+catatan lama **tidak** tertimpa dan kedua arsip tetap bisa direstore.
 
 ## Restore
 
