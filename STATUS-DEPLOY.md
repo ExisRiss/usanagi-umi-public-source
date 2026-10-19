@@ -1577,3 +1577,14 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - Docs/AUTOAI-CONVERSATION-TASK61.md+README; evidence deploy-check/task61, credential/rawlog .secrets/task61. Catat batasmemori/trigger dan bukanpelatihanulangmodel. Safety/publikasi menyusul.
 
 - Final safety Task61:4035trackedfile/24nilai privat diperiksa,0temuan; gitdiffcheck PASS. Temporary dependency symlink dilepas sebelum publikasi.
+
+## Task70 — Ekosistem multi-app: panel live, bot Telegram menunggu token (2026-10-19)
+
+- Kode Task70 (backend `lib/platform/*`, adapter Telegram, REST `/api/platform-system`, gateway web `api/ecosystem.js`, panel `/platform`) sudah di-commit `4b647e5` + `a520d2a` di `origin/main`.
+- Produksi bot (panel `ikyyxbeyy-panel.voltxyz.my.id`, server `d178bf71` serverjadibotVip): 18 file `lib/platform/**` diunggah, `/main.js` dipatch (`startPlatform()`, `stopPlatform()` pada SIGTERM/SIGINT), `/lib/jadibot-platform-api.js` dipatch (route `/api/platform-system` sebelum route lain), dan `/.platform.env` dibuat (chmod ketat) berisi `PLATFORM_SECRET_KEY`, `PLATFORM_API_SECRET`, `PLATFORM_MEDIA_SIGNING_KEY`, `PLATFORM_PUBLIC_BASE_URL`, `PLATFORM_WEB_URL`, `TELEGRAM_MODE`, `TELEGRAM_BOT_LABEL`. Nilai rahasia tidak ditulis di laporan ini.
+- Restart panel 204. Log boot Node v22.23.3: better-sqlite3 + canvas tersedia, `[boot] menyerahkan ke main.js`, lalu `[PLATFORM] TELEGRAM_BOT_TOKEN belum diisi — adapter Telegram tidak dijalankan.` Artinya modul platform termuat, migrasi skema jalan, hanya token bot yang belum ada.
+- Bukti REST hidup: `GET https://api.gwenna.my.id/api/platform-system/health` → 200 `{"ok":true,"schema":2,"secretKey":true,"telegramTokenConfigured":false}`; tanpa `x-platform-secret` → 401; `POST /bootstrap` dengan secret → 200 berisi `userId`, `role`, `permissions`.
+- Website dideploy produksi: `/platform` → 200 HTML panel; `/api/ecosystem/session` tanpa bearer → 401 JSON (gateway menolak sebelum menyentuh bot). Env Vercel `PLATFORM_API_SECRET` disamakan dengan nilai server.
+- Panel diuji dengan jsdom (mock transport, data contoh realistis): 19 pemeriksaan lulus, 0 error JS. Bukan uji login produksi.
+- Belum terverifikasi: token Telegram asli (belum ada di server maupun workspace), aksi daya server ke panel hosting, login owner di panel web, dan uji end-to-end perintah bot.
+- Catatan: satu pengguna uji `web:smoke-0001` dibuat lewat `/bootstrap` saat verifikasi REST; tidak punya identitas/WhatsApp, aman dihapus manual bila perlu.
