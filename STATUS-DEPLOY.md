@@ -14,7 +14,7 @@
 | Restore + konfirmasi 2 langkah | **LIVE** — dry-run produksi 3/3 checksum cocok |
 | Bot Telegram | **BLOCKED** — `TELEGRAM_BOT_TOKEN` belum diisi |
 | Tes otomatis | **47 lulus / 0 gagal** |
-| Commit | `TASK69_SHA` (lihat git log) |
+| Commit | `699d728` (lihat git log) |
 
 Kredensial: `.secrets/task69-backup.env` (chmod 600, tidak di-commit).
 Docs: `docs/BACKUP-SYSTEM.md`, `docs/BACKUP-RESTORE.md`, `docs/BACKUP-API.md`, `docs/BACKUP-TELEGRAM.md`.
