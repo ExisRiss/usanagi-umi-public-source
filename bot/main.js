@@ -28,6 +28,7 @@ import { normalizePluginText, storedDefaultPrefix } from './core/awang-prefix-te
 import { startJadibotSessionCleaner } from './lib/jadibot-session-cleaner.js';
 import { startVercelBackupScheduler } from './lib/vercel-backup-scheduler.js';
 import { startBackupSystem } from './lib/backup/service.js';
+import { startPlatform, stopPlatform } from './lib/platform/index.js';
 import { readMainBotState, writeMainBotState, normalizeMainBotNumber } from './lib/main-bot-config.js';
 import {
     useMultiFileAuthState,
@@ -311,6 +312,15 @@ startGameRoomNotifier();
 startVercelBackupScheduler();
 // Sistem backup 10 menit + bot Telegram + REST API /api/backup-system.
 startBackupSystem();
+// Ekosistem multi-aplikasi: adapter Telegram + service bersama (RBAC, server,
+// saham, RPG, media to-URL). Tidak membuat socket WhatsApp kedua dan tidak
+// mengubah perilaku bot WhatsApp yang sudah berjalan.
+startPlatform().catch(error => console.error('[PLATFORM] Gagal start:', error.message));
+for (const signal of ['SIGTERM', 'SIGINT']) {
+    process.on(signal, () => {
+        stopPlatform().catch(() => {}).finally(() => process.exit(0));
+    });
+}
 installAutoBackup(global.conn);
 startJadibotSessionCleaner();
 

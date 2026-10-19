@@ -1,5 +1,6 @@
 import { platformSessions } from './jadibot-platform-state.js'
 import { handleBackupApi } from './backup/api.js'
+import { handlePlatformApi } from './platform/api.js'
 import { createRealmHttp } from './realms/http.js'
 import { realmService } from './realms/runtime.js'
 import { getDb } from '../core/awang-sqlite.js'
@@ -1137,6 +1138,13 @@ async function route(req, res) {
   // Autentikasi memakai BACKUP_ADMIN_SECRET, bukan sesi Supabase.
   if (pathname === '/api/backup-system' || pathname.startsWith('/api/backup-system/')) {
     return handleBackupApi(req, res, pathname, url.searchParams)
+  }
+
+  // Ekosistem multi-aplikasi (WhatsApp + Telegram). Prefiks terpisah dari
+  // /api/platform/* yang sudah dipakai wallet game. Autentikasi memakai
+  // PLATFORM_API_SECRET; website memverifikasi sesi Supabase lebih dulu.
+  if (pathname === '/api/platform-system' || pathname.startsWith('/api/platform-system/')) {
+    return handlePlatformApi(req, res, pathname, url.searchParams)
   }
 
   if (pathname === '/api/stats' && req.method === 'GET') {

@@ -22,6 +22,7 @@ feature-smoke-results.json
 .tunnel.env
 .backup-export.env
 config.js
+!lib/backup/config.js
 start-bot.sh
 start-bot.js
 

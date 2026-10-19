@@ -28,6 +28,9 @@
     },
     "api/backup.js": {
       "maxDuration": 60
+    },
+    "api/ecosystem.js": {
+      "maxDuration": 60
     }
   },
   "rewrites": [
@@ -96,6 +99,10 @@
       "destination": "/api/tripay-callback"
     },
     {
+      "source": "/api/ecosystem/(.*)",
+      "destination": "/api/ecosystem?path=$1"
+    },
+    {
       "source": "/api/backup/(.*)",
       "destination": "/api/backup?path=$1"
     },
@@ -158,6 +165,14 @@
     {
       "source": "/backup/",
       "destination": "/backup.html"
+    },
+    {
+      "source": "/platform/",
+      "destination": "/platform.html"
+    },
+    {
+      "source": "/platform",
+      "destination": "/platform.html"
     },
     {
       "source": "/((?!api/|assets/).*)",
