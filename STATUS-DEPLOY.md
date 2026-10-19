@@ -1,5 +1,18 @@
 # STATUS DEPLOY
 
+## Task 66 — ENOSPC bot + .playvideo gagal (2026-10-19)
+
+**Metode:** patch langsung ke berkas live (repo snapshot lebih lama dari produksi) + restart bot `d178bf71`.
+
+| Item | Status |
+|---|---|
+| `ENOSPC: no space left on device` di `.ping`/`.menu` | **DIPERBAIKI** — `/tmp` tmpfs 100 MB terisi 98 MB sisa unduhan; sekarang 3% |
+| `.playvideo` "semua sumber gagal" | **DIPERBAIKI** — video 60 MB + audio 38 MB ditulis ke `/tmp` 100 MB, audio gagal di tengah jalan lalu berkas tertinggal; sekarang pakai disk 32 GB + selalu dibersihkan |
+| Sisa berkas unduhan | **DIPERBAIKI** — folder kerja per unduhan + `finally` selalu hapus + sweeper tiap 10 menit |
+| Temp proses | `TMPDIR` → `/home/container/tmp` (disk 32 GB), bukan tmpfs |
+| Bukti | `live-patch/2026-10-19-enospc/`, `/home/user/LAPORAN-TASK66.md` |
+| sha256 live | boot `fd6ec611c22e` · awang-ytdlp `e31783bd894c` · YouTube `b1a0fc2a4e26` · usanagi-play `797c898d598d` |
+
 ## Task 64b — 45 saham IDX asli (2026-10-19)
 
 **Commit:** `b9b940c`
