@@ -1591,3 +1591,10 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - `TELEGRAM_OWNER_IDS` diisi ID pemilik sehingga perintah pengelola terbuka untuknya. `TELEGRAM_ADMIN_IDS` sengaja TIDAK diisi: sistem backup memakai nama itu untuk menjalankan poller Telegram sendiri, dan dua poller pada satu token akan saling berebut update.
 - Belum terverifikasi: balasan perintah di chat (butuh pengguna mengirim /start), aksi daya server ke panel hosting, login owner di panel web.
 - Catatan: satu pengguna uji `web:smoke-0001` dibuat lewat `/bootstrap` saat verifikasi REST; tidak punya identitas/WhatsApp, aman dihapus manual bila perlu.
+
+### Perbaikan: tombol menu Telegram "Aksi tidak tersedia" (2026-10-19)
+
+- Penyebab: `menuKeyboard()` membuat callback dengan aksi `menu.status`, `menu.profile`, `menu.saham`, dst., sementara router hanya mendaftarkan `menu.nav`. Token valid, tetapi `callbackActions.get(action)` kosong sehingga setiap tombol dibalas "Aksi tidak tersedia".
+- Perbaikan: semua tombol menu memakai `menu.nav` + payload `{ view }`; navigasi menu boleh ditekan ulang (tanpa efek samping, tetap terikat pemilik dan TTL 10 menit) dan token menu lama yang sudah `used_at` juga diterima; tombol lama berskema `menu.<view>` diarahkan ke handler yang sama. Aksi berdampak (trade, stop jadibot, start/stop/restart server) tetap sekali pakai. Callback tanpa handler kini dicatat `telegram.callback.unhandled`.
+- Tes: 77 platform (4 tes menu baru) + 51 backup + 8 gateway. Dua file (`telegram/commands.js`, `telegram/router.js`) diunggah ke server produksi, restart 204, log `[TELEGRAM] @AlzRiss_bot polling aktif (bot main).`
+- Catatan: tombol pada pesan /menu yang dikirim >10 menit lalu akan dibalas "kedaluwarsa"; kirim /menu baru.
