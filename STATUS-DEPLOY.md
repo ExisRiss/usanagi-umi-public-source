@@ -1,5 +1,18 @@
 # STATUS DEPLOY
 
+## Task 67 — Pairing ditolak "nomor sudah dimiliki akun lain" (2026-10-19)
+
+| Item | Status |
+|---|---|
+| Registry `data/jadibot-platform.json` mengunci nomor yang sesinya sudah mati (logout 401) | **DIPERBAIKI** — nomor mati boleh diambil alih, sesi lama dibuang |
+| Cache registry tidak pernah reload (`if (database) return database`) | **DIPERBAIKI** — cache mengikuti mtime berkas |
+| Nomor bot utama bisa dipakai sebagai jadibot (saling tendang 401) | **DIPERBAIKI** — hanya owner, tanpa `startSubBot` (`MAIN_BOT_NUMBER`) |
+| Pesan 409 | sekarang menyebut email tersamar + `code: NUMBER_OWNED`, dan dicatat di log |
+| Pairing gagal setelah ambil alih | kepemilikan dikembalikan otomatis |
+| Nomor `6285792965374` | **tidak ada** di registry → bebas, user bisa pairing ulang |
+| Bukti | `live-patch/2026-10-19-pairing/`, `/home/user/LAPORAN-TASK67.md` |
+| sha256 live | api `5b08a68d2d8a` · state `aaf28996a710` |
+
 ## Task 66 — ENOSPC bot + .playvideo gagal (2026-10-19)
 
 **Metode:** patch langsung ke berkas live (repo snapshot lebih lama dari produksi) + restart bot `d178bf71`.
