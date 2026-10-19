@@ -157,10 +157,11 @@ test('tombol callback terikat pemilik, sekali pakai, dan kedaluwarsa', async () 
   await freshDb()
   const owner = ctxFor(3003)
   const other = ctxFor(4004)
-  const token = createCallback({ userId: owner.userId, platform: 'telegram', platformUserId: '3003', action: 'menu.status' })
+  // Aksi berdampak wajib sekali pakai; navigasi menu sengaja boleh diulang.
+  const token = createCallback({ userId: owner.userId, platform: 'telegram', platformUserId: '3003', action: 'server.action', payload: { slot: 1, action: 'restart' } })
   assert.throws(() => consumeCallback(token, { userId: other.userId, platform: 'telegram', platformUserId: '4004' }), /milik pengguna lain/)
   const consumed = consumeCallback(token, { userId: owner.userId, platform: 'telegram', platformUserId: '3003' })
-  assert.equal(consumed.action, 'menu.status')
+  assert.equal(consumed.action, 'server.action')
   assert.throws(() => consumeCallback(token, { userId: owner.userId, platform: 'telegram', platformUserId: '3003' }), /sudah dipakai/)
 
   const { platformDb } = await import('../../lib/platform/db.js')
@@ -284,5 +285,19 @@ test('tombol menu lama (menu.<view>) tetap diarahkan ke handler navigasi', async
   })
   const result = await router.handleCallback(ctx, { data: `cb:${legacy}` })
   assert.equal(result.handled, true)
+  assert.equal(ctx.answers.includes('Aksi tidak tersedia.'), false)
+})
+
+test('tombol menu yang sudah pernah ditekan tetap bisa dipakai setelah restart', async () => {
+  await freshDb()
+  const { router, ctx, identity } = menuHarness()
+  const nav = createCallback({
+    userId: identity.userId, platform: 'telegram', platformUserId: '4004',
+    action: 'menu.nav', payload: { view: 'help' },
+  })
+  // Simulasikan tombol dari pesan /menu lama yang sudah dipakai sebelum fix.
+  platformDb().prepare('UPDATE platform_callbacks SET used_at = ? WHERE token = ?').run(Date.now(), nav)
+  const result = await router.handleCallback(ctx, { data: `cb:${nav}` })
+  assert.equal(result.handled, true, 'navigasi tidak boleh ditolak karena used_at')
   assert.equal(ctx.answers.includes('Aksi tidak tersedia.'), false)
 })

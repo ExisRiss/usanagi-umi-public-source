@@ -56,13 +56,15 @@ export function consumeCallback(token, { userId, platform, platformUserId }) {
   const db = platformDb()
   const row = db.prepare('SELECT * FROM platform_callbacks WHERE token = ?').get(String(token || ''))
   if (!row) throw Object.assign(new Error('Tombol tidak dikenali. Kirim /menu lagi.'), { status: 404 })
-  if (row.used_at) throw Object.assign(new Error('Tombol ini sudah dipakai. Kirim /menu lagi.'), { status: 409 })
+  // Navigasi menu aman diulang: jangan tolak hanya karena pernah ditekan.
+  const navigation = REUSABLE_CALLBACKS.has(row.action) || String(row.action).startsWith('menu.')
+  if (row.used_at && !navigation) throw Object.assign(new Error('Tombol ini sudah dipakai. Kirim /menu lagi.'), { status: 409 })
   if (row.expires_at < Date.now()) throw Object.assign(new Error('Tombol sudah kedaluwarsa. Kirim /menu lagi.'), { status: 410 })
   if (String(row.user_id) !== String(userId) || String(row.platform_user_id) !== String(platformUserId) || row.platform !== platform) {
     audit({ actorUserId: userId, platform, platformUserId, action: 'telegram.callback.denied', resource: row.action, result: 'denied', meta: { owner: row.user_id } })
     throw Object.assign(new Error('Tombol ini milik pengguna lain.'), { status: 403 })
   }
-  if (REUSABLE_CALLBACKS.has(row.action)) {
+  if (navigation) {
     return { action: row.action, payload: row.payload ? JSON.parse(row.payload) : null, reusable: true }
   }
   db.prepare('UPDATE platform_callbacks SET used_at = ? WHERE token = ?').run(Date.now(), row.token)
