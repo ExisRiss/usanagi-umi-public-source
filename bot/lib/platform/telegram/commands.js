@@ -2,6 +2,7 @@
  * Perintah Telegram. Semua handler memanggil service bersama (bukan data palsu).
  * Handler menerima `ctx` dari adapter: user/role sudah diverifikasi server.
  */
+import crypto from 'node:crypto'
 import { escapeHtml, createCallback } from './router.js'
 import { can, permissionsOf } from '../roles.js'
 import { audit } from '../audit.js'
@@ -11,6 +12,8 @@ import * as rpg from '../rpg.js'
 import * as media from '../media.js'
 import * as wa from '../wa.js'
 import * as chats from '../chats.js'
+import * as panel from '../panel-config.js'
+import { featureReport } from './plugin-bridge.js'
 import { consumeLinkCode, whatsappJidFor, getUser } from '../identity.js'
 
 const rupiah = value => Number(value || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })
@@ -48,6 +51,7 @@ function menuKeyboard(ctx, router) {
   if (router.allowed(ctx, 'rpg')) add('🎮 RPG', 'rpg')
   if (router.allowed(ctx, 'tourl')) add('🔗 To URL', 'tourl')
   if (router.allowed(ctx, 'server')) add('🖥 Server', 'server')
+  if (router.allowed(ctx, 'panel')) add('🛠 Panel', 'panel')
   if (router.allowed(ctx, 'admin')) add('⚙️ Admin', 'admin')
   if (router.allowed(ctx, 'reseller')) add('🤝 Reseller', 'reseller')
   add('❓ Bantuan', 'help')
@@ -83,20 +87,38 @@ async function statusText() {
   return lines.join('\n')
 }
 
+/**
+ * Kirim menu dengan banner video. Bila berkas banner belum ada di server atau
+ * Telegram menolaknya, jatuh ke pesan teks biasa (kontrol tetap tampil).
+ */
+async function sendMenu(ctx, router, caption) {
+  const keyboard = menuKeyboard(ctx, router)
+  if (typeof ctx.sendBanner === 'function') {
+    try {
+      const result = await ctx.sendBanner({ caption, replyMarkup: keyboard })
+      if (result?.sent) return result
+    } catch (error) {
+      // Banner bersifat dekoratif: jangan sampai menu ikut gagal.
+      audit({ actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'telegram.banner.failed', result: 'failed', meta: { error: String(error.message || error).slice(0, 160) } })
+    }
+  }
+  return ctx.send(caption, { reply_markup: keyboard })
+}
+
 export function registerCommands(router, { publicBaseUrl = '', logger = console } = {}) {
   const define = (name, config) => router.register({ name, ...config })
 
   define('start', {
     description: 'Mulai bot & tampilkan menu',
     handler: async (ctx) => {
-      await ctx.send([
+      await sendMenu(ctx, router, [
         '🌙 <b>Usanagi Umi AI · Multi-App</b>',
         '',
         `Halo <b>${escapeHtml(ctx.displayName || ctx.username || 'kamu')}</b>!`,
         'Satu ekosistem, dua antarmuka: WhatsApp + Telegram.',
         '',
-        'Ketik /menu untuk mulai, /help untuk panduan.',
-      ].join('\n'), { reply_markup: menuKeyboard(ctx, router) })
+        'Pilih menu di bawah, atau ketik /help untuk panduan.',
+      ].join('\n'))
     },
   })
 
@@ -105,7 +127,7 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
     handler: async (ctx) => {
       const counts = { public: 0, privileged: 0 }
       for (const item of router.list()) counts[router.allowed(ctx, item.name) ? 'public' : 'privileged'] += 1
-      await ctx.send([
+      return sendMenu(ctx, router, [
         '🌙 <b>MENU UTAMA</b>',
         '',
         `Peran kamu: ${roleBadge(ctx.role)}`,
@@ -114,7 +136,7 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
         'Pilih menu di bawah, atau ketik perintah langsung:',
         '<code>/status /profile /jadibot /saham /rpg /tourl</code>',
         can(ctx.role, 'server.control') ? '<code>/server</code> · <code>/admin</code>' : '',
-      ].filter(Boolean).join('\n'), { reply_markup: menuKeyboard(ctx, router) })
+      ].filter(Boolean).join('\n'))
     },
   })
 
@@ -137,13 +159,14 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
         '<b>Layanan</b>',
         '/jadibot — sesi WhatsApp milikmu',
         '/saham — pasar, portofolio, beli/jual',
-        '/rpg — profil, inventori, papan peringkat, hadiah harian',
+        '/rpg — profil, inventori, kerja, tebak angka, hadiah harian, peringkat',
         '',
         '<b>Pengelola</b>',
         '/server — status & kontrol server (allowlist)',
         '/admin — bot Telegram, pengguna, audit',
         '/reseller — ringkasan reseller',
-        '/panel — tautan dashboard web',
+        '/panel — atur panel hosting (owner/developer): set url|ptlc|ptla|server, test',
+        '/fitur — semua plugin WhatsApp yang bisa dipakai di sini',
       ].join('\n'))
     },
   })
@@ -160,6 +183,7 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
     permission: null,
     handler: async (ctx) => {
       const jid = whatsappJidFor(ctx.userId)
+      const identity = rpg.rpgJidFor(ctx.userId, ctx.platformUserId)
       const user = getUser(ctx.userId)
       const lines = [
         '👤 <b>PROFIL</b>',
@@ -168,16 +192,15 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
         `Peran   : ${roleBadge(ctx.role)}`,
         `ID int. : <code>${escapeHtml(ctx.userId)}</code>`,
         `Telegram: <code>${escapeHtml(ctx.platformUserId)}</code>${ctx.username ? ` · @${escapeHtml(ctx.username)}` : ''}`,
-        `WhatsApp: ${jid ? `<code>${jid.replace(/(\d{4})\d+(\d{3})/, '$1***$2')}</code> · tertaut` : '🔴 belum tertaut'}`,
+        `WhatsApp: ${jid ? `<code>${jid.replace(/(\d{4})\d+(\d{3})/, '$1***$2')}</code> · tertaut` : '🔴 belum tertaut (opsional di Telegram)'}`,
+        `RPG ID  : <code>${escapeHtml(String(identity.jid || '-').replace('@s.whatsapp.net', ''))}</code>`,
         '',
       ]
-      if (jid) {
-        const profile = rpg.profile(jid)
-        if (profile.hasProfile) {
-          lines.push('<b>RPG</b>', `Level ${profile.level} · ${rupiah(profile.exp)} EXP · ${rupiah(profile.koin)} koin`, `Inventori: ${profile.inventoryCount} jenis (${rupiah(profile.totalItems)} item)`)
-        } else lines.push('<i>Belum ada progres RPG untuk nomor ini.</i>')
+      const profile = identity.jid ? rpg.profile(identity.jid) : { hasProfile: false }
+      if (profile.hasProfile) {
+        lines.push('<b>RPG</b>', `Level ${profile.level} · ${rupiah(profile.exp)} EXP · ${rupiah(profile.koin)} koin`, `Inventori: ${profile.inventoryCount} jenis (${rupiah(profile.totalItems)} item)`)
       } else {
-        lines.push('<i>Tautkan akun: buka dashboard web → “Tautkan Telegram”, lalu kirim /link KODE.</i>')
+        lines.push('<i>Belum ada progres RPG. Buat dengan <code>/rpg mulai</code> — tidak perlu nomor WhatsApp.</i>')
       }
       lines.push('', `Izin: <code>${permissionsOf(ctx.role).length}</code> aktif`)
       await ctx.send(lines.join('\n'))
@@ -317,8 +340,10 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
     permission: 'stock.read',
     handler: async (ctx, parsed) => {
       const sub = String(parsed.args[0] || 'pasar').toLowerCase()
-      const jid = whatsappJidFor(ctx.userId)
-      const number = String(jid || '').replace(/\D/g, '')
+      // Nomor trading: WhatsApp tertaut bila ada, kalau tidak nomor platform
+      // Telegram (auto-register lewat /api/trading/bot/register di backend).
+      const identity = rpg.rpgJidFor(ctx.userId, ctx.platformUserId)
+      const number = String(identity.jid || '').replace(/\D/g, '')
 
       if (sub === 'pasar' || sub === 'market') {
         const data = await stock.market()
@@ -333,7 +358,7 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
       }
 
       if (sub === 'me' || sub === 'portofolio') {
-        if (!number) return ctx.send('🔴 Tautkan akun dulu: dashboard web → Tautkan Telegram, lalu /link KODE.')
+        if (!number) return ctx.send('🔴 Identitas trading tidak tersedia untuk akun ini. Coba kirim ulang dari akun Telegram kamu.')
         const me = await stock.portfolio(number)
         const summary = me.summary || me
         const lines = [
@@ -372,7 +397,7 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
   })
 
   async function tradePrompt(ctx, { side, args, number }) {
-    if (!number) return ctx.send('🔴 Tautkan akun WhatsApp dulu (dashboard → Tautkan Telegram) sebelum transaksi.')
+    if (!number) return ctx.send('🔴 Identitas trading tidak tersedia untuk akun ini.')
     const symbol = String(args[0] || '').toUpperCase()
     const lots = Number(args[1])
     if (!/^[A-Z0-9]{2,12}$/.test(symbol) || !Number.isInteger(lots) || lots <= 0) {
@@ -393,18 +418,45 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
 
   /* ─────────────── RPG ─────────────── */
   define('rpg', {
-    description: 'Profil, inventori, hadiah harian',
+    description: 'Profil, inventori, game & hadiah harian',
     permission: 'rpg.read',
     handler: async (ctx, parsed) => {
       const sub = String(parsed.args[0] || 'profil').toLowerCase()
-      const jid = whatsappJidFor(ctx.userId)
-      if (!jid) {
-        return ctx.send('🎮 <b>RPG</b>\n\nAkun WhatsApp belum tertaut.\nBuka dashboard web → Tautkan Telegram, lalu kirim <code>/link KODE</code>.\n\n<i>Progres RPG tidak dibuat terpisah di Telegram supaya tidak ada data ganda.</i>')
+      const identity = rpg.rpgJidFor(ctx.userId, ctx.platformUserId)
+      const jid = identity.jid
+      if (!jid) return ctx.send('🎮 Identitas RPG tidak tersedia. Coba lagi dari akun Telegram ini.')
+
+      const identityNote = identity.source === 'whatsapp'
+        ? '<i>Terhubung ke nomor WhatsApp kamu — progres sama dengan bot WhatsApp.</i>'
+        : `<i>Profil Telegram (nomor platform <code>${jid.replace('@s.whatsapp.net', '')}</code>). Tautkan WhatsApp di /panel untuk menyatukan progres.</i>`
+
+      /* mulai / daftar — buat profil di engine yang sama */
+      if (sub === 'mulai' || sub === 'daftar' || sub === 'start') {
+        const created = await rpg.ensureProfile(jid, { idempotencyKey: `${ctx.platformUserId}:${Math.floor(Date.now() / 60000)}` })
+        const profile = rpg.profile(jid)
+        return ctx.send([
+          created.created ? '✅ <b>Profil RPG dibuat</b>' : 'ℹ️ <b>Profil RPG kamu sudah ada</b>',
+          '',
+          `Level : <b>${profile.level || 1}</b>`,
+          `Koin  : ${rupiah(profile.koin || 0)}`,
+          `EXP   : ${rupiah(profile.exp || 0)}`,
+          '',
+          'Lanjut: <code>/rpg harian</code> · <code>/rpg kerja</code> · <code>/rpg tebak</code> · <code>/rpg inv</code>',
+          identityNote,
+        ].join('\n'))
       }
 
       if (sub === 'profil' || sub === 'profile') {
-        const profile = rpg.profile(jid)
-        if (!profile.hasProfile) return ctx.send(profile.message)
+        let profile = rpg.profile(jid)
+        if (!profile.hasProfile) {
+          // Profil dibuat otomatis (idempoten) supaya pengguna Telegram bisa
+          // langsung main tanpa langkah tambahan.
+          await rpg.ensureProfile(jid, { idempotencyKey: `${ctx.platformUserId}:init` })
+          profile = rpg.profile(jid)
+        }
+        if (!profile.hasProfile) {
+          return ctx.send('🎮 Profil RPG belum bisa dibuat. Coba <code>/rpg mulai</code> lagi.')
+        }
         const r = profile.rpg || {}
         return ctx.send([
           '🎮 <b>PROFIL RPG</b>', '',
@@ -414,13 +466,13 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
           `HP/Mana  : ${r.health ?? '-'}/${r.maxHealth ?? '-'} · ${r.mana ?? '-'}/${r.maxMana ?? '-'}`,
           `Pet      : ${r.pet ? escapeHtml(r.pet.name || r.pet.type || 'ada') : '-'}`,
           `Inventori: ${profile.inventoryCount} jenis · ${rupiah(profile.totalItems)} item`,
-          '', '<i>Sumber: rpg_users (database yang sama dengan WhatsApp)</i>',
+          '', identityNote,
         ].join('\n'))
       }
 
       if (sub === 'inv' || sub === 'inventory') {
         const profile = rpg.profile(jid)
-        if (!profile.hasProfile) return ctx.send(profile.message)
+        if (!profile.hasProfile) return ctx.send('🎒 Belum ada profil. Mulai dengan <code>/rpg mulai</code>.')
         const lines = ['🎒 <b>INVENTORI</b>', '']
         if (!profile.inventory.length) lines.push('<i>Kosong.</i>')
         for (const item of profile.inventory) lines.push(`• ${escapeHtml(item.item)} × ${rupiah(item.count)}`)
@@ -436,14 +488,64 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
         return ctx.send(lines.join('\n'))
       }
 
+      /* Game: hadiah harian (konfirmasi tombol) */
       if (sub === 'daily' || sub === 'harian') {
+        if (!rpg.profile(jid).hasProfile) return ctx.send('Buat profil dulu: <code>/rpg mulai</code>.')
         const token = createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'rpg.daily', payload: { jid } })
         return ctx.send(`🎁 Klaim hadiah harian: <b>${rpg.DAILY.koin}</b> koin + <b>${rpg.DAILY.exp}</b> EXP?\nCooldown ${Math.round(rpg.DAILY.cooldownMs / 3600000)} jam.`, {
           reply_markup: inline([[{ text: '🎁 Klaim', callback_data: `cb:${token}` }]]),
         })
       }
 
-      return ctx.send('<b>RPG</b>\n/rpg — profil\n/rpg inv — inventori\n/rpg top [exp] — peringkat\n/rpg daily — hadiah harian')
+      /* Game: kerja (langsung, cooldown 30 menit) */
+      if (sub === 'kerja' || sub === 'work') {
+        if (!rpg.profile(jid).hasProfile) return ctx.send('Buat profil dulu: <code>/rpg mulai</code>.')
+        const result = await rpg.work(jid, { idempotencyKey: `${ctx.platformUserId}:${Math.floor(Date.now() / 30000)}` })
+        if (result.ok) {
+          return ctx.send([
+            '🛠 <b>KERJA</b>', '',
+            `+${rupiah(result.koin)} koin · +${rupiah(result.exp)} EXP`,
+            `Total: <b>${rupiah(result.totalKoin)}</b> koin`,
+            '', `<i>Bisa kerja lagi dalam ${Math.round(rpg.WORK.cooldownMs / 60000)} menit.</i>`,
+          ].join('\n'))
+        }
+        if (result.reason === 'cooldown') {
+          return ctx.send(`⏳ Kamu baru saja kerja. Coba lagi dalam ${duration(result.remainingMs)}.`)
+        }
+        if (result.reason === 'duplicate') return ctx.send('ℹ️ Permintaan ini sudah diproses.')
+        return ctx.send('❌ Kerja gagal diproses. Coba lagi nanti.')
+      }
+
+      /* Game: tebak angka (tombol, hadiah nyata) */
+      if (sub === 'tebak' || sub === 'guess') {
+        if (!rpg.profile(jid).hasProfile) return ctx.send('Buat profil dulu: <code>/rpg mulai</code>.')
+        const answer = 1 + Math.floor(Math.random() * 4)
+        const round = crypto.randomBytes(5).toString('hex')
+        const buttons = [1, 2, 3, 4].map(value => ({
+          text: String(value),
+          callback_data: `cb:${createCallback({
+            userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId,
+            action: 'rpg.guess', payload: { jid, answer, round, pick: value },
+          })}`,
+        }))
+        return ctx.send([
+          '🎲 <b>TEBAK ANGKA</b>', '',
+          'Aku menyimpan satu angka 1–4. Tebak yang benar dan dapat <b>150 koin</b> + <b>60 EXP</b>.',
+          '<i>Satu tebakan per ronde. Salah = tidak dapat apa-apa.</i>',
+        ].join('\n'), { reply_markup: inline([buttons]) })
+      }
+
+      return ctx.send([
+        '<b>🎮 RPG</b>', '',
+        '/rpg mulai — buat profil',
+        '/rpg — profil & level',
+        '/rpg inv — inventori',
+        '/rpg kerja — cari koin (cooldown 30 menit)',
+        '/rpg harian — hadiah harian',
+        '/rpg tebak — mini game tebak angka',
+        '/rpg top [exp] — papan peringkat',
+        '', identityNote,
+      ].join('\n'))
     },
   })
 
@@ -517,6 +619,145 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
   })
 
   /* ─────────────── ADMIN ─────────────── */
+  define('fitur', {
+    description: 'Daftar fitur bot (paritas WhatsApp)',
+    handler: async (ctx, parsed) => {
+      const report = featureReport()
+      if (!report.plugins) {
+        return ctx.send('⚠️ Katalog plugin WhatsApp belum dimuat di proses ini.\nCoba lagi setelah bot selesai start, atau cek log server.')
+      }
+      const tag = String(parsed.args[0] || '').toLowerCase()
+      const tags = Object.entries(report.tags)
+      if (tag) {
+        const names = report.names.filter(name => {
+          const entry = globalThis.plugins && Object.values(globalThis.plugins).find(plugin => {
+            const pattern = plugin?.command
+            if (pattern instanceof RegExp) return pattern.test(name)
+            return Array.isArray(pattern) ? pattern.map(String).includes(name) : pattern === name
+          })
+          return Array.isArray(entry?.tags) && entry.tags.map(String).includes(tag)
+        })
+        return ctx.send([`📦 <b>FITUR · ${escapeHtml(tag)}</b> (${names.length})`, '', names.length ? names.slice(0, 120).map(name => `/${name}`).join(' · ') : '<i>Tidak ada.</i>'].join('\n'))
+      }
+      return ctx.send([
+        '📦 <b>FITUR BOT</b>', '',
+        `Plugin WhatsApp aktif : <b>${report.plugins}</b>`,
+        `Perintah bisa dipakai: <b>${report.commands}</b>`,
+        '',
+        'Semua perintah plugin WhatsApp bisa dikirim di sini dengan awalan <code>/</code>,',
+        'contoh: <code>/ai halo</code> · <code>/sticker</code> (kirim foto) · <code>/tebakangka</code>.',
+        '',
+        '<b>Kategori</b>',
+        ...tags.slice(0, 14).map(([name, count]) => `• ${escapeHtml(name)} — ${count} plugin`),
+        '', 'Detail: <code>/fitur &lt;kategori&gt;</code>',
+      ].join('\n'))
+    },
+  })
+
+  define('panel', {
+    description: 'Panel hosting (owner/developer) & tautan panel web',
+    sensitive: true,
+    handler: async (ctx, parsed) => {
+      const sub = String(parsed.args[0] || 'info').toLowerCase()
+      const privileged = can(ctx.role, 'server.panel.manage')
+
+      // Pengguna biasa tetap dapat tautan dashboard; kredensial tidak.
+      if (!privileged && !['web', 'dashboard'].includes(sub)) {
+        const url = globalThis.__umiPlatformWebUrl || 'https://jadibot-alzriss.gwenna.my.id'
+        return ctx.send(`🖥 <b>PANEL WEB</b>\n\n${escapeHtml(url)}/platform\n\nPengaturan panel hosting hanya untuk owner/developer.`)
+      }
+      if (['set', 'hapus', 'clear', 'reset', 'test'].includes(sub) && !privileged) {
+        return ctx.send('⛔ Pengaturan panel hanya untuk owner/developer.')
+      }
+
+      if (sub === 'info' || sub === 'status') {
+        const info = panel.describePanel()
+        const lines = [
+          '🛠 <b>PANEL HOSTING</b>', '',
+          `Status     : ${info.configured ? '✅ terkonfigurasi' : '⚠️ belum lengkap'}`,
+          `URL        : ${info.url ? `<code>${escapeHtml(info.url)}</code>` : '<i>belum diatur</i>'}`,
+          `Server ID  : ${info.serverId ? `<code>${escapeHtml(info.serverId)}</code>` : '<i>belum diatur</i>'}`,
+          `API klien  : ${info.clientKeySet ? `<code>${escapeHtml(info.clientKeyMasked || '')}</code>` : '<i>belum diatur</i>'}`,
+          `API app    : ${info.applicationKeySet ? '<i>tersimpan (disamarkan)</i>' : '<i>belum diatur</i>'}`,
+          `Slot 1     : ${info.managed ? `dikelola bot${info.enabled ? ' · aktif' : ' · nonaktif'}` : '<i>bukan slot terkelola</i>'}`,
+          '', '<b>Ubah</b> (owner/developer):',
+          '<code>/panel set url https://panel.domain.tld</code>',
+          '<code>/panel set ptlc PTLC_KEY</code>',
+          '<code>/panel set ptla PTLA_KEY</code>',
+          '<code>/panel set server d178bf71</code>',
+          '<code>/panel test</code> · <code>/panel hapus</code> · <code>/panel web</code>',
+          '', '<i>Pesan berisi kunci otomatis dihapus setelah diproses.</i>',
+        ]
+        if (info.clientKeySet && info.clientKeyReadable === false) {
+          lines.push('', '⚠️ Kunci tersimpan tidak bisa dibuka — <code>PLATFORM_SECRET_KEY</code> server berubah. Set ulang kuncinya.')
+        }
+        return ctx.send(lines.join('\n'))
+      }
+
+      if (sub === 'web' || sub === 'dashboard') {
+        const url = globalThis.__umiPlatformWebUrl || 'https://jadibot-alzriss.gwenna.my.id'
+        return ctx.send(`🖥 <b>PANEL WEB</b>\n\n${escapeHtml(url)}/platform\n\nLogin memakai akun web kamu (sesi Supabase). Peran yang tampil di panel = peran database.`)
+      }
+
+      if (sub === 'test') {
+        try {
+          const result = await panel.testPanel()
+          if (!result.ok) return ctx.send(`❌ Uji panel gagal: ${escapeHtml(result.error || 'tidak diketahui')}\nHTTP ${result.status || '-'} · ${result.latencyMs} ms`)
+          return ctx.send([
+            '✅ <b>PANEL TERHUBUNG</b>', '',
+            `Akun     : <b>${escapeHtml(result.username || '-')}</b>`,
+            `Email    : ${escapeHtml(result.email || '-')}`,
+            `Admin    : ${result.admin ? 'ya' : 'tidak'}`,
+            `Latensi  : ${result.latencyMs} ms`,
+            `Endpoint : <code>/api/client/account</code>`,
+          ].join('\n'))
+        } catch (error) {
+          return ctx.send(`❌ ${escapeHtml(error.message || 'Uji panel gagal.')}`)
+        }
+      }
+
+      if (sub === 'hapus' || sub === 'clear' || sub === 'reset') {
+        const info = panel.clearPanelConfig({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId })
+        audit({ actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'panel.command.clear' })
+        return ctx.send(`🗑 Konfigurasi panel dihapus. Slot 1 ${info.managed ? 'masih dikelola' : 'dibersihkan'}.`)
+      }
+
+      if (sub === 'set') {
+        const field = String(parsed.args[1] || '').toLowerCase()
+        const value = parsed.args.slice(2).join(' ').trim()
+        if (!field || !value) {
+          return ctx.send('Format: <code>/panel set url|ptlc|ptla|server &lt;nilai&gt;</code>')
+        }
+        // Pesan berisi kunci dihapus lebih dulu supaya tidak tertinggal di riwayat grup.
+        if (['ptlc', 'ptla'].includes(field)) await ctx.deleteMessage?.()
+        try {
+          const patch = field === 'url' ? { url: value }
+            : field === 'ptlc' || field === 'client' ? { clientKey: value }
+            : field === 'ptla' || field === 'app' ? { applicationKey: value }
+            : field === 'server' || field === 'serverid' ? { serverId: value }
+            : null
+          if (!patch) return ctx.send('Field tidak dikenal. Pilihan: <code>url, ptlc, ptla, server</code>.')
+          const info = panel.savePanelConfig(patch, { userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId })
+          audit({ actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'panel.command.set', meta: { field } })
+          return ctx.send([
+            `✅ <b>${escapeHtml(field.toUpperCase())}</b> disimpan.`,
+            '',
+            `URL       : ${info.url ? `<code>${escapeHtml(info.url)}</code>` : '<i>belum</i>'}`,
+            `Server ID : ${info.serverId ? `<code>${escapeHtml(info.serverId)}</code>` : '<i>belum</i>'}`,
+            `API klien : ${info.clientKeySet ? `<code>${escapeHtml(info.clientKeyMasked || '')}</code>` : '<i>belum</i>'}`,
+            `Slot 1    : ${info.configured ? '✅ siap dipakai' : '⚠️ belum lengkap'}`,
+            '', info.configured ? 'Cek koneksi: <code>/panel test</code>' : 'Lengkapi url + ptlc + server, lalu <code>/panel test</code>.',
+          ].join('\n'))
+        } catch (error) {
+          if (['ptlc', 'ptla'].includes(field)) await ctx.deleteMessage?.()
+          return ctx.send(`❌ ${escapeHtml(error.message || 'Gagal menyimpan.')}`)
+        }
+      }
+
+      return ctx.send('Panel: <code>/panel</code> · <code>/panel set …</code> · <code>/panel test</code> · <code>/panel hapus</code>')
+    },
+  })
+
   define('admin', {
     description: 'Panel pengelola (owner/developer)',
     permission: 'telegram.status',
@@ -607,17 +848,9 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
     },
   })
 
-  define('panel', {
-    description: 'Tautan panel web',
-    handler: async (ctx) => {
-      const url = globalThis.__umiPlatformWebUrl || 'https://jadibot-alzriss.gwenna.my.id'
-      await ctx.send(`🖥 <b>PANEL WEB</b>\n\n${url}/platform\n\nLogin memakai akun web kamu (sesi Supabase). Peran yang tampil di panel = peran database.`)
-    },
-  })
-
   /* ─────────────── Callback actions ─────────────── */
   router.registerCallback('menu.nav', async (ctx, payload) => {
-    const map = { status: 'status', profile: 'profile', jadibot: 'jadibot', saham: 'saham', rpg: 'rpg', tourl: 'tourl', server: 'server', admin: 'admin', reseller: 'reseller', help: 'help' }
+    const map = { status: 'status', profile: 'profile', jadibot: 'jadibot', saham: 'saham', rpg: 'rpg', tourl: 'tourl', server: 'server', panel: 'panel', admin: 'admin', reseller: 'reseller', help: 'help' }
     const name = map[payload?.view]
     if (!name || !router.allowed(ctx, name)) return ctx.send('Menu tidak tersedia untuk peran kamu.')
     const command = router.commands.get(name)
@@ -667,6 +900,36 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
     } else {
       await ctx.send('❌ Hadiah gagal diproses.')
     }
+  })
+
+  router.registerCallback('rpg.guess', async (ctx, payload) => {
+    if (!payload?.jid || !payload?.round) return ctx.send('❌ Ronde tidak valid. Kirim /rpg tebak lagi.')
+    if (!rpg.profile(payload.jid).hasProfile) return ctx.send('Buat profil dulu: <code>/rpg mulai</code>.')
+    const correct = Number(payload.pick) === Number(payload.answer)
+    if (!correct) {
+      audit({
+        actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId,
+        action: 'rpg.guess', resource: `round:${payload.round}`, meta: { correct: false, pick: payload.pick },
+      })
+      return ctx.send(`❌ Salah. Angkanya <b>${payload.answer}</b>. Coba lagi: <code>/rpg tebak</code>`)
+    }
+    const result = await rpg.reward(payload.jid, {
+      koin: 150, exp: 60, key: `guess:${ctx.platformUserId}:${payload.round}`, reason: 'tebak-angka',
+    })
+    if (result.ok) {
+      audit({
+        actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId,
+        action: 'rpg.guess', resource: `round:${payload.round}`, meta: { correct: true, koin: 150, exp: 60 },
+      })
+      return ctx.send([
+        '🎉 <b>BENAR!</b>', '',
+        'Hadiah: <b>+150 koin</b> · <b>+60 EXP</b>',
+        `Total koin: <b>${rupiah(result.koin)}</b>`,
+        '', 'Main lagi: <code>/rpg tebak</code>',
+      ].join('\n'))
+    }
+    if (result.reason === 'duplicate') return ctx.send('ℹ️ Hadiah ronde ini sudah diberikan.')
+    return ctx.send('❌ Hadiah gagal diproses.')
   })
 
   router.registerCallback('media.delete', async (ctx, payload) => {

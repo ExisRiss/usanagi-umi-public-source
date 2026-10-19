@@ -94,6 +94,64 @@ export class TelegramClient {
   getFile(fileId) { return this.call('getFile', { file_id: fileId }) }
   setMyCommands(commands) { return this.call('setMyCommands', { commands }) }
 
+  /**
+   * Unggah media (video/foto/dokumen) lewat multipart.
+   * Bot API tidak menerima biner di JSON, jadi `call` JSON tidak bisa dipakai.
+   */
+  async upload(kind, chatId, buffer, { filename = 'file.bin', caption = '', mime = 'application/octet-stream', options = {}, timeout = 120000 } = {}) {
+    const method = { video: 'sendVideo', photo: 'sendPhoto', document: 'sendDocument', animation: 'sendAnimation' }[kind]
+    if (!method) throw new TelegramError(`Jenis unggahan tidak didukung: ${kind}`, { status: 400 })
+    const form = new FormData()
+    form.append('chat_id', String(chatId))
+    form.append(kind === 'document' ? 'document' : kind, new Blob([buffer], { type: mime }), filename)
+    if (caption) {
+      form.append('caption', caption)
+      form.append('parse_mode', options.parseMode ?? 'HTML')
+    }
+    if (options.reply_markup) form.append('reply_markup', JSON.stringify(options.reply_markup))
+    if (options.supports_streaming) form.append('supports_streaming', 'true')
+    if (options.width) form.append('width', String(options.width))
+    if (options.height) form.append('height', String(options.height))
+    if (options.duration) form.append('duration', String(options.duration))
+    if (options.disable_notification) form.append('disable_notification', 'true')
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeout)
+    let response
+    try {
+      response = await fetch(`${this.base}/bot${this.token}/${method}`, { method: 'POST', body: form, signal: controller.signal })
+    } catch (error) {
+      const message = error.name === 'AbortError'
+        ? `Telegram tidak merespons saat unggah (timeout ${timeout} ms).`
+        : redact(`Gagal mengunggah media: ${error.message}`, this.token)
+      throw new TelegramError(message, { status: 504, code: 'network' })
+    } finally {
+      clearTimeout(timer)
+    }
+    let json = null
+    try { json = await response.json() } catch {}
+    if (!json) throw new TelegramError(`Respons Telegram tidak valid (HTTP ${response.status}).`, { status: 502 })
+    if (!json.ok) {
+      const detail = json.description || `HTTP ${response.status}`
+      const code = Number(json.error_code || response.status)
+      throw new TelegramError(redact(detail, this.token), {
+        status: code === 401 || code === 403 ? 401 : code === 429 ? 429 : 502,
+        code: code || null,
+        retryAfter: json.parameters?.retry_after || null,
+      })
+    }
+    return json.result
+  }
+
+  /** Kirim video memakai file_id yang sudah diunggah (tanpa unggah ulang). */
+  sendVideo(chatId, video, options = {}) {
+    const payload = { chat_id: chatId, ...(typeof video === 'string' ? { video } : {}), ...(options.caption ? { caption: options.caption, parse_mode: options.parseMode ?? 'HTML' } : {}) }
+    if (typeof video !== 'string') throw new TelegramError('sendVideo hanya menerima file_id; pakai upload() untuk biner.', { status: 400 })
+    if (options.reply_markup) payload.reply_markup = options.reply_markup
+    if (options.supports_streaming) payload.supports_streaming = true
+    return this.call('sendVideo', payload, { timeout: 60000 })
+  }
+
   /** Unduh berkas Telegram (maks 20 MB dari Bot API). */
   async downloadFile(fileId, { maxBytes = 20 * 1024 * 1024 } = {}) {
     const file = await this.getFile(fileId)

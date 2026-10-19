@@ -98,7 +98,9 @@ export class CommandRouter {
 
   parse(text) {
     const raw = String(text || '').trim()
-    if (!raw.startsWith('/')) return null
+    // `/menu` (gaya Telegram) dan `.menu` (gaya bot WhatsApp) sama-sama diterima
+    // supaya pengguna tidak perlu belajar dua sintaks.
+    if (!/^[/.]\w/.test(raw)) return null
     const [head, ...rest] = raw.slice(1).split(/\s+/)
     const [name, ...argParts] = head.split('@')
     return { name: name.toLowerCase(), args: [...argParts.flatMap(part => part ? [part] : []), ...rest], text: rest.join(' ') }
@@ -120,6 +122,13 @@ export class CommandRouter {
     if (!parsed) return this.handleFreeText(ctx, message)
     const command = this.commands.get(parsed.name)
     if (!command) {
+      // Perintah tidak ada di router platform → coba plugin WhatsApp yang sama
+      // (satu sumber fitur, dua antarmuka). Bila bridge tidak mengenalinya,
+      // barulah balas "tidak dikenali".
+      if (this.unknownHandler) {
+        const result = await this.unknownHandler(ctx, parsed, message).catch(error => ({ handled: false, error }))
+        if (result?.handled) return { handled: true, bridged: true, result }
+      }
       await ctx.send('Perintah tidak dikenali. Ketik /menu untuk daftar perintah.')
       return { handled: false, unknown: parsed.name }
     }
@@ -212,6 +221,12 @@ export class CommandRouter {
 
   onFreeText(handler) {
     this.freeTextHandler = handler
+    return this
+  }
+
+  /** Handler untuk perintah yang tidak terdaftar di platform (bridge plugin). */
+  onUnknownCommand(handler) {
+    this.unknownHandler = handler
     return this
   }
 }

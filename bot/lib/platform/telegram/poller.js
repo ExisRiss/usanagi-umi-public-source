@@ -18,6 +18,8 @@ import { redact } from '../secrets.js'
 import { CommandRouter } from './router.js'
 import { registerCommands, handleMediaMessage } from './commands.js'
 import { recordChat } from '../chats.js'
+import { sendBanner } from './banner.js'
+import { runPluginOnTelegram, featureReport } from './plugin-bridge.js'
 
 const MAX_BACKOFF_MS = 60000
 const BASE_BACKOFF_MS = 1000
@@ -61,6 +63,9 @@ export class TelegramAdapter {
     if (!this.router.commands.size) {
       registerCommands(this.router, { publicBaseUrl: this.baseUrl, logger: this.logger })
       this.router.onFreeText((ctx, message) => handleMediaMessage(ctx, message, { baseUrl: this.baseUrl }))
+      // Perintah di luar router platform dijalankan plugin WhatsApp yang sama.
+      this.router.onUnknownCommand((ctx, parsed) => runPluginOnTelegram(ctx, parsed))
+      globalThis.__umiTelegramFeatureReport = featureReport
     }
     globalThis.__umiTelegramBots = bots
     return this
@@ -102,7 +107,12 @@ export class TelegramAdapter {
       role: identity.role,
       identity: identity.identity,
       botId: this.botRowId,
+      messageId: message?.message_id || null,
+      client,
+      env: this.env,
       publicBaseUrl: this.baseUrl,
+      sendBanner: options => sendBanner({ ...ctx, client, env: this.env, botId: this.botRowId }, options),
+      deleteMessage: () => client.deleteMessage(chatId, message?.message_id).catch(() => {}),
       actor: { userId: identity.userId, platform: 'telegram', platformUserId: String(from.id) },
       send: (text, options = {}) => client.sendMessage(chatId, text, { ...options, disable_web_page_preview: true }),
       edit: (messageId, text, options = {}) => client.editMessageText(chatId, messageId, text, options),

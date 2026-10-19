@@ -14,6 +14,7 @@ import path from 'node:path'
 import { platformDb } from './db.js'
 import { audit } from './audit.js'
 import { roleRank } from './roles.js'
+import { open } from './secrets.js'
 
 export const MAX_SERVERS = 10
 export const ACTIONS = ['status', 'start', 'stop', 'restart', 'logs']
@@ -42,7 +43,11 @@ function rowToSlot(row) {
 
 /** Slot dianggap terkonfigurasi hanya bila enabled + host + kredensial + id server. */
 export function isConfigured(slot) {
-  return Boolean(slot && slot.enabled && slot.host && slot.credentialRef && slot.panelServerId)
+  if (!slot || !slot.enabled || !slot.host || !slot.panelServerId) return false
+  if (!slot.credentialRef) return false
+  // Ref terkelola dianggap terkonfigurasi bila kuncinya benar-benar bisa dibuka.
+  if (slot.credentialRef === MANAGED_REF) return Boolean(resolveManagedPanelKey())
+  return true
 }
 
 export function listSlots() {
@@ -117,9 +122,31 @@ export function deleteSlot(slot, actor = {}) {
   return { deleted: n }
 }
 
+/** Ref khusus: kredensial panel tersimpan terenkripsi di database (diatur dari bot). */
+export const MANAGED_REF = 'PANEL_MANAGED'
+
+/**
+ * Baca API key panel terkelola (AES-256-GCM di `platform_meta`).
+ * Tidak mengimpor `panel-config.js` supaya tidak ada impor melingkar.
+ */
+export function resolveManagedPanelKey(env = process.env) {
+  try {
+    const row = platformDb().prepare('SELECT value FROM platform_meta WHERE key = ?').get('panel.client_key')
+    if (!row?.value) return null
+    return open(row.value, env)
+  } catch {
+    return null
+  }
+}
+
 /** Kredensial panel dari env (nama variabel) atau file di .secrets. */
 export function resolveCredential(ref, env = process.env) {
   const name = String(ref || '').trim()
+  if (name === MANAGED_REF) {
+    const key = resolveManagedPanelKey(env)
+    if (!key) throw Object.assign(new Error('Kredensial panel terkelola belum diatur. Gunakan /admin panel set ptlc <key>.'), { status: 503 })
+    return key
+  }
   if (!/^[A-Z][A-Z0-9_]{2,80}$/.test(name)) {
     throw Object.assign(new Error('credential ref harus nama variabel env (huruf besar/angka/underscore).'), { status: 400 })
   }

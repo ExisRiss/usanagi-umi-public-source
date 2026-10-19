@@ -12,8 +12,99 @@
  */
 import { unifiedRpg } from '../rpg/unified-store.js'
 import { platformDb } from './db.js'
+import { whatsappJidFor } from './identity.js'
 
 export const DAILY = { koin: 500, exp: 250, cooldownMs: 22 * 60 * 60 * 1000 }
+export const WORK = { minKoin: 40, maxKoin: 120, exp: 40, cooldownMs: 30 * 60 * 1000 }
+// Nomor semu untuk pemain Telegram yang belum punya WhatsApp tertaut.
+// Awalan 999 bukan kode negara sehingga tidak mungkin bentrok dengan nomor
+// WhatsApp asli; tetap berupa 13 digit agar lolos validasi `pn()` milik engine.
+export const PSEUDO_PREFIX = '999'
+
+/**
+ * Identitas RPG untuk satu pengguna platform.
+ *  - Bila nomor WhatsApp sudah tertaut → nomor asli (progres sama dengan WhatsApp).
+ *  - Bila belum → nomor semu stabil dari ID Telegram, supaya pemain Telegram
+ *    bisa main sekarang juga. Tidak ada baris yang ditulis ke `rpg_unified_aliases`
+ *    untuk identitas semu ini (engine hanya menulis alias dari daftar nomor WA).
+ */
+export function rpgJidFor(userId, platformUserId = null) {
+  const linked = whatsappJidFor(userId)
+  if (linked) return { jid: linked, source: 'whatsapp' }
+  const id = String(platformUserId || '').replace(/\D/g, '')
+  if (!id) return { jid: null, source: 'none' }
+  return { jid: `${PSEUDO_PREFIX}${id.padStart(10, '0')}@s.whatsapp.net`, source: 'telegram' }
+}
+
+export function isPseudoJid(jid) {
+  return String(jid || '').startsWith(PSEUDO_PREFIX)
+}
+
+/**
+ * Buat profil RPG bila belum ada (aksi eksplisit `/rpg mulai`).
+ * Ditulis dalam transaksi engine supaya konsisten dengan bot WhatsApp.
+ */
+export async function ensureProfile(jid, { idempotencyKey } = {}) {
+  const store = requireStore()
+  if (!jid) throw Object.assign(new Error('Identitas RPG tidak tersedia.'), { status: 409 })
+  const id = store.identity(String(jid))
+  if (!id) throw Object.assign(new Error('Identitas RPG tidak valid.'), { status: 400 })
+  if (hasProfileRow(id)) return { created: false, jid: id }
+  const result = await store.command(`tg-rpg-join:${idempotencyKey || id}`, () => {
+    store.write(id, store.read(id))
+    return { success: true }
+  })
+  return { created: !result?.duplicate, jid: id, duplicate: Boolean(result?.duplicate) }
+}
+
+/**
+ * Kerja (mini game harian): hadiah koin kecil, cooldown 30 menit, dicek di
+ * dalam transaksi engine sehingga dua permintaan bersamaan tidak menggandakan.
+ */
+export async function work(jid, { idempotencyKey, now = Date.now() } = {}) {
+  const store = requireStore()
+  if (!idempotencyKey) throw Object.assign(new Error('ID permintaan wajib untuk kerja.'), { status: 400 })
+  const id = canonical(jid)
+  let outcome = null
+  const result = await store.command(`tg-work:${idempotencyKey}`, () => {
+    const row = store.read(id)
+    const last = Number(row?.cooldowns?.work || 0)
+    if (last && now - last < WORK.cooldownMs) {
+      outcome = { ok: false, reason: 'cooldown', remainingMs: last + WORK.cooldownMs - now, nextAt: new Date(last + WORK.cooldownMs).toISOString() }
+      return { success: false }
+    }
+    // Hadiah deterministik dari menit berjalan: adil, tidak bisa ditebak klien,
+    // dan tetap acak antar sesi.
+    const span = WORK.maxKoin - WORK.minKoin + 1
+    const koin = WORK.minKoin + (Math.floor(now / 60000) * 7919 + id.length * 131) % span
+    row.koin = Number(row.koin || 0) + koin
+    row.exp = Number(row.exp || 0) + WORK.exp
+    row.cooldowns = { ...(row.cooldowns || {}), work: now }
+    store.write(id, row)
+    outcome = { ok: true, koin, exp: WORK.exp, totalKoin: row.koin, totalExp: row.exp }
+    return { success: true }
+  })
+  if (result?.duplicate) return { ok: false, reason: 'duplicate' }
+  return outcome || { ok: false, reason: 'failed' }
+}
+
+/** Hadiah kuis/tebak angka yang benar; juga lewat transaksi engine. */
+export async function reward(jid, { koin = 0, exp = 0, key, reason = 'game' } = {}) {
+  const store = requireStore()
+  if (!key) throw Object.assign(new Error('ID permintaan wajib untuk hadiah.'), { status: 400 })
+  const id = canonical(jid)
+  let outcome = null
+  const result = await store.command(`tg-reward:${key}`, () => {
+    const row = store.read(id)
+    row.koin = Number(row.koin || 0) + Number(koin || 0)
+    row.exp = Number(row.exp || 0) + Number(exp || 0)
+    store.write(id, row)
+    outcome = { ok: true, koin: row.koin, exp: row.exp, reason }
+    return { success: true }
+  })
+  if (result?.duplicate) return { ok: false, reason: 'duplicate' }
+  return outcome || { ok: false, reason: 'failed' }
+}
 
 export function rpgStore() {
   return unifiedRpg()

@@ -17,6 +17,7 @@ export const PERMISSIONS = {
   'telegram.manage': ['owner', 'developer'],
   'telegram.status': ['owner', 'developer', 'admin'],
   'server.read': ['owner', 'developer', 'admin'],
+  'server.panel.manage': ['owner', 'developer'],
   'server.control': ['owner', 'developer'],
   'server.logs': ['owner', 'developer'],
   'stock.read': ['owner', 'developer', 'admin', 'reseller', 'user'],
