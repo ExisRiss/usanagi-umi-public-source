@@ -36,17 +36,20 @@ function inline(rows) {
 
 function menuKeyboard(ctx, router) {
   const rows = []
-  const add = (label, action, payload = null) => rows.push([{ text: label, callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action, payload })}` }])
-  add('📊 Status', 'menu.status')
-  add('👤 Profil', 'menu.profile')
-  if (router.allowed(ctx, 'jadibot')) add('📱 Jadibot', 'menu.jadibot')
-  if (router.allowed(ctx, 'saham')) add('💹 Saham', 'menu.saham')
-  if (router.allowed(ctx, 'rpg')) add('🎮 RPG', 'menu.rpg')
-  if (router.allowed(ctx, 'tourl')) add('🔗 To URL', 'menu.tourl')
-  if (router.allowed(ctx, 'server')) add('🖥 Server', 'menu.server')
-  if (router.allowed(ctx, 'admin')) add('⚙️ Admin', 'menu.admin')
-  if (router.allowed(ctx, 'reseller')) add('🤝 Reseller', 'menu.reseller')
-  add('❓ Bantuan', 'menu.help')
+  // Semua tombol menu memakai satu aksi 'menu.nav' + payload view; handler
+  // inilah yang terdaftar di router (sebelumnya tiap tombol memakai nama aksi
+  // sendiri sehingga router membalas "Aksi tidak tersedia").
+  const add = (label, view) => rows.push([{ text: label, callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view } })}` }])
+  add('📊 Status', 'status')
+  add('👤 Profil', 'profile')
+  if (router.allowed(ctx, 'jadibot')) add('📱 Jadibot', 'jadibot')
+  if (router.allowed(ctx, 'saham')) add('💹 Saham', 'saham')
+  if (router.allowed(ctx, 'rpg')) add('🎮 RPG', 'rpg')
+  if (router.allowed(ctx, 'tourl')) add('🔗 To URL', 'tourl')
+  if (router.allowed(ctx, 'server')) add('🖥 Server', 'server')
+  if (router.allowed(ctx, 'admin')) add('⚙️ Admin', 'admin')
+  if (router.allowed(ctx, 'reseller')) add('🤝 Reseller', 'reseller')
+  add('❓ Bantuan', 'help')
   // Susun dua tombol per baris agar nyaman di layar HP.
   const packed = []
   for (let index = 0; index < rows.length; index += 2) packed.push(rows.slice(index, index + 2).flat())

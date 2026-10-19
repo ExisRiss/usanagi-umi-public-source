@@ -198,3 +198,91 @@ test('rate limit per pengguna menghentikan spam', async () => {
   await router.handleUpdate(ctx, messageUpdate({ updateId: 999, userId: 7007, text: '/ping' }))
   assert.match(ctx.sent.at(-1), /Terlalu banyak permintaan/)
 })
+
+/* ---------------------------------------------------------------- menu */
+import { registerCommands } from '../../lib/platform/telegram/commands.js'
+import { platformDb } from '../../lib/platform/db.js'
+
+function menuHarness({ platformUserId = '4004' } = {}) {
+  const withOwner = env({ TELEGRAM_OWNER_IDS: platformUserId })
+  const identity = resolveContext({ platform: 'telegram', platformUserId, env: withOwner })
+  const router = new CommandRouter({ logger: { log() {}, warn() {}, error() {} } })
+  registerCommands(router, { logger: { log() {}, warn() {}, error() {} } })
+  const ctx = {
+    platform: 'telegram',
+    platformUserId: String(platformUserId),
+    chatId: 99,
+    userId: identity.userId,
+    role: identity.role,
+    displayName: 'Uji',
+    actor: { userId: identity.userId, platform: 'telegram', platformUserId: String(platformUserId) },
+    sent: [],
+    answers: [],
+    send(text, options = {}) { this.sent.push({ text, options }); return Promise.resolve({ message_id: this.sent.length }) },
+    edit() { return Promise.resolve(true) },
+    answerCallback(options = {}) { this.answers.push(String(options.text || '')); return Promise.resolve(true) },
+    sendChatAction() { return Promise.resolve() },
+    downloadFile() { return Promise.resolve({ buffer: Buffer.alloc(0) }) },
+    refreshIdentity() { return identity },
+  }
+  return { router, ctx, identity }
+}
+
+test('setiap tombol menu memakai aksi menu.nav yang benar-benar terdaftar', async () => {
+  await freshDb()
+  const { router, ctx } = menuHarness()
+  await router.commands.get('menu').handler(ctx, { name: 'menu', args: [], text: '' }, null)
+  const message = ctx.sent.at(-1)
+  const buttons = (message.options.reply_markup?.inline_keyboard || []).flat()
+  assert.ok(buttons.length >= 8, 'menu punya tombol navigasi')
+  for (const button of buttons) {
+    const token = String(button.callback_data).replace(/^cb:/, '')
+    const row = platformDb().prepare('SELECT action FROM platform_callbacks WHERE token = ?').get(token)
+    assert.equal(row?.action, 'menu.nav', `tombol ${button.text} memakai aksi menu.nav`)
+    assert.equal(typeof router.callbackActions.get(row.action), 'function', `handler ${row.action} tersedia`)
+  }
+})
+
+test('tombol menu bisa ditekan ulang tanpa "Aksi tidak tersedia"', async () => {
+  await freshDb()
+  const { router, ctx } = menuHarness()
+  await router.commands.get('menu').handler(ctx, { name: 'menu', args: [], text: '' }, null)
+  const buttons = (ctx.sent.at(-1).options.reply_markup?.inline_keyboard || []).flat()
+  const help = buttons.find(button => /Bantuan/.test(button.text))
+  assert.ok(help, 'tombol Bantuan ada')
+
+  const first = await router.handleCallback(ctx, { data: help.callback_data })
+  const second = await router.handleCallback(ctx, { data: help.callback_data })
+  assert.equal(first.handled, true)
+  assert.equal(second.handled, true, 'navigasi menu aman ditekan berulang')
+  assert.equal(ctx.answers.includes('Aksi tidak tersedia.'), false)
+  const denied = listAudit({ action: 'telegram.callback.unhandled' })
+  assert.equal(denied.total, 0, 'tidak ada callback tanpa handler')
+})
+
+test('aksi berdampak (trade/stop/restart) tetap sekali pakai', async () => {
+  await freshDb()
+  const identity = resolveContext({ platform: 'telegram', platformUserId: '5005', env: env() })
+  const token = createCallback({
+    userId: identity.userId, platform: 'telegram', platformUserId: '5005',
+    action: 'stock.trade', payload: { side: 'buy', symbol: 'UMI', lots: 1 },
+  })
+  const first = consumeCallback(token, { userId: identity.userId, platform: 'telegram', platformUserId: '5005' })
+  assert.equal(first.action, 'stock.trade')
+  assert.throws(
+    () => consumeCallback(token, { userId: identity.userId, platform: 'telegram', platformUserId: '5005' }),
+    /sudah dipakai/,
+  )
+})
+
+test('tombol menu lama (menu.<view>) tetap diarahkan ke handler navigasi', async () => {
+  await freshDb()
+  const { router, ctx, identity } = menuHarness()
+  const legacy = createCallback({
+    userId: identity.userId, platform: 'telegram', platformUserId: '4004',
+    action: 'menu.help', payload: null,
+  })
+  const result = await router.handleCallback(ctx, { data: `cb:${legacy}` })
+  assert.equal(result.handled, true)
+  assert.equal(ctx.answers.includes('Aksi tidak tersedia.'), false)
+})

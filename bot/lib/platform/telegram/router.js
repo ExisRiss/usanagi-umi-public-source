@@ -13,6 +13,10 @@ import { audit } from '../audit.js'
 import { can } from '../roles.js'
 
 const CALLBACK_TTL_MS = 10 * 60 * 1000
+// Navigasi menu tidak punya efek samping, jadi tombolnya boleh ditekan ulang
+// selama belum kedaluwarsa. Aksi lain (trade, restart server, stop jadibot)
+// tetap sekali pakai.
+const REUSABLE_CALLBACKS = new Set(['menu.nav'])
 const RATE_WINDOW_MS = 60 * 1000
 const RATE_LIMITS = { default: 30, sensitive: 8, callback: 40 }
 
@@ -57,6 +61,9 @@ export function consumeCallback(token, { userId, platform, platformUserId }) {
   if (String(row.user_id) !== String(userId) || String(row.platform_user_id) !== String(platformUserId) || row.platform !== platform) {
     audit({ actorUserId: userId, platform, platformUserId, action: 'telegram.callback.denied', resource: row.action, result: 'denied', meta: { owner: row.user_id } })
     throw Object.assign(new Error('Tombol ini milik pengguna lain.'), { status: 403 })
+  }
+  if (REUSABLE_CALLBACKS.has(row.action)) {
+    return { action: row.action, payload: row.payload ? JSON.parse(row.payload) : null, reusable: true }
   }
   db.prepare('UPDATE platform_callbacks SET used_at = ? WHERE token = ?').run(Date.now(), row.token)
   return { action: row.action, payload: row.payload ? JSON.parse(row.payload) : null }
@@ -154,13 +161,26 @@ export class CommandRouter {
       const { action, payload } = consumeCallback(token, {
         userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId,
       })
-      const handler = this.callbackActions.get(action)
+      let handler = this.callbackActions.get(action)
+      let resolvedPayload = payload
+      // Kompatibilitas pesan menu lama: tombol versi sebelumnya memakai aksi
+      // menu.<view> (bukan menu.nav), jadi masih bisa diarahkan ke handler yang
+      // sama agar tidak berakhir "Aksi tidak tersedia".
+      if (!handler && action.startsWith('menu.')) {
+        const fallback = this.callbackActions.get('menu.nav')
+        if (fallback) {
+          handler = fallback
+          resolvedPayload = { ...(payload || {}), view: action.slice(5) }
+        }
+      }
       if (!handler) {
+        this.logger.warn?.(`[TELEGRAM] callback tanpa handler: ${action}`)
+        audit({ actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'telegram.callback.unhandled', resource: action, result: 'failed' })
         await ctx.answerCallback({ text: 'Aksi tidak tersedia.' })
         return { handled: false }
       }
       await ctx.answerCallback({ text: '' })
-      await handler(ctx, payload, callback)
+      await handler(ctx, resolvedPayload, callback)
       audit({ actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: `telegram.callback.${action}` })
       return { handled: true }
     } catch (error) {
