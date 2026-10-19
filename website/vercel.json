@@ -25,6 +25,9 @@
     },
     "api/rpg-topup.js": {
       "maxDuration": 60
+    },
+    "api/backup.js": {
+      "maxDuration": 60
     }
   },
   "rewrites": [
@@ -93,6 +96,10 @@
       "destination": "/api/tripay-callback"
     },
     {
+      "source": "/api/backup/(.*)",
+      "destination": "/api/backup?path=$1"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/proxy?path=$1"
     },
@@ -143,6 +150,14 @@
     {
       "source": "/home",
       "destination": "/index.html"
+    },
+    {
+      "source": "/backup",
+      "destination": "/backup.html"
+    },
+    {
+      "source": "/backup/",
+      "destination": "/backup.html"
     },
     {
       "source": "/((?!api/|assets/).*)",

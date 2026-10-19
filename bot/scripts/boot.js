@@ -24,6 +24,84 @@ process.chdir(ROOT)
 const require = createRequire(import.meta.url)
 const log = (...a) => console.log('[boot]', ...a)
 
+/*
+ * /tmp di panel ini adalah tmpfs berukuran 100 MB. Satu video 60 MB + audio
+ * 38 MB sudah cukup membuatnya penuh, lalu SEMUA penulisan (menu, ping,
+ * unduhan) gagal dengan ENOSPC seperti kejadian 2026-10-19 12.59 WITA.
+ * Jadi seluruh temp proses diarahkan ke folder container yang disk-backed.
+ */
+const TMP_ROOT = path.join(ROOT, 'tmp')
+try {
+  fs.mkdirSync(TMP_ROOT, { recursive: true })
+  for (const key of ['TMPDIR', 'TMP', 'TEMP']) process.env[key] = TMP_ROOT
+  log(`tmp: ${TMP_ROOT} (disk-backed)`)
+} catch (error) {
+  log(`tmp: gagal menyiapkan ${TMP_ROOT} (${error.message})`)
+}
+
+/** Hapus isi folder temp yang lebih tua dari maxAgeMs. Aman: hanya berkas lama. */
+function sweepTemp(dir, maxAgeMs, keep) {
+  let removed = 0
+  let bytes = 0
+  let names = []
+  try { names = fs.readdirSync(dir) } catch { return { removed, bytes } }
+  const now = Date.now()
+  for (const name of names) {
+    if (keep && keep.has(name)) continue
+    const target = path.join(dir, name)
+    let stat
+    try { stat = fs.lstatSync(target) } catch { continue }
+    if (now - stat.mtimeMs < maxAgeMs) continue
+    try {
+      fs.rmSync(target, { recursive: true, force: true })
+      removed++
+      if (stat.isFile()) bytes += stat.size
+    } catch {}
+  }
+  return { removed, bytes }
+}
+
+const SWEEP_KEEP = new Set(['node-compile-cache', 'usanagi-waveform'])
+
+/** Folder kerja unduhan (…-job-<ts>-<rand>) boleh dibuang lebih cepat. */
+function sweepJobDirs(dir, maxAgeMs) {
+  let removed = 0
+  let bytes = 0
+  let names = []
+  try { names = fs.readdirSync(dir) } catch { return { removed, bytes } }
+  const now = Date.now()
+  for (const name of names) {
+    if (!/-(job)-\d+-[0-9a-f]{6,}$/.test(name)) continue
+    const target = path.join(dir, name)
+    let stat
+    try { stat = fs.lstatSync(target) } catch { continue }
+    if (!stat.isDirectory() || now - stat.mtimeMs < maxAgeMs) continue
+    try {
+      for (const inner of fs.readdirSync(target)) {
+        try { bytes += fs.statSync(path.join(target, inner)).size } catch {}
+      }
+      fs.rmSync(target, { recursive: true, force: true })
+      removed++
+    } catch {}
+  }
+  return { removed, bytes }
+}
+
+function sweepAllTemp() {
+  const jobs = [sweepTemp(TMP_ROOT, 2 * 60 * 60 * 1000, SWEEP_KEEP), sweepJobDirs(TMP_ROOT, 15 * 60 * 1000)]
+  if (path.resolve('/tmp') !== path.resolve(TMP_ROOT)) {
+    jobs.push(sweepTemp('/tmp', 2 * 60 * 60 * 1000, SWEEP_KEEP), sweepJobDirs('/tmp', 15 * 60 * 1000))
+  }
+  const removed = jobs.reduce((acc, item) => acc + item.removed, 0)
+  const bytes = jobs.reduce((acc, item) => acc + item.bytes, 0)
+  if (removed) log(`tmp: bersihkan ${removed} berkas sisa (${(bytes / 1048576).toFixed(1)} MB)`)
+  try {
+    const free = fs.statfsSync(TMP_ROOT)
+    const availMb = (free.bavail * free.bsize) / 1048576
+    if (availMb < 200) log(`tmp: ruang tersisa ${availMb.toFixed(0)} MB`)
+  } catch {}
+}
+
 /** Paket native yang harus bisa dimuat. */
 const NATIVE = [
   { name: 'better-sqlite3', prebuildArgs: [] },
@@ -149,5 +227,19 @@ for (const dir of ['sessions', 'tmp', 'jadibot']) {
 // Patch dependency source before its first ESM import; idempotent after npm reinstalls.
 try { log('Baileys session wire:', repairBaileysSessions(ROOT)) }
 catch (error) { log('Baileys session compatibility needs review:', error.message) }
+sweepAllTemp()
+const sweepTimer = setInterval(sweepAllTemp, 10 * 60 * 1000)
+sweepTimer.unref?.()
+
+// Restore database yang tertunda diterapkan sebelum modul bot membuka SQLite.
+try {
+  const { backupConfig } = await import(path.join(ROOT, 'lib', 'backup', 'config.js'))
+  const { applyPendingRestore } = await import(path.join(ROOT, 'lib', 'backup', 'restore.js'))
+  const result = applyPendingRestore(backupConfig(ROOT))
+  if (result.applied) log(`restore database tertunda diaktifkan (${result.restoreId})`)
+} catch (error) {
+  log(`gagal memeriksa restore tertunda: ${error.message}`)
+}
+
 log('menyerahkan ke main.js...')
 await import(path.join(ROOT, 'main.js'))

@@ -24,3 +24,6 @@ feature-smoke-results.json
 config.js
 start-bot.sh
 start-bot.js
+
+# symlink node_modules untuk tes lokal
+node_modules

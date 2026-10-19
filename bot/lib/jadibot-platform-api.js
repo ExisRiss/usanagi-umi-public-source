@@ -1,4 +1,5 @@
 import { platformSessions } from './jadibot-platform-state.js'
+import { handleBackupApi } from './backup/api.js'
 import { createRealmHttp } from './realms/http.js'
 import { realmService } from './realms/runtime.js'
 import { getDb } from '../core/awang-sqlite.js'
@@ -656,7 +657,27 @@ function requirePlatformOwner(user) {
   if (!user?.isOwner) throw Object.assign(new Error('Console bot utama hanya untuk owner.'), { status: 403 })
 }
 
+/* Nomor bot utama: utamakan socket utama, lalu nomor pairing tersimpan. */
+function mainBotNumber() {
+  const raw = String(global.conn?.user?.id || global.sock?.user?.id || '')
+  const digits = raw.split('@')[0].split(':')[0].replace(/\D/g, '')
+  if (digits) return normalizeBotNumber(digits)
+  try { return normalizeMainBotNumber(readMainBotState().pairingNumber) } catch { return '' }
+}
+
 function statusFor(number) {
+  if (number && number === mainBotNumber()) {
+    const main = mainBotStatus()
+    return {
+      status: main.status === 'connected' ? 'connected' : main.registered ? 'pending' : 'disconnected',
+      connected: main.status === 'connected',
+      registered: Boolean(main.registered),
+      stored: true,
+      phone: number,
+      botJid: String(global.conn?.user?.id || '') || null,
+      main: true,
+    }
+  }
   const active = hasSubBot(number)
   const creds = path.join(SESSION_DIR, number, 'creds.json')
   let registered = false
@@ -1111,6 +1132,13 @@ async function route(req, res) {
   const url = new URL(req.url, 'http://localhost')
   const pathname = url.pathname.replace(/\/+$/, '') || '/'
 
+  // Sistem backup 10 menit. Prefiks dipisah dari /api/backup/* lama
+  // (backup/list, backup/create, backup/restore) agar fitur lama tetap jalan.
+  // Autentikasi memakai BACKUP_ADMIN_SECRET, bukan sesi Supabase.
+  if (pathname === '/api/backup-system' || pathname.startsWith('/api/backup-system/')) {
+    return handleBackupApi(req, res, pathname, url.searchParams)
+  }
+
   if (pathname === '/api/stats' && req.method === 'GET') {
     // SEC-08: statistik sesi hanya untuk layanan internal (website), bukan publik.
     if (!statsAuthorized(req)) return send(res, 401, { error: 'unauthorized' })
@@ -1203,13 +1231,84 @@ async function route(req, res) {
     platformSessions.assertAvailable(number)
     const db = loadDb()
     const existing = db.sessions[number]
-    if (existing && !user.isOwner && existing.userId !== user.id) throw Object.assign(new Error('Nomor ini sudah dimiliki akun lain.'), { status: 409 })
+    let previousOwner = null
+
+    /*
+     * Nomor bot utama tidak boleh dijalankan sebagai jadibot: dua socket dengan
+     * kredensial yang sama saling menendang (401) dan sesi utama bisa terhapus
+     * (kejadian 2026-10-19: "[JADIBOT] <nomor> disconnected (401)"). Nomor ini
+     * tetap boleh DITAUTKAN ke akun owner, hanya tanpa startSubBot.
+     */
+    const mainNumber = mainBotNumber()
+    if (mainNumber && number === mainNumber) {
+      if (!user.isOwner) throw Object.assign(new Error('Nomor ini adalah nomor bot utama platform dan tidak bisa dipakai sebagai Jadibot.'), { status: 409, code: 'MAIN_BOT_NUMBER' })
+      db.sessions[number] = existing || { sessionId: number, userId: user.id, email: user.email, createdAt: nowIso() }
+      db.sessions[number].userId = user.id
+      db.sessions[number].email = user.email
+      db.sessions[number].updatedAt = nowIso()
+      saveDb()
+      appendSessionLog(number, 'info', `Nomor bot utama ditautkan ke ${user.email}.`)
+      return send(res, 200, {
+        session_id: number, status: 'connected', connected: true, registered: true, main: true,
+        message: 'Nomor bot utama ditautkan. Bot berjalan dari Console Owner, tidak perlu pairing ulang.',
+      })
+    }
+
+    if (existing && !user.isOwner && existing.userId !== user.id) {
+      /*
+       * Nomor yang sesinya sudah MATI (logout 401 / dihapus cleaner) tidak boleh
+       * mengunci pemiliknya selamanya. Dulu registry tetap menyimpan userId lama
+       * sehingga user menerima "Nomor ini sudah dimiliki akun lain" padahal
+       * nomornya belum tertaut di akun mana pun (laporan 2026-10-19).
+       *
+       * Verifikasi tetap terjadi di WhatsApp: pemilik baru harus memasukkan kode
+       * pairing di nomor itu. Sesi lama dibuang supaya mulai bersih.
+       */
+      const sessionPath = path.join(SESSION_DIR, number)
+      let liveRegistered = false
+      try { liveRegistered = Boolean(JSON.parse(fs.readFileSync(path.join(sessionPath, 'creds.json'), 'utf8'))?.registered) } catch {}
+      const liveOwner = hasSubBot(number) || liveRegistered
+      if (!liveOwner) {
+        appendSessionLog(number, 'info', `Ambil alih nomor mati oleh ${user.email} (pemilik lama ${existing.email || existing.userId}).`)
+        previousOwner = { userId: existing.userId, email: existing.email }
+        try { fs.rmSync(sessionPath, { recursive: true, force: true }) } catch {}
+        existing.userId = user.id
+        existing.email = user.email
+        existing.updatedAt = nowIso()
+        saveDb()
+      } else {
+        const masked = String(existing.email || '').replace(/^(.{2})[^@]*(@.*)$/, '$1***$2')
+        console.log(`[JADIBOT-API] tolak pairing ${number.slice(0, 4)}****${number.slice(-3)}: milik ${masked || existing.userId}`)
+        appendSessionLog(number, 'warn', `Pairing ditolak untuk ${user.email}: nomor masih aktif milik ${masked || existing.userId}.`)
+        throw Object.assign(new Error(`Nomor ini sudah dimiliki akun lain${masked ? ` (${masked})` : ''}. Hapus session itu dulu atau hubungi owner.`), { status: 409, code: 'NUMBER_OWNED' })
+      }
+    }
+
     const ownCount = Object.values(db.sessions).filter(row => row.userId === user.id).length
+
     if (!existing && !user.isOwner && ownCount >= (Number(config().maxSessionsPerUser) || 3)) throw Object.assign(new Error('Batas session akun tercapai.'), { status: 403 })
     db.sessions[number] = existing || { sessionId: number, userId: user.id, email: user.email, createdAt: nowIso() }
     db.sessions[number].updatedAt = nowIso()
     saveDb()
-    const result = await startSubBotForApi(number, global.conn)
+    let result
+    try {
+      result = await startSubBotForApi(number, global.conn)
+    } catch (error) {
+      /* Pairing gagal (nomor tidak valid / WhatsApp menolak / timeout): kalau tadi
+       * nomor mati diambil alih, kembalikan kepemilikan supaya tidak "nyangkut"
+       * di akun yang gagal pairing. */
+      if (previousOwner) {
+        const row = loadDb().sessions[number]
+        if (row) {
+          row.userId = previousOwner.userId
+          row.email = previousOwner.email
+          row.updatedAt = nowIso()
+          saveDb()
+        }
+        appendSessionLog(number, 'warn', `Pairing ${user.email} gagal; kepemilikan dikembalikan.`)
+      }
+      throw error
+    }
     appendSessionLog(number, 'info', `Pairing dimulai oleh ${user.email}; status ${result.status || 'pending'}.`)
     return send(res, 200, { ...result, session_id: number })
   }

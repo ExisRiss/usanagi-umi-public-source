@@ -27,6 +27,7 @@ import { installAutoBackup, updateAutoBackupConnection } from './lib/auto-backup
 import { normalizePluginText, storedDefaultPrefix } from './core/awang-prefix-text.js';
 import { startJadibotSessionCleaner } from './lib/jadibot-session-cleaner.js';
 import { startVercelBackupScheduler } from './lib/vercel-backup-scheduler.js';
+import { startBackupSystem } from './lib/backup/service.js';
 import { readMainBotState, writeMainBotState, normalizeMainBotNumber } from './lib/main-bot-config.js';
 import {
     useMultiFileAuthState,
@@ -308,6 +309,8 @@ global.conn.isJadibot = false;
 startJadibotPlatformApi();
 startGameRoomNotifier();
 startVercelBackupScheduler();
+// Sistem backup 10 menit + bot Telegram + REST API /api/backup-system.
+startBackupSystem();
 installAutoBackup(global.conn);
 startJadibotSessionCleaner();
 

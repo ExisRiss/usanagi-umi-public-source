@@ -1,5 +1,24 @@
 # STATUS DEPLOY
 
+## Task 69 — Sistem Backup & Restore 10 Menit (2026-10-19)
+
+| Item | Status |
+|---|---|
+| Scheduler 10 menit di proses bot | **LIVE** — slot 11:40:05Z & seterusnya, catch-up setelah restart |
+| Arsip tar.gz + manifest + checksum | **LIVE** — 3,9 MB/snapshot, verified |
+| Enkripsi AES-256-GCM | **LIVE** — `BACKUP_ENCRYPTION_KEY` di `.secrets/task69-backup.env` |
+| Retensi 144 / 7 / 4 / 3 | **LIVE** — plus hapus salinan eksternal saat kedaluwarsa |
+| Salinan eksternal (Vercel Blob privat) | **LIVE** — mode hourly, unggah + HEAD verify (sha256 unduhan identik) |
+| REST API `/api/backup-system/*` | **LIVE** — 22 endpoint, `x-backup-secret` |
+| Dashboard `/backup` | **LIVE** — Vercel `dpl_8mdPWqRVMV7aeW3M1xs2WGLUWQp5`, login owner via Supabase |
+| Restore + konfirmasi 2 langkah | **LIVE** — dry-run produksi 3/3 checksum cocok |
+| Bot Telegram | **BLOCKED** — `TELEGRAM_BOT_TOKEN` belum diisi |
+| Tes otomatis | **47 lulus / 0 gagal** |
+| Commit | `TASK69_SHA` (lihat git log) |
+
+Kredensial: `.secrets/task69-backup.env` (chmod 600, tidak di-commit).
+Docs: `docs/BACKUP-SYSTEM.md`, `docs/BACKUP-RESTORE.md`, `docs/BACKUP-API.md`, `docs/BACKUP-TELEGRAM.md`.
+
 ## Task 68 — Akses penuh owner Jadibot + kudeta (2026-10-19)
 
 | Item | Status |
