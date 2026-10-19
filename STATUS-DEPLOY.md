@@ -1609,3 +1609,12 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - Deploy: 19 file `lib/platform/**` + `chats.js` diunggah, `.platform.env` diperbarui, restart 204, log `[TELEGRAM] @AlzRiss_bot polling aktif (bot main)`. Website produksi dideploy ulang (`/platform` 200, `assets/platform.js` memuat loader RPG & Saham).
 - Arsip workspace: `umi-source-20261019-1546.tar.gz` (37 MB) dikirim ke chat pribadi owner lewat `sendDocument` — diterima Telegram, `file_size 38599773`, `file_id` tercatat. Arsip grup "BackUp" menunggu `chat_id`: bot harus ditambahkan ke grup dan mengirim satu pesan di sana agar `platform_chats` mencatatnya.
 - Workspace dibersihkan (~200 MB artefak lama: `restore/`, `asset-src/`, `deploy-check/`, `nuclei-templates/`, `image-search/`, `live*/`, `monitor-bot/`, `_asset_preview/`, preview HTML). Repo kerja dan `.secrets` sengaja dipertahankan karena masih dipakai; seluruh source sudah ada di GitHub + arsip Telegram.
+
+### Arsip workspace ke grup Telegram BackUp (2026-10-19)
+
+- Grup "BackUp" sudah terdeteksi bot: `chat_id -1004393450575`, tipe `supergroup`, judul `BackUp` (tercatat di `platform_chats`, skema v3). Bot punya izin `can_send_documents`.
+- Arsip pertama terkirim: `umi-workspace-20261019-155755.tar.gz` — **44 131 471 byte**, `message_id 22`, `file_id BQACAgUAAyEGAAMBBd68TwADFmrWPgxIhb2wgIql3eGGICgVubLgAAItJgACrMaxVjvsE2SEY6BvPQQ`.
+- Isi arsip: 4 899 entri (seluruh workspace: repo, docs, laporan, `.secrets`), tanpa `.git` dan `node_modules`. Kredensial ikut karena grup privat (owner + bot) dan tujuannya agar sesi berikutnya bisa lanjut tanpa kehilangan akses; gunakan `--no-secrets` bila tidak diinginkan.
+- Alat permanen: `tools/push-workspace-backup.mjs`. Perintah: `node tools/push-workspace-backup.mjs` (default kirim ke BackUp, retensi lokal 3 arsip, `manifest.json` dicatat). Opsi `--no-secrets`, `--chat`, `--root`.
+- ID owner `8932455242` sudah berstatus **owner** di `platform_users` (role dari `TELEGRAM_OWNER_IDS` naik otomatis). `7872304892` akan menjadi owner pada pesan pertamanya.
+- Kredensial panel bot disimpan di `.secrets/panel-bot.env` (600) agar tidak perlu diminta ulang saat workspace reset.
