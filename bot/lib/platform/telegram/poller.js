@@ -112,7 +112,7 @@ export class TelegramAdapter {
       env: this.env,
       publicBaseUrl: this.baseUrl,
       sendBanner: options => sendBanner({ ...ctx, client, env: this.env, botId: this.botRowId }, options),
-      deleteMessage: () => client.deleteMessage(chatId, message?.message_id).catch(() => {}),
+      deleteMessage: () => client.deleteMessage(chatId, message?.message_id).then(() => true).catch(() => false),
       actor: { userId: identity.userId, platform: 'telegram', platformUserId: String(from.id) },
       send: (text, options = {}) => client.sendMessage(chatId, text, { ...options, disable_web_page_preview: true }),
       edit: (messageId, text, options = {}) => client.editMessageText(chatId, messageId, text, options),

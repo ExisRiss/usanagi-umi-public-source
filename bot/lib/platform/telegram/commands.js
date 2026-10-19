@@ -729,7 +729,9 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
           return ctx.send('Format: <code>/panel set url|ptlc|ptla|server &lt;nilai&gt;</code>')
         }
         // Pesan berisi kunci dihapus lebih dulu supaya tidak tertinggal di riwayat grup.
-        if (['ptlc', 'ptla'].includes(field)) await ctx.deleteMessage?.()
+        // Bila bot bukan admin grup, Telegram menolak; pengguna diberi tahu.
+        let keyVisible = false
+        if (['ptlc', 'ptla'].includes(field)) keyVisible = (await ctx.deleteMessage?.()) === false
         try {
           const patch = field === 'url' ? { url: value }
             : field === 'ptlc' || field === 'client' ? { clientKey: value }
@@ -747,7 +749,8 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
             `API klien : ${info.clientKeySet ? `<code>${escapeHtml(info.clientKeyMasked || '')}</code>` : '<i>belum</i>'}`,
             `Slot 1    : ${info.configured ? '✅ siap dipakai' : '⚠️ belum lengkap'}`,
             '', info.configured ? 'Cek koneksi: <code>/panel test</code>' : 'Lengkapi url + ptlc + server, lalu <code>/panel test</code>.',
-          ].join('\n'))
+            keyVisible ? '\n⚠️ Pesan berisi kunci <b>tidak bisa dihapus</b> (bot belum admin grup). Hapus manual sekarang.' : '',
+          ].filter(Boolean).join('\n'))
         } catch (error) {
           if (['ptlc', 'ptla'].includes(field)) await ctx.deleteMessage?.()
           return ctx.send(`❌ ${escapeHtml(error.message || 'Gagal menyimpan.')}`)
