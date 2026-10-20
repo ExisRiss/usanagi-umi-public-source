@@ -107,7 +107,15 @@ async function createDeployment() {
     })
 }
 
-await checkBackendConfiguration()
+const SKIP_PREFLIGHT = args.includes('--skip-preflight')
+if (SKIP_PREFLIGHT) {
+    // Sengaja eksplisit: preflight backend mencegah deploy dengan origin bot
+    // yang salah. Dilewati HANYA saat backend mati total (mis. tunnel Cloudflare
+    // 530) dan yang di-deploy hanya aset statis/tema.
+    console.warn('⚠️  preflight backend DILEWATI (--skip-preflight): deploy hanya aman untuk perubahan statis.')
+} else {
+    await checkBackendConfiguration()
+}
 let dep = await createDeployment()
 let missing = dep.json?.missing_files || dep.json?.error?.missing_files || dep.json?.error?.missing || []
 if (missing.length) {
@@ -134,7 +142,7 @@ for (let i = 0; i < 60; i++) {
     const st = await call(`/v13/deployments/${dep.json.id}?teamId=${TEAM}`)
     const state = st.json?.readyState || st.json?.status
     process.stdout.write(` ${state || '?'}`)
-    if (state === 'READY') { await checkLiveWebsite(); console.log(`\n✅ Produksi READY: https://${PROJECT}.vercel.app (${dep.json.url || ''})`); process.exit(0) }
+    if (state === 'READY') { if (!SKIP_PREFLIGHT) await checkLiveWebsite(); console.log(`\n✅ Produksi READY: https://${PROJECT}.vercel.app (${dep.json.url || ''})`); process.exit(0) }
     if (state === 'ERROR' || state === 'CANCELED') { console.error('\n❌ deployment gagal:', JSON.stringify(st.json?.error || {}).slice(0, 400)); process.exit(1) }
 }
 console.error('\n⏱️ timeout menunggu deployment')
