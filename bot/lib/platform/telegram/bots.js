@@ -32,6 +32,11 @@ export function maskRecord(row) {
     updatedAt: new Date(row.updated_at).toISOString(),
     tokenMasked: row.token_cipher ? mask(`bot:${'*'.repeat(20)}`) : '',
     tokenSet: Boolean(row.token_cipher),
+    // Sambungan ke bot WhatsApp milik pemilik bot (nomor jadibot/main).
+    waNumber: row.wa_number ? String(row.wa_number).replace(/^(\d{4})\d+(\d{3})$/, '$1***$2') : null,
+    waNumberRaw: row.wa_number ? String(row.wa_number) : null,
+    waLinkedAt: row.wa_linked_at ? new Date(row.wa_linked_at).toISOString() : null,
+    linked: Boolean(row.wa_number),
   }
 }
 
@@ -44,6 +49,7 @@ export async function saveBot({
   token = null,
   label = 'Bot Telegram',
   ownerUserId = 'system',
+  waNumber = undefined,
   scope = 'platform',
   mode = 'polling',
   enabled = null,
@@ -103,6 +109,13 @@ export async function saveBot({
       webhook_url=excluded.webhook_url, status=excluded.status, updated_at=excluded.updated_at`)
     .run({ ...next, updated_at: at })
 
+  // Sambungan ke bot WhatsApp: hanya disimpan kalau nomornya valid (angka).
+  if (waNumber !== undefined) {
+    const digits = String(waNumber || '').replace(/\D/g, '')
+    platformDb().prepare('UPDATE telegram_bots SET wa_number = ?, wa_linked_at = ? WHERE id = ?')
+      .run(digits || null, digits ? Date.now() : null, botKey)
+  }
+
   if (info) setHealth(`telegram:${botKey}`, 'ok', `@${info.username}`)
   audit({
     actorUserId: ownerUserId,
@@ -126,6 +139,33 @@ export function listBots({ ownerUserId = null } = {}) {
     ? db.prepare('SELECT * FROM telegram_bots WHERE owner_user_id = ? ORDER BY created_at').all(String(ownerUserId))
     : db.prepare('SELECT * FROM telegram_bots ORDER BY created_at').all()
   return rows.map(maskRecord)
+}
+
+/** Satu konfigurasi bot tersamar (untuk cek kepemilikan di API). */
+export function getBot(id) {
+  return maskRecord(getBotRow(id))
+}
+
+/**
+ * Hubungkan bot Telegram ke bot WhatsApp milik pengguna.
+ * Nomor harus milik pengguna itu sendiri (dicek pemanggil lewat daftar sesi),
+ * tidak menerima nomor mentah dari klien tanpa verifikasi.
+ */
+export function linkWaNumber(id, waNumber, actor = {}) {
+  const row = getBotRow(id)
+  if (!row) throw Object.assign(new Error('Konfigurasi bot tidak ditemukan.'), { status: 404 })
+  const digits = String(waNumber || '').replace(/\D/g, '')
+  if (digits && (digits.length < 7 || digits.length > 15)) {
+    throw Object.assign(new Error('Nomor bot WhatsApp tidak valid.'), { status: 400 })
+  }
+  platformDb().prepare('UPDATE telegram_bots SET wa_number = ?, wa_linked_at = ?, updated_at = ? WHERE id = ?')
+    .run(digits || null, digits ? Date.now() : null, Date.now(), String(id))
+  audit({
+    actorUserId: actor.userId, platform: actor.platform, platformUserId: actor.platformUserId,
+    action: digits ? 'telegram.bot.link-wa' : 'telegram.bot.unlink-wa', resource: String(id),
+    meta: { number: digits ? digits.replace(/^(\d{4})\d+(\d{3})$/, '$1***$2') : null },
+  })
+  return maskRecord(getBotRow(id))
 }
 
 export function getBotRow(id) {

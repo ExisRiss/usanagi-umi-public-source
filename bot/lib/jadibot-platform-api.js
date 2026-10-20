@@ -184,6 +184,13 @@ async function routeOwnerConsole(req, res, pathname) {
   }
   if (pathname === '/api/owner-console/status' && req.method === 'GET') return send(res, 200, mainBotStatus())
   if (pathname === '/api/owner-console/logs' && req.method === 'GET') return send(res, 200, ownerConsoleOutput(url.searchParams.get('cursor')))
+  // Log error terstruktur (data/errors/*.jsonl) — dipakai agen/owner untuk
+  // membaca error tanpa menebak dari stdout yang cepat tertimpa.
+  if (pathname === '/api/owner-console/errors' && req.method === 'GET') {
+    const { readRecentErrors } = await import('./error-hub.js')
+    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get('limit')) || 20))
+    return send(res, 200, { ok: true, ...readRecentErrors({ limit, day: url.searchParams.get('day') || null }) })
+  }
   if (pathname === '/api/owner-console/input' && req.method === 'POST') {
     const input = String((await bodyJson(req)).input ?? '')
     if (!input || input.length > 4096 || input.includes(' ')) throw Object.assign(new Error('Input console tidak valid.'), { status: 400 })
@@ -575,7 +582,7 @@ function ownedSession(user, number) {
   return session
 }
 
-function mainBotStatus() {
+export function mainBotStatus() {
   const registered = Boolean(global.conn?.authState?.creds?.registered)
   const connection = ['open', 'connecting', 'close'].includes(global.stopped) ? global.stopped : 'unknown'
   return {

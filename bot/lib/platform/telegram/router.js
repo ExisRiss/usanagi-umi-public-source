@@ -11,6 +11,7 @@ import crypto from 'node:crypto'
 import { platformDb } from '../db.js'
 import { audit } from '../audit.js'
 import { can } from '../roles.js'
+import { recordError } from '../../error-hub.js'
 
 const CALLBACK_TTL_MS = 10 * 60 * 1000
 // Navigasi menu tidak punya efek samping, jadi tombolnya boleh ditekan ulang
@@ -155,6 +156,18 @@ export class CommandRouter {
         action: `telegram.command.${parsed.name}`, result: 'failed',
         meta: { status, error: String(error?.message || error).slice(0, 200) },
       })
+      // Kegagalan nyata (bukan rate limit) dikirim ke pusat error: log berkas +
+      // notifikasi Telegram owner, dedupe 10 menit.
+      if (status !== 429) {
+        recordError(error, {
+          source: 'telegram.command',
+          command: parsed.name,
+          args: parsed.args || [],
+          scope: `telegram:${ctx.botId || ''}`,
+          chat: String(ctx.chatId || ''),
+          isGroup: ctx.chatType ? ctx.chatType !== 'private' : false,
+        }).catch(() => {})
+      }
       await ctx.send(status === 429
         ? `⏳ ${error.message}`
         : `❌ Perintah gagal.\n<code>${escapeHtml(String(error?.message || error).slice(0, 300))}</code>`)

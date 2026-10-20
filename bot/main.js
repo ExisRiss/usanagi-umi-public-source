@@ -30,6 +30,7 @@ import { startVercelBackupScheduler } from './lib/vercel-backup-scheduler.js';
 import { startBackupSystem } from './lib/backup/service.js';
 import { startPlatform, stopPlatform } from './lib/platform/index.js';
 import { readMainBotState, writeMainBotState, normalizeMainBotNumber } from './lib/main-bot-config.js';
+import { installErrorHooks } from './lib/error-hub.js';
 import {
     useMultiFileAuthState,
     Browsers,
@@ -71,6 +72,17 @@ const __dirname = global.__dirname(import.meta.url);
 global.opts = global.opts || {};
 global.prefix = global.prefix || /^[./#!]/;
 global.stopped = false;
+
+/* ============================================================
+ * PUSAT ERROR (log berkas + notifikasi Telegram)
+ * Dipasang paling awal supaya error saat boot pun terlaporkan.
+ * ============================================================ */
+try {
+    installErrorHooks();
+    console.log(chalk.gray('🧯 Pusat error aktif: data/errors/*.jsonl + notifikasi Telegram.'));
+} catch (error) {
+    console.log(chalk.yellow('Pusat error gagal dipasang:'), error?.message);
+}
 
 /* ============================================================
  * CONFIG
@@ -455,6 +467,9 @@ global.requestPairing = async function() {
         // Pairing code is intentionally printed only to the live Pterodactyl
         // console so the owner can enter it in WhatsApp; it is never persisted.
         console.log(`\nPAIRING CODE: ${code}\n`);
+        // Disimpan hanya di memori (tidak ke berkas/log) supaya owner bisa
+        // membacanya dari halaman Bot Utama tanpa membuka konsol panel.
+        global.lastPairingCode = { code, at: Date.now() };
         console.log(chalk.green('✅ Buka WhatsApp → Perangkat tertaut → Tautkan dengan nomor telepon.\n'));
     } catch (error) {
         global.pairingRequested = false;
@@ -631,6 +646,8 @@ async function connectionUpdate(update) {
     }
 
     if (isOnline === true) console.log(chalk.green('Status Aktif'));
+    // Kode pairing hanya hidup sampai perangkat benar-benar tertaut.
+    if (isOnline === true && global.lastPairingCode) global.lastPairingCode = null;
     else if (isOnline === false) console.log(chalk.red('Status Mati'));
 
     if (receivedPendingNotifications) console.log(chalk.yellow('Menunggu Pesan Baru'));

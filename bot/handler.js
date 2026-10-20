@@ -12,6 +12,7 @@ import { smsg } from './lib/simple.js';
 import { generateWAMessageFromContent, proto } from '@rexxhayanasi/elaina-baileys'
 import { format } from 'util';
 import { reportPluginError } from './lib/error-report.js';
+import { recordError } from './lib/error-hub.js';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import fs, { unwatchFile, watchFile } from 'fs';
@@ -894,8 +895,9 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 						// Kirim juga ke halaman Feedback di website supaya jejaknya tidak hilang
 						// bersama log container. Dijalankan lebih dulu (tanpa menunggu) agar tidak
 						// menahan balasan ke pengguna; laporan yang sama digabung dalam 10 menit.
-						reportPluginError({
-							error: e,
+						// Satu pintu: log berkas + notifikasi Telegram + laporan Feedback.
+						recordError(e, {
+							source: 'plugin',
 							plugin: m.plugin,
 							command,
 							prefix: usedPrefix,

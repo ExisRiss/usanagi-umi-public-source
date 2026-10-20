@@ -19,6 +19,9 @@ import { audit } from '../audit.js'
 import { rpgJidFor } from '../rpg.js'
 import { findItem, handlerOf } from './catalog.js'
 import { storeMedia, mediaUrl } from '../media.js'
+import { getBotRow } from './bots.js'
+import { runWithBotConnection } from '../../bot-connection-context.js'
+import { recordError } from '../../error-hub.js'
 
 const COMMAND_TIMEOUT_MS = 45000
 const MAX_TEXT = 3800
@@ -560,11 +563,19 @@ export async function runPluginOnTelegram(ctx, parsed, { plugins = globalThis.pl
     __telegram: true,
   }
 
+  // Bot Telegram milik pengguna yang sudah dihubungkan ke bot WhatsApp-nya:
+  // plugin yang memakai `global.conn` harus berjalan di socket WhatsApp itu,
+  // bukan di bot utama. Tanpa socket hidup, tetap jalan di konteks Telegram.
+  const linkedNumber = (() => {
+    try { return getBotRow(ctx.botId)?.wa_number || null } catch { return null }
+  })()
+  const waConn = linkedNumber ? globalThis.jadibotConns?.get(linkedNumber) || null : null
+
   const started = Date.now()
   let timer = null
   try {
     await Promise.race([
-      Promise.resolve(handler(m, options)),
+      Promise.resolve(waConn ? runWithBotConnection(waConn, () => handler(m, options)) : handler(m, options)),
       new Promise((_, reject) => {
         timer = setTimeout(() => reject(Object.assign(new Error('Fitur tidak selesai dalam 45 detik.'), { timeout: true })), COMMAND_TIMEOUT_MS)
         timer.unref?.()
@@ -578,6 +589,18 @@ export async function runPluginOnTelegram(ctx, parsed, { plugins = globalThis.pl
   } catch (error) {
     const raw = String(error?.message || error || 'gagal')
     const waOnly = /WhatsApp|socket|Baileys|grup|group|whatsapp/i.test(raw)
+    // Error nyata (bukan sekadar "fitur ini khusus WhatsApp") wajib sampai ke owner.
+    if (!waOnly) {
+      recordError(error, {
+        source: 'telegram.plugin',
+        plugin: item.key,
+        command: name,
+        args: parsed.args || [],
+        scope: `telegram:${ctx.botId || ''}`,
+        chat: String(ctx.chatId || ''),
+        isGroup: ctx.chatType ? ctx.chatType !== 'telegram' && ctx.chatType !== 'private' : false,
+      }).catch(() => {})
+    }
     await ctx.send(waOnly
       ? `⚠️ <b>/${name}</b> butuh fitur WhatsApp yang tidak ada di Telegram.\nCoba dari bot WhatsApp.`
       : `❌ <b>/${name}</b> gagal.\n<code>${waToHtml(raw).slice(0, 300)}</code>`)

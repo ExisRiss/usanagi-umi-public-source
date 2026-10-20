@@ -144,7 +144,10 @@
   function can(permission) { return state.permissions.includes(permission) }
 
   const NAV_PERMISSION = {
-    telegram: 'telegram.status',
+    // Semua pengguna boleh membuka Telegram untuk bot miliknya sendiri;
+    // isi tabel dibatasi backend (scope 'own').
+    telegram: 'telegram.own',
+    mainbot: 'mainbot.manage',
     servers: 'server.read',
     users: 'platform.users.read',
     audit: 'platform.audit.read',
@@ -169,6 +172,7 @@
   const TITLES = {
     dashboard: ['Ringkasan', 'Satu backend, satu sumber data, dua antarmuka.'],
     telegram: ['Telegram', 'Konfigurasi bot, validasi token, dan status koneksi.'],
+    mainbot: ['Bot Utama', 'Nomor bebas (nomor biasa boleh) asal pairing di bot utama. Khusus owner.'],
     servers: ['Server', 'Maksimum 10 slot. Slot kosong tidak dipantau.'],
     rpg: ['RPG', 'Profil dan papan peringkat dari mesin RPG yang sama dengan WhatsApp.'],
     saham: ['Saham', 'Pasar dari service website yang sama — tanpa harga karangan.'],
@@ -193,6 +197,7 @@
     try {
       if (view === 'dashboard') await loadDashboard()
       if (view === 'telegram') await loadBots()
+      if (view === 'mainbot') await loadMainBot()
       if (view === 'servers') await loadServers()
       if (view === 'rpg') await loadRpg()
       if (view === 'saham') await loadSaham()
@@ -270,22 +275,46 @@
   }
 
   /* ------------------------------------------------------------ telegram */
+  /* Kolom "Bot WhatsApp": hubungkan bot Telegram ini ke bot WhatsApp milik
+     akun yang sedang masuk. Nomor diambil dari sesi jadibot akun itu sendiri,
+     jadi pengguna tidak bisa mengetik nomor milik orang lain. */
+  function waLinkCell(bot) {
+    if (bot.linked) {
+      return `<span class="badge ${bot.waOnline ? 'ok' : 'warn'}">${bot.waOnline ? 'online' : 'offline'}</span><br>
+        <small class="mono">${esc(bot.waNumber || '—')}</small>
+        <div><button class="btn btn-sm btn-ghost" data-link="${esc(bot.id)}" data-number="">Lepas</button></div>`
+    }
+    const sessions = state.botSessions || []
+    if (sessions.length) {
+      return `<select data-linkpick="${esc(bot.id)}">
+          <option value="">pilih bot WhatsApp…</option>
+          ${sessions.map(item => `<option value="${esc(item.number)}">${esc(item.masked || item.number)}</option>`).join('')}
+        </select>
+        <div><button class="btn btn-sm" data-link="${esc(bot.id)}" data-pick="1">Hubungkan</button></div>`
+    }
+    return `<input data-linkpick="${esc(bot.id)}" placeholder="62xxxxxxxxxx" inputmode="numeric" maxlength="15">
+      <div><button class="btn btn-sm" data-link="${esc(bot.id)}" data-pick="1">Hubungkan</button></div>
+      <small class="muted">Belum ada bot WhatsApp aktif di akun ini.</small>`
+  }
+
   async function loadBots() {
     const data = await api('telegram/bots')
     const bots = data.items || []
+    state.botSessions = data.sessions || []
     if (!bots.length) {
       $('#botTable').innerHTML = '<div class="empty">Belum ada bot. Tambahkan token dari BotFather untuk memulai.</div>'
       return
     }
     $('#botTable').innerHTML = `
       <table>
-        <thead><tr><th>Bot</th><th>Status</th><th>Mode</th><th>Token</th><th>Diperbarui</th><th>Aksi</th></tr></thead>
+        <thead><tr><th>Bot</th><th>Status</th><th>Mode</th><th>Bot WhatsApp</th><th>Token</th><th>Diperbarui</th><th>Aksi</th></tr></thead>
         <tbody>${bots.map(bot => `
           <tr>
             <td><strong>${esc(bot.label)}</strong><br><small class="mono">@${esc(bot.username || '—')} · ${esc(bot.botId || '—')}</small></td>
             <td><span class="badge ${bot.status === 'online' ? 'ok' : ['error', 'revoked', 'unauthorized'].includes(bot.status) ? 'bad' : 'warn'}">${esc(bot.status)}</span>
               ${bot.lastError ? `<br><small class="muted">${esc(bot.lastError).slice(0, 70)}</small>` : ''}</td>
             <td>${esc(bot.mode)}${bot.enabled ? ' · aktif' : ' · nonaktif'}</td>
+            <td>${waLinkCell(bot)}</td>
             <td><small class="mono">${esc(bot.tokenMasked || '—')}</small></td>
             <td><small>${when(bot.updatedAt)}</small></td>
             <td class="actions">
@@ -295,6 +324,31 @@
             </td>
           </tr>`).join('')}</tbody>
       </table>`
+  }
+
+  async function linkBot(id, number) {
+    const result = await api(`telegram/bots/${id}/link`, { method: 'POST', body: { number } })
+    toast(result.bot?.linked ? `Bot dihubungkan ke ${result.bot.waNumber}.` : 'Sambungan bot WhatsApp dilepas.')
+    await loadBots()
+  }
+
+  /* ------------------------------------------------------------ bot utama */
+  async function loadMainBot() {
+    const data = await api('main-bot')
+    const badge = { connected: 'ok', registered: 'ok', pairing: 'warn', unpaired: 'bad' }[data.status] || 'warn'
+    $('#mainBotStatus').innerHTML = `
+      <dl class="kv">
+        <dt>Status</dt><dd><span class="badge ${badge}">${esc(data.status)}</span></dd>
+        <dt>Nomor tersimpan</dt><dd><span class="mono">${esc(data.pairing_number_masked || '—')}</span></dd>
+        <dt>Socket siap</dt><dd>${data.socket_ready ? 'ya' : 'belum'}</dd>
+        <dt>Pairing aktif</dt><dd>${data.pairing_active ? 'ya — kirim kode dari WhatsApp' : 'tidak'}</dd>
+        <dt>Runtime</dt><dd>${data.runtimeReady ? 'siap menerima nomor' : 'belum siap'}</dd>
+      </dl>
+      ${data.pairing_code ? `<p>Kode pairing: <b class="mono" style="font-size:20px;letter-spacing:2px">${esc(data.pairing_code)}</b></p>` : ''}
+      ${data.pairing_active ? '<p class="muted">Buka WhatsApp di nomor itu → Perangkat tertaut → Tautkan perangkat → <b>Tautkan dengan nomor telepon</b>, lalu masukkan kode di atas (juga tercetak di konsol panel). Kode berlaku beberapa menit; kalau kedaluwarsa, simpan nomor lagi.</p>' : ''}
+      ${!data.runtimeReady ? '<p class="muted">Runtime pairing belum siap. Coba muat ulang halaman ini beberapa saat lagi.</p>' : ''}`
+    const form = $('#mainBotForm')
+    if (form) form.elements.number.value = ''
   }
 
   async function botAction(id, action) {
@@ -675,11 +729,51 @@
     })
 
     $('#botTable').addEventListener('click', async event => {
+      // Hubungkan / lepas bot WhatsApp milik akun ini.
+      const linker = event.target.closest('[data-link]')
+      if (linker) {
+        const id = linker.dataset.link
+        let number = linker.dataset.number ?? ''
+        if (linker.dataset.pick === '1') {
+          const field = document.querySelector(`[data-linkpick="${id}"]`)
+          number = String(field?.value || '').replace(/\D/g, '')
+          if (!number) return toast('Pilih atau isi nomor bot WhatsApp dulu.', true)
+        } else if (!(await confirmDialog('Lepas sambungan bot WhatsApp?', 'Bot Telegram tetap hidup, hanya tautannya yang dihapus.'))) {
+          return
+        }
+        linker.disabled = true
+        try { await linkBot(id, number) } catch (error) { toast(error.message, true) } finally { linker.disabled = false }
+        return
+      }
       const button = event.target.closest('[data-bot]')
       if (!button) return
       button.disabled = true
       try { await botAction(button.dataset.bot, button.dataset.act) } catch (error) { toast(error.message, true) } finally { button.disabled = false }
     })
+
+    // Nomor bot utama: nomor biasa boleh, pairing dilakukan di bot utama.
+    const mainForm = $('#mainBotForm')
+    if (mainForm) {
+      mainForm.addEventListener('submit', async event => {
+        event.preventDefault()
+        const form = event.currentTarget
+        const button = form.querySelector('button[type="submit"]')
+        const number = String(form.elements.number.value || '').replace(/\D/g, '')
+        if (number.length < 8) return toast('Nomor terlalu pendek.', true)
+        button.disabled = true
+        button.textContent = 'Menyimpan…'
+        try {
+          const result = await api('main-bot/number', { method: 'POST', body: { number } })
+          toast(`Nomor disimpan (${result.pairing_number_masked || '—'}). Pairing dimulai.`)
+          await loadMainBot()
+        } catch (error) {
+          toast(error.message, true)
+        } finally {
+          button.disabled = false
+          button.textContent = 'Simpan & pairing'
+        }
+      })
+    }
 
     $('#serverTable').addEventListener('click', async event => {
       if (event.target.closest('#cancelSlotForm')) { $('#slotForm').hidden = true; return }

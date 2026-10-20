@@ -205,6 +205,10 @@ export function migrate(db = getDb()) {
     ensureColumn(db, 'platform_identities', 'whatsapp_jid', 'TEXT')
     ensureColumn(db, 'platform_identities', 'username', 'TEXT')
     ensureColumn(db, 'platform_users', 'email', 'TEXT')
+    // Bot Telegram milik pengguna bisa dihubungkan ke bot WhatsApp miliknya
+    // sendiri (nomor jadibot). Migrasi aditif, bukan tabel baru.
+    ensureColumn(db, 'telegram_bots', 'wa_number', 'TEXT')
+    ensureColumn(db, 'telegram_bots', 'wa_linked_at', 'INTEGER')
   })()
   return { version: Math.max(current, ...MIGRATIONS.map(item => item.version)), applied }
 }

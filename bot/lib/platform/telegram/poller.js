@@ -20,6 +20,7 @@ import { registerCommands, handleMediaMessage } from './commands.js'
 import { recordChat } from '../chats.js'
 import { sendBanner } from './banner.js'
 import { runPluginOnTelegram } from './plugin-bridge.js'
+import { recordError } from '../../error-hub.js'
 
 const MAX_BACKOFF_MS = 60000
 const BASE_BACKOFF_MS = 1000
@@ -159,6 +160,13 @@ export class TelegramAdapter {
       const message = redact(error.message || String(error), this.token)
       this.logger.error?.('[TELEGRAM] update gagal:', message)
       audit({ actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'telegram.update.error', result: 'failed', meta: { error: message.slice(0, 200), updateId: update.update_id } })
+      // Kirim ke pusat error: log berkas + notifikasi Telegram owner.
+      recordError(error, {
+        source: 'telegram.update',
+        scope: `telegram:${this.info?.username || this.botRowId}`,
+        chat: String(ctx.chatId || ''),
+        isGroup: ctx.chatType ? ctx.chatType !== 'private' : false,
+      }).catch(() => {})
       return { error: message }
     }
   }
@@ -200,7 +208,16 @@ export class TelegramAdapter {
         const message = redact(error.message || String(error), this.token)
         this.logger.warn?.(`[TELEGRAM] polling error (${message}); coba lagi ${Math.round(wait / 1000)}s.`)
         updateBotStatus(this.botRowId, error.status === 401 ? 'revoked' : 'error', message)
-        if (error.status === 401) break // token dicabut: berhenti, jangan spam
+        if (error.status === 401) {
+          // Token dicabut = butuh tindakan manusia, jadi wajib sampai ke owner.
+          recordError(error, {
+            source: 'telegram.polling',
+            scope: `telegram:${this.info?.username || this.botRowId}`,
+            command: 'getUpdates',
+            force: true,
+          }).catch(() => {})
+          break // token dicabut: berhenti, jangan spam
+        }
         await sleep(wait)
         this.backoff = Math.min(MAX_BACKOFF_MS, Math.max(BASE_BACKOFF_MS, this.backoff * 2))
       }

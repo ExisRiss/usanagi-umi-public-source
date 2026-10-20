@@ -54,5 +54,16 @@ test('hanya owner yang boleh memberi role owner; developer hanya menurunkan', ()
 test('daftar izin per role konsisten', () => {
   assert.ok(permissionsOf('owner').length > permissionsOf('developer').length)
   assert.ok(permissionsOf('developer').length > permissionsOf('admin').length)
-  assert.deepEqual(permissionsOf('user').sort(), ['media.delete.own', 'media.upload', 'rpg.read', 'session.own', 'stock.read', 'stock.trade'].sort())
+  // Batch 13: pengguna biasa boleh menghubungkan bot Telegram miliknya sendiri
+  // (telegram.own), tetapi tetap tidak boleh menyentuh bot platform.
+  assert.deepEqual(permissionsOf('user').sort(), [
+    'media.delete.own', 'media.upload', 'rpg.read', 'session.own',
+    'stock.read', 'stock.trade', 'telegram.own',
+  ].sort())
+  for (const permission of ['telegram.manage', 'telegram.status', 'mainbot.manage', 'platform.users.read', 'platform.audit.read']) {
+    assert.equal(can('user', permission), false, `pengguna biasa tidak boleh punya ${permission}`)
+  }
+  // Nomor bot utama = khusus owner.
+  assert.equal(can('owner', 'mainbot.manage'), true)
+  assert.equal(can('developer', 'mainbot.manage'), false)
 })

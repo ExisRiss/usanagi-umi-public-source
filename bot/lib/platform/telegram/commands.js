@@ -16,6 +16,7 @@ import * as panel from '../panel-config.js'
 import * as catalog from './catalog.js'
 import { runPluginOnTelegram } from './plugin-bridge.js'
 import { consumeLinkCode, whatsappJidFor, getUser } from '../identity.js'
+import { errorSummaryText, recordError } from '../../error-hub.js'
 
 const rupiah = value => Number(value || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })
 const as = value => `$AS ${rupiah(value)}`
@@ -980,6 +981,27 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
         '',
         'Cari: <code>/cari sticker</code> · Semua: <code>/allmenu</code>',
       ].join('\n'))
+    },
+  })
+
+  define('errors', {
+    description: 'Log error bot terakhir (owner/developer)',
+    handler: async (ctx, parsed) => {
+      if (!can(ctx.role, 'mainbot.manage') && !can(ctx.role, 'platform.audit.read')) {
+        return ctx.send('⛔ Log error hanya untuk owner/developer.')
+      }
+      const arg = String(parsed.args[0] || '').toLowerCase()
+      if (arg === 'uji' || arg === 'test') {
+        const result = await recordError(new Error('Uji jalur notifikasi error dari /errors (Telegram)'), {
+          source: 'manual-test', plugin: 'telegram/commands', command: 'errors',
+          scope: `telegram:${ctx.botId || ''}`, chat: String(ctx.chatId || ''), force: true,
+        })
+        return ctx.send(result.notified > 0
+          ? `✅ Uji terkirim ke ${result.notified} chat Telegram.`
+          : '⚠️ Tercatat, tetapi tidak ada chat Telegram tujuan (cek TELEGRAM_BOT_TOKEN & TELEGRAM_OWNER_IDS).')
+      }
+      const limit = /^\d+$/.test(arg) ? Math.min(30, Number(arg)) : 8
+      await ctx.send(escapeHtml(errorSummaryText(limit)))
     },
   })
 

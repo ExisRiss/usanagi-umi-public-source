@@ -24,6 +24,7 @@
     <nav class="nav" aria-label="Navigasi utama">
       <button type="button" class="nav-item is-active" data-view="dashboard"><span aria-hidden="true">▦</span> Ringkasan</button>
       <button type="button" class="nav-item" data-view="telegram"><span aria-hidden="true">✈</span> Telegram</button>
+      <button type="button" class="nav-item" data-view="mainbot"><span aria-hidden="true">☎</span> Bot Utama</button>
       <button type="button" class="nav-item" data-view="servers"><span aria-hidden="true">▤</span> Server</button>
       <button type="button" class="nav-item" data-view="rpg"><span aria-hidden="true">🎮</span> RPG</button>
       <button type="button" class="nav-item" data-view="saham"><span aria-hidden="true">💹</span> Saham</button>
@@ -114,6 +115,33 @@
             </div>
           </form>
           <div id="botTable" class="table-wrap"></div>
+        </div>
+      </section>
+
+      <section class="view" data-view="mainbot" hidden>
+        <div class="card">
+          <div class="card-head">
+            <h2>Nomor bot utama</h2>
+            <span class="muted">khusus owner</span>
+          </div>
+          <p class="muted">
+            Nomor <b>bebas</b> — nomor biasa pun boleh. Syaratnya pairing dilakukan
+            <b>di bot utama ini sendiri</b>: setelah nomor disimpan, bot meminta
+            <i>pairing code</i>, lalu kode itu dimasukkan dari WhatsApp di nomor tersebut.
+          </p>
+          <div id="mainBotStatus" class="stack"></div>
+          <form id="mainBotForm" class="form form-grid">
+            <label>Nomor WhatsApp bot utama
+              <input name="number" placeholder="08xxxxxxxxxx atau 62xxxxxxxxxx" inputmode="numeric" maxlength="15" required>
+            </label>
+            <div class="form-actions">
+              <button class="btn btn-primary" type="submit">Simpan &amp; pairing</button>
+            </div>
+          </form>
+          <p class="muted">
+            Nomor yang sedang dipakai sesi jadibot akun lain akan ditolak (409) karena
+            dua socket dengan kredensial sama akan saling menendang.
+          </p>
         </div>
       </section>
 

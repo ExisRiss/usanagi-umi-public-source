@@ -14,7 +14,15 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-const FILE = path.join(process.cwd(), '.main-bot.env')
+/**
+ * Lokasi berkas state. Bisa diarahkan lewat `UMI_MAIN_BOT_ENV_FILE` supaya
+ * pengujian tidak menyentuh berkas sungguhan di direktori kerja bot.
+ */
+function stateFile() {
+  return process.env.UMI_MAIN_BOT_ENV_FILE
+    ? path.resolve(process.env.UMI_MAIN_BOT_ENV_FILE)
+    : path.join(process.cwd(), '.main-bot.env')
+}
 
 /** Baca file .env sederhana menjadi objek. */
 function parseEnvFile(source) {
@@ -31,7 +39,7 @@ function parseEnvFile(source) {
 
 function readFileSafe() {
   try {
-    return parseEnvFile(fs.readFileSync(FILE, 'utf8'))
+    return parseEnvFile(fs.readFileSync(stateFile(), 'utf8'))
   } catch {
     return {}
   }
@@ -59,7 +67,7 @@ export function readMainBotState() {
     file.MAIN_BOT_PAIRING_NUMBER || process.env.PAIRING_NUMBER || ''
   )
 
-  return { enabled, pairingNumber, source: fs.existsSync(FILE) ? FILE : 'environment/default' }
+  return { enabled, pairingNumber, source: fs.existsSync(stateFile()) ? stateFile() : 'environment/default' }
 }
 
 /** Tulis ulang file dengan nilai yang digabung dari state saat ini. */
@@ -77,7 +85,7 @@ export function writeMainBotState(patch = {}) {
     `MAIN_BOT_PAIRING_NUMBER=${next.pairingNumber}\n`
 
   try {
-    fs.writeFileSync(FILE, body, { mode: 0o600 })
+    fs.writeFileSync(stateFile(), body, { mode: 0o600 })
   } catch (error) {
     throw Object.assign(new Error(`Gagal menyimpan setting bot utama: ${error.message}`), { status: 500 })
   }
@@ -85,4 +93,5 @@ export function writeMainBotState(patch = {}) {
   return next
 }
 
-export const MAIN_BOT_STATE_FILE = FILE
+export const MAIN_BOT_STATE_FILE = path.join(process.cwd(), '.main-bot.env')
+export { stateFile as mainBotStateFile }

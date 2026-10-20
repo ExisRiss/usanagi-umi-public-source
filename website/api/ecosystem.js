@@ -27,6 +27,13 @@ const ALLOWED = [
   { method: 'GET', pattern: /^telegram\/bots$/ },
   { method: 'POST', pattern: /^telegram\/bots$/ },
   { method: 'POST', pattern: /^telegram\/bots\/[\w-]+\/(validate|enable|disable|revoke)$/ },
+  // Hubungkan bot Telegram milik pengguna ke bot WhatsApp miliknya.
+  { method: 'POST', pattern: /^telegram\/bots\/[\w-]+\/link$/ },
+  // Nomor bot utama platform (khusus owner).
+  { method: 'GET', pattern: /^main-bot$/ },
+  { method: 'POST', pattern: /^main-bot\/number$/ },
+  // Log error terbaru (owner/developer).
+  { method: 'GET', pattern: /^errors$/ },
   { method: 'GET', pattern: /^servers$/ },
   { method: 'GET', pattern: /^servers\/overview$/ },
   { method: 'PUT', pattern: /^servers\/\d+$/ },

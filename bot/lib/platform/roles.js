@@ -15,7 +15,13 @@ export const PERMISSIONS = {
   'platform.users.read': ['owner', 'developer', 'admin'],
   'platform.users.manage': ['owner', 'admin'],
   'telegram.manage': ['owner', 'developer'],
+  // Bot Telegram milik sendiri: semua peran boleh menghubungkan token bot buatan
+  // mereka sendiri ke bot WhatsApp miliknya. Tidak memberi akses ke bot orang lain
+  // (kepemilikan selalu dicek dari database, bukan dari klaim klien).
+  'telegram.own': ['owner', 'developer', 'admin', 'reseller', 'user'],
   'telegram.status': ['owner', 'developer', 'admin'],
+  // Nomor bot utama platform: hanya owner (permintaan pemilik, 2026-10-20).
+  'mainbot.manage': ['owner'],
   'server.read': ['owner', 'developer', 'admin'],
   'server.panel.manage': ['owner', 'developer'],
   'server.control': ['owner', 'developer'],
