@@ -160,7 +160,7 @@ Artinya: nomor dari web **menggantikan** daftar owner utama (bukan menambah), se
 
 ## 8. Batas jujur
 
-1. **Bot utama belum tertaut** (`unpaired`, `connected:false`) — setting terbukti tersimpan & terbaca API, tapi belum bisa dibuktikan lewat balasan WhatsApp sampai sesi pairing hidup.
+1. **Bot utama sudah tertaut saat penutupan** (`status:connected`, `socket_ready:true`, nomor `6282******396`) dan log boot mencatat `[MAIN-BOT] Setting utama dimuat: Usanagi Umi AI · prefix /` → setting store benar-benar dipakai runtime, bukan hanya tersimpan. Yang belum diuji: balasan WhatsApp nyata ke pengguna (butuh pesan masuk dari nomor lain, tidak bisa dikirim dari sandbox).
 2. **Key Gemini `AQ.…` masih ditolak Google** (batas Task78): simpan key berhasil, Auto-AI belum bisa membalas sampai key baru dipasang.
 3. Nomor owner dari web **menggantikan** daftar owner utama; nomor `config.js` tetap rowner/developer.
 4. Halaman lain tetap memakai layout lama (scroll internal). Hanya 3 halaman bot utama yang diubah agar tidak ada regresi di tempat lain.

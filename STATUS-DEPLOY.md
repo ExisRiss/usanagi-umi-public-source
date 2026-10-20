@@ -2024,6 +2024,6 @@ Ringkas: halaman **Setting Bot Utama** kini berisi setting yang jauh lebih lengk
 | 13 | Tes | `node --test tests/main-bot-settings.test.mjs` **7/7**; `tests/platform/` **217/217**; `auto-ai` 13, `self-ai` 9, `agent-settings` 4 | bug lama `limit-toggle` tetap gagal di baseline (bukan regresi Task80) |
 
 **Batas jujur Task80:**
-- Bot utama masih **belum tertaut** (`unpaired` / `connected:false`) — perubahan setting terbukti tersimpan & terbaca lewat API status, tetapi efek balasan WhatsApp belum bisa diuji sampai sesi pairing hidup.
+- Saat penutupan Task80 bot utama **sudah tertaut** (`connected:true`, socket siap, nomor `6282******396`) dan log boot memuat `[MAIN-BOT] Setting utama dimuat: Usanagi Umi AI · prefix /` → setting benar-benar dipakai runtime. Balasan WhatsApp ke pengguna belum diuji (butuh pesan masuk dari nomor lain).
 - Setting nomor owner mengganti daftar owner utama (bukan menambah): nomor dari `config.js` tetap dianggap rowner/developer.
 - Key Gemini owner `AQ.…` masih ditolak Google (batas Task78), jadi menyimpan key berhasil tetapi Auto-AI belum bisa membalas sampai key baru dipasang.
