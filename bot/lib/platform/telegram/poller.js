@@ -121,6 +121,7 @@ export class TelegramAdapter {
       actor: { userId: identity.userId, platform: 'telegram', platformUserId: String(from.id) },
       send: (text, options = {}) => client.sendMessage(chatId, text, { ...options, disable_web_page_preview: true }),
       edit: (messageId, text, options = {}) => client.editMessageText(chatId, messageId, text, options),
+      editCaption: (messageId, caption, options = {}) => client.editMessageCaption(chatId, messageId, caption, options),
       answerCallback: (options = {}) => client.answerCallbackQuery(update.callback_query?.id || '', options),
       sendChatAction: action => client.sendChatAction(chatId, action).catch(() => {}),
       downloadFile: (fileId, options) => client.downloadFile(fileId, options),

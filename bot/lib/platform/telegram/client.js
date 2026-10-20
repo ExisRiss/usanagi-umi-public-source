@@ -88,6 +88,10 @@ export class TelegramClient {
   editMessageText(chatId, messageId, text, options = {}) {
     return this.call('editMessageText', { chat_id: chatId, message_id: messageId, text, parse_mode: options.parseMode ?? 'HTML', ...stripOptions(options) })
   }
+  /** Ganti caption pesan media (menu banner) tanpa mengirim pesan baru. */
+  editMessageCaption(chatId, messageId, caption, options = {}) {
+    return this.call('editMessageCaption', { chat_id: chatId, message_id: messageId, caption, parse_mode: options.parseMode ?? 'HTML', ...stripOptions(options) })
+  }
   deleteMessage(chatId, messageId) { return this.call('deleteMessage', { chat_id: chatId, message_id: messageId }) }
   answerCallbackQuery(id, options = {}) { return this.call('answerCallbackQuery', { callback_query_id: id, ...options }) }
   sendChatAction(chatId, action = 'typing') { return this.call('sendChatAction', { chat_id: chatId, action }) }

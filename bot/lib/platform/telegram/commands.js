@@ -88,18 +88,9 @@ export async function sendCategory(ctx, categoryId, page = 1) {
   }])
   const keyboard = inline(buttons)
   // Ganti halaman = edit pesan yang sama, bukan mengirim pesan baru.
-  if (ctx.callbackMessageId && typeof ctx.edit === 'function') {
-    try {
-      await ctx.edit(ctx.callbackMessageId, view.text, { reply_markup: keyboard })
-      return { edited: true, page: view.page }
-    } catch (error) {
-      // Pesan lama tidak bisa diedit (mis. sudah dihapus / bukan pesan teks).
-      if (!/not modified|message to edit|no text/i.test(String(error.message))) {
-        audit({ actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'telegram.menu.edit', result: 'failed', meta: { error: String(error.message).slice(0, 120) } })
-      }
-    }
-  }
-  return ctx.send(view.text, { reply_markup: keyboard })
+  const rendered = await renderInPlace(ctx, view.text, { reply_markup: keyboard })
+  if (rendered?.edited) return { edited: true, page: view.page, message_id: rendered.message_id }
+  return rendered
 }
 
 async function statusText() {
@@ -136,8 +127,14 @@ async function sendMenu(ctx, router, caption) {
   const keyboard = menuKeyboard(ctx, router)
   if (typeof ctx.sendBanner === 'function') {
     try {
-      const result = await ctx.sendBanner({ caption, replyMarkup: keyboard })
-      if (result?.sent) return result
+      // Banner dikirim tanpa tombol: tombol tinggal di pesan teks supaya saat
+      // halaman diganti, pesan itu bisa diedit (caption video dibatasi 1024
+      // karakter dan tidak bisa diganti jadi teks biasa).
+      const result = await ctx.sendBanner({ caption: '🌙 <b>Usanagi Umi AI</b>' })
+      if (result?.sent) {
+        await ctx.send(caption, { reply_markup: keyboard })
+        return result
+      }
     } catch (error) {
       // Banner bersifat dekoratif: jangan sampai menu ikut gagal.
       audit({ actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'telegram.banner.failed', result: 'failed', meta: { error: String(error.message || error).slice(0, 160) } })
@@ -152,21 +149,37 @@ async function sendMenu(ctx, router, caption) {
  * lama / bukan teks), barulah pesan baru dikirim supaya pengguna tetap dapat
  * jawaban.
  */
+async function renderInPlace(ctx, text, options = {}) {
+  const body = String(text || '')
+  if (ctx.callbackMessageId && typeof ctx.edit === 'function' && body.length <= 4096) {
+    try {
+      const result = await ctx.edit(ctx.callbackMessageId, body, options)
+      return { edited: true, message_id: ctx.callbackMessageId, result }
+    } catch (error) {
+      // Menu lama (banner video) tidak punya teks — coba ganti caption.
+      if (typeof ctx.editCaption === 'function' && body.length <= 1024 && /no text|caption|not modified/i.test(String(error.message))) {
+        try {
+          const result = await ctx.editCaption(ctx.callbackMessageId, body, options)
+          return { edited: true, caption: true, message_id: ctx.callbackMessageId, result }
+        } catch {}
+      }
+      audit({
+        actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId,
+        action: 'telegram.menu.edit', result: 'failed',
+        meta: { error: String(error?.message || error).slice(0, 120) },
+      })
+    }
+  }
+  return ctx.send(body, options)
+}
+
 export function withEditInPlace(ctx) {
   let edited = false
   const wrapped = Object.create(ctx)
   wrapped.send = async (text, options) => {
-    if (!edited && ctx.callbackMessageId && typeof ctx.edit === 'function' && String(text || '').length <= 4096) {
+    if (!edited) {
       edited = true
-      try {
-        return await ctx.edit(ctx.callbackMessageId, text, options)
-      } catch (error) {
-        audit({
-          actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId,
-          action: 'telegram.menu.edit', result: 'failed',
-          meta: { error: String(error?.message || error).slice(0, 120) },
-        })
-      }
+      return renderInPlace(ctx, text, options)
     }
     return ctx.send(text, options)
   }

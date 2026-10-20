@@ -4,7 +4,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { freshDb, applyTestEnv } from './helpers.mjs'
 import { makeMessage, runPluginOnTelegram, waToHtml } from '../../lib/platform/telegram/plugin-bridge.js'
-import { sendCategory, withEditInPlace } from '../../lib/platform/telegram/commands.js'
+import { sendCategory, withEditInPlace, registerCommands } from '../../lib/platform/telegram/commands.js'
 import { CommandRouter } from '../../lib/platform/telegram/router.js'
 import { resetCatalogCache } from '../../lib/platform/telegram/catalog.js'
 import { createUnifiedStore, UNIFIED_RPG } from '../../lib/rpg/unified-store.js'
@@ -336,4 +336,36 @@ test('withEditInPlace: tanpa callbackMessageId tetap mengirim pesan baru', async
   await navCtx.send('halo')
   assert.equal(edited.length, 0)
   assert.equal(sent.length, 1)
+})
+
+test('/start: banner dikirim tanpa tombol, menu teks yang memegang tombol', async () => {
+  await freshDb()
+  applyTestEnv()
+  seedPlugins()
+  const router = new CommandRouter({ logger: { error() {}, warn() {}, info() {} } })
+  registerCommands(router, { logger: { error() {}, warn() {}, info() {} } })
+  const client = fakeClient()
+  const { ctx, sent } = makeCtx(client)
+  const bannerCalls = []
+  ctx.sendBanner = async options => { bannerCalls.push(options); return { sent: true } }
+  await router.commands.get('start').handler(ctx, { name: 'start', args: [], text: '' }, null)
+  assert.equal(bannerCalls.length, 1)
+  assert.equal(bannerCalls[0].replyMarkup, undefined, 'banner tidak boleh memegang tombol')
+  assert.equal(sent.length, 1, 'menu teks tetap dikirim')
+  assert.ok(sent[0].options?.reply_markup?.inline_keyboard?.length, 'tombol harus ada di pesan teks')
+})
+
+test('menu lama berbentuk video: edit teks gagal → caption yang diganti', async () => {
+  await freshDb()
+  applyTestEnv()
+  const client = fakeClient()
+  const { ctx, sent, edited } = makeCtx(client, { callbackMessageId: 555 })
+  const captions = []
+  ctx.edit = async () => { throw new Error('Bad Request: there is no text in the message to edit') }
+  ctx.editCaption = async (messageId, text, options) => { captions.push({ messageId, text, options }); return { message_id: messageId } }
+  const navCtx = withEditInPlace(ctx)
+  await navCtx.send('Status singkat')
+  assert.equal(captions.length, 1, 'caption harus diganti')
+  assert.equal(captions[0].messageId, 555)
+  assert.equal(sent.length, 0, 'tidak boleh kirim pesan baru')
 })

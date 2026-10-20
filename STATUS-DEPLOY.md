@@ -1703,3 +1703,9 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - `sendSticker` butuh `sharp` untuk konversi PNG/JPEG; di server terpasang, kalau di mesin lain tidak ada maka hasilnya foto (fitur tetap jalan, hanya bukan stiker).
 - Menambahkan orang lain ke grup (`participantsUpdate: add`) dan mode "hanya admin" tetap tidak bisa lewat Bot API — dijawab jujur, bukan pura-pura berhasil.
 - Plugin yang memang khusus WhatsApp (socket, pairing, button native) tetap ditolak dengan pesan jelas.
+
+**Lanjutan batch 7 (setelah uji live pertama):** dua hal lagi yang ketemu saat verifikasi:
+1. Menu (`/start`, `/menu`) mengirim **banner video dengan tombol menempel** di pesan yang sama. Pesan video tidak punya teks, jadi `editMessageText` selalu gagal → navigasi tetap membuat pesan baru. Sekarang banner dikirim **tanpa tombol** (caption singkat) dan pesan **teks menu** yang memegang tombol, sehingga yang diedit selalu pesan teks.
+2. Untuk menu lama yang sudah terlanjur berupa video+tombol, `renderInPlace` mencoba `editMessageText` → gagal karena tidak ada teks → **`editMessageCaption`** (bila teks ≤1024) → baru kirim pesan baru.
+
+Verifikasi live ulang (server, grup BackUp, pesan dihapus): `/start` → **2 pesan** (video id 44 tanpa tombol, teks menu id 45 dengan tombol); tekan tombol **status** → `sends+0, edits+1`; tekan kategori **game halaman 2** → `sends+0, edits+1`. Tes: **125 platform** (17 di `batch7.test.mjs`), 0 gagal.
