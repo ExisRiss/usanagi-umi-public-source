@@ -175,3 +175,34 @@ Artinya: nomor dari web **menggantikan** daftar owner utama (bukan menambah), se
 3. Tekan **SIMPAN SETTING BOT UTAMA** — langsung berlaku, tanpa restart.
 4. Kartu **API KEY**: pilih penyedia → tempel key → **SIMPAN KEY**; status berubah jadi `SIAP` dengan versi mask. `HAPUS KEY` untuk Gemini/Groq.
 5. **RESET SETTING (KECUALI KEY)** mengembalikan nilai bawaan (prefix aktif dipertahankan, API key & sesi WhatsApp tidak disentuh).
+
+
+---
+
+## 10. Susulan — bug "pindah halaman malah blur" + audit tools (Task80c)
+
+### 10.1 Akar masalah blur
+Drawer menu (`#mainNav`) ditutup oleh dua hal: kelas `.open` di `<nav>` **dan** `<div id="navScrim" class="nav-scrim">` (z-index 200, tabir `rgba(3,8,20,.52)` + `backdrop-filter: blur(3px)`).
+Listener lama:
+
+```js
+$('mainNav').addEventListener('click', e => { if (e.target.closest('a')) $('mainNav').classList.remove('open') })
+```
+
+hanya melepas kelas di `<nav>` — **scrim tidak pernah ikut ditutup**. Akibatnya, setelah memilih menu, halaman tujuan tetap tertutup tabir blur. Paling jelas saat mengklik menu halaman yang sedang dibuka (hash tidak berubah → `hashchange` tidak jalan) dan saat memakai mouse di desktop (di HP klik scrim menutupnya, jadi kadang tidak terasa).
+
+Perbaikan: semua jalur tutup (klik tautan, tombol ✕, klik scrim, Escape, tombol hamburger) memakai satu fungsi `toggleNav()`, dan status buka dihitung dari nav **dan** scrim.
+
+### 10.2 Bug lain yang ditemukan tools repo
+| Alat | Temuan | Perbaikan |
+|---|---|---|
+| `responsive-check.mjs` | 0/42 (meluber 349–374 px) | `html{overflow-x:hidden}` → 42/42 bersih |
+| `contrast-check.mjs` | 10 gagal, terburuk 1.12:1 | teks gelap di permukaan terang, gradien tombol digelapkan → 0 gagal |
+| `ui-rules-check.mjs` | 12 gagal | tabular-nums, `:focus-visible`, safe-area toast → 13 lulus / 6 sisa (z-index & material kaca sengaja) |
+| Sapuan 22 rute | QR DANA diblokir CSP (host lama) | `sameOriginAsset()` + `img-src` di `vercel.json` → 0 error |
+| `check-release-safety.py` | — | 4.205 berkas, 0 issue |
+
+### 10.3 Deploy & bukti
+- `app.js?v=20261020-navfix1` / `app.css?v=20261020-navfix1`, produksi https://jadibot-alzriss.gwenna.my.id.
+- Playwright: setelah klik menu (page sama maupun beda) → `scrim.open=false`, `nav.open=false`, `body.nav-open` hilang; 0 error konsol; 22 rute `err=0`.
+- Screenshot: `shots/task80c-desktop-*`, `shots/task80c-mobile-*`, `shots/task80c-*-topup-qr.png`.

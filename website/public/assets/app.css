@@ -286,3 +286,77 @@ body.flow-mode .page {
   border-color: rgba(120, 160, 255, .55);
   background: linear-gradient(180deg, rgba(61, 157, 255, .34), rgba(61, 157, 255, .14));
 }
+
+/* ── Task80c — perbaikan bug yang ditemukan tools/*.mjs ───────────────────── */
+
+/* 1. Drawer #mainNav ditutup dengan translate3d(104%) sehingga kotaknya
+      memperlebar area scroll dokumen 349–374 px di semua halaman
+      (responsive-check: 0/42 bersih). Klip sumbu X di root menghilangkan
+      luapan itu tanpa mengubah animasi drawer. */
+html { overflow-x: hidden; }
+
+/* 2. Kontras: tema gelap membuat --ink jadi terang, sedangkan permukaan aksen
+      (cyan, lavender, lime, merah) tetap terang → teks nyaris tak terbaca
+      (contrast-check: 1.12:1 pada label toggle). Permukaan terang wajib teks
+      gelap. */
+.toggle-grid label,
+.notice,
+.app-mode .notice,
+.yellow-panel,
+.stat,
+.toast,
+.auth-tabs button.active,
+.mini.danger,
+.danger,
+.nav-danger,
+.chip.owner,
+.chip.partner,
+.chip.user,
+.chip.admin,
+.badge.connected,
+.badge.pending,
+.badge.disconnected { color: #06101f; }
+.toggle-grid label b,
+.toggle-grid label strong,
+.notice b,
+.notice strong,
+.notice code,
+.app-mode .notice b,
+.app-mode .notice code,
+.yellow-panel code { color: #06101f; }
+
+/* Tombol gradien tetap teks putih; gradiennya digelapkan sedikit supaya
+   rasio kontras ≥ 4.5:1 (sebelumnya 3.9–4.1:1). */
+.btn-primary,
+.btn-yellow { color: #fff; background: linear-gradient(135deg, #4157e0, #6b3fd0); }
+.notice a,
+.yellow-panel a { color: #0b2a86; }
+
+/* 3. Angka data pakai tabular-nums supaya tidak "goyang" saat nilai berubah. */
+.stat b,
+.terminal,
+.pair-code,
+.list-item b { font-variant-numeric: tabular-nums; }
+
+/* 4. Fokus keyboard harus terlihat jelas (WCAG 2.2). */
+:focus-visible,
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 2px;
+}
+
+/* Toast tidak boleh tertutup notch / home indicator. */
+.toast {
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+}
+
+/* 5. Aman dari notch pada topbar (kiri & kanan). */
+.topbar {
+  padding-left: max(clamp(14px, 3vw, 42px), env(safe-area-inset-left));
+  padding-right: max(clamp(14px, 3vw, 42px), env(safe-area-inset-right));
+}

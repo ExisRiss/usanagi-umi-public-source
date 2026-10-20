@@ -225,7 +225,7 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://tlcvkksfgdyeiypzcwdj.supabase.co; media-src 'self' blob: https://tlcvkksfgdyeiypzcwdj.supabase.co; font-src 'self'; connect-src 'self' https://tlcvkksfgdyeiypzcwdj.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; manifest-src 'self'; worker-src 'none'; upgrade-insecure-requests"
+          "value": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://tlcvkksfgdyeiypzcwdj.supabase.co https://website-jadibot-by-alzriss.vercel.app https://alzriss-comunity.vercel.app; media-src 'self' blob: https://tlcvkksfgdyeiypzcwdj.supabase.co; font-src 'self'; connect-src 'self' https://tlcvkksfgdyeiypzcwdj.supabase.co; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; manifest-src 'self'; worker-src 'none'; upgrade-insecure-requests"
         },
         {
           "key": "Strict-Transport-Security",

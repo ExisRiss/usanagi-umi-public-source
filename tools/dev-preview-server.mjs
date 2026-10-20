@@ -14,7 +14,12 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const HERE = path.dirname(fileURLToPath(import.meta.url))
-const WEBSITE = path.resolve(HERE, '..', 'usanagi-umi-public-source', 'website')
+// Folder repo bisa bernama apa saja saat di-clone (mis. `repo`), jadi cari
+// beberapa kandidat sebelum menyerah.
+const WEBSITE = [
+  path.resolve(HERE, '..', 'website'),
+  path.resolve(HERE, '..', 'usanagi-umi-public-source', 'website'),
+].find(dir => fs.existsSync(path.join(dir, 'index.html')))
 const PUBLIC_DIR = path.join(WEBSITE, 'public')
 const PORT = Number(process.argv[2] || 8080)
 
