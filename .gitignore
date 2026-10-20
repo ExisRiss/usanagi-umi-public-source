@@ -64,3 +64,6 @@ unification-backups/
 
 # Data runtime bot (dibuat saat tes/deploy, bukan sumber)
 bot/data/
+
+# Data runtime saat tes dijalankan dari root repo
+data/
