@@ -1815,3 +1815,28 @@ User mengirim ulang kunci Gemini yang mau dipakai. Yang dilakukan:
 - **Tidak perlu restart.** Proses bot yang sama (PID 9069, uptime ±11 menit) langsung memakai kunci baru karena `gemini-client` membaca ulang berkas setiap 15 detik.
 - Bukti panggilan nyata setelah penggantian: `chatGemini` → `gemini-3.5-flash`, **1 002 ms**, 27 token, balasan "Halo."; `planAutoAI` (jalur Auto-AI) → `kind: answer`, provider **gemini**, **1 613 ms**, jawaban "Halo! Aku lagi di sini, siap nemenin kamu ngobrol. …". Log tidak memuat `Gemini gagal`, jadi tidak ada fallback ke Groq.
 - Kunci lama otomatis tidak dipakai lagi karena berkas `.env.gemini` ditimpa (bukan ditambahkan). Kunci baru juga disimpan di `/home/user/.secrets/task62-gemini.env` (mode 600) di workspace, di luar repo.
+
+## Workspace diringankan — source pindah ke arsip Telegram (2026-10-20)
+
+**Permintaan user:** workspace penuh; taruh yang dibutuhkan di grup Telegram BackUp, ambil lagi kalau perlu — terutama source code Umi yang berat.
+
+**Yang berubah:**
+- Folder `usanagi-umi-public-source/` (**98 MB**) dan `backup-umi/` (**127 MB**) dihapus dari workspace. Sisa workspace: **±1,5 MB** (dari 188 MB).
+- Source code tetap aman di **3 tempat**: GitHub `87503c0`, server produksi `/home/container`, dan arsip Telegram.
+- Alat baru di `restore/`:
+  - `push-snapshot.mjs` — mengarsipkan workspace dan mengirim ke grup BackUp. Arsip dipecah **≤ 18 MB per bagian** karena Bot API Telegram menolak mengunduh berkas > 20 MB ("file is too big") — ini batas nyata yang ditemukan saat uji, bukan asumsi.
+  - `restore-latest.mjs` — mengunduh semua bagian, menyambung, **mencocokkan sha256** dengan manifest, memeriksa entri tidak aman (`/…`, `..`, symlink keluar), baru mengekstrak. Bisa `--only <path>` untuk mengambil satu berkas/folder saja.
+  - `manifest.json` — daftar snapshot (`full` = dengan source, `light` = tanpa source) beserta `file_id` per bagian dan sha256 arsip utuh.
+
+**Snapshot yang tersedia sekarang:**
+| Snapshot | Isi | Ukuran | Bagian |
+|---|---|---|---|
+| `full` | source + `.secrets` + docs + banner | 42,1 MB | 3 (`part01`–`part03`) |
+| `light` (default) | tanpa source (source dari GitHub/`full`) | 0,8 MB | 1 |
+
+**Uji yang sudah dilakukan:**
+- `--snapshot full --only …/umi-aikey.js --extract` → 3 bagian terunduh, sha256 cocok (`0f751a24…`), berkas 7 250 byte terekstrak.
+- `--snapshot light --only STATUS-DEPLOY.md --extract` → sha256 cocok (`e78d540f…`), 75 entri, berkas 157 579 byte terekstrak.
+- Pesan arsip lama (44 MB yang tidak bisa diunduh bot) dan bagian versi lama sudah dihapus dari grup.
+
+**Batas jujur:** arsip > 20 MB **tidak bisa** diunduh lewat bot; itu sebabnya dipecah. Kalau butuh satu berkas dengan cepat, `--only` tetap mengunduh seluruh bagian dulu (42 MB) sebelum mengekstrak satu berkas — belum ada pembagian per-blok.
