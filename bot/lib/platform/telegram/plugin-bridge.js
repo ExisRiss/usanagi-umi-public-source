@@ -456,6 +456,25 @@ export async function runPluginOnTelegram(ctx, parsed, { plugins = globalThis.pl
   const handler = handlerOf(plugin)
   if (!handler) return { handled: false }
 
+  // Fitur yang mustahil di Telegram (rich HTML interaktif WhatsApp, pairing
+  // sesi WA) tetap hidup di bot WhatsApp & jadibot — di sini dijawab jelas,
+  // bukan dijalankan setengah jalan lalu gagal.
+  if (item.waOnly) {
+    audit({
+      actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId,
+      action: 'telegram.plugin.wa_only', resource: name, result: 'denied',
+      meta: { plugin: item.key, reason: item.waReason || null },
+    })
+    const safe = value => String(value || '').replace(/[<>&]/g, '')
+    await ctx.send([
+      `⛔ <b>/${safe(name)}</b> khusus WhatsApp.`,
+      item.waReason ? `Fitur ini ${safe(item.waReason)}, yang tidak bisa ditampilkan di Telegram.` : '',
+      '',
+      'Buka dari <b>bot WhatsApp</b> atau <b>jadibot WA</b> milikmu — fiturnya tetap ada di sana.',
+    ].filter(Boolean).join('\n'))
+    return { handled: true, plugin: item.key, waOnly: true }
+  }
+
   const rank = ROLE_RANK[ctx.role] ?? 9
   if (plugin.owner && rank > 1) return deny(ctx, item.key, name, 'Fitur ini khusus owner/developer.')
   if (plugin.admin && rank > 2) return deny(ctx, item.key, name, 'Fitur ini khusus admin ke atas.')

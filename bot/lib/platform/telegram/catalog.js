@@ -10,6 +10,7 @@
  * benar-benar dimuat di proses ini.
  */
 import { FEATURE_GROUPS, HIDDEN_COMMANDS, HIDDEN_CATEGORIES, prettyCommand } from './features.js'
+import { waOnlyInfo } from './wa-only.js'
 
 /** Urutan + label kategori. `mobile` dipakai untuk tombol menu utama. */
 export const CATEGORY_META = {
@@ -105,15 +106,24 @@ export function buildCatalog(plugins = globalThis.plugins) {
     })
   }
   const seenCanonical = new Set()
+  // Dua tahap: plugin yang didukung Telegram didahulukan, supaya kalau dua
+  // plugin memakai perintah yang sama (mis. `/brat` versi WA-only dan versi
+  // biasa) yang dipakai di Telegram adalah yang benar-benar bisa jalan.
+  const entries = []
   for (const [key, plugin] of pluginEntries(plugins)) {
     const names = commandNames(plugin)
     if (!names.length) continue
-    const primary = names[0]
     const category = categoryOf(key, plugin)
-    // Tersembunyi TIDAK berarti mati: perintahnya tetap terdaftar di
-    // `byCommand` (bisa diketik langsung) tetapi tidak ditampilkan di menu.
-    let hidden = HIDDEN_CATEGORIES.has(category)
-      || names.some(name => HIDDEN_COMMANDS.has(name))
+    const wa = waOnlyInfo(key)
+    let hidden = HIDDEN_CATEGORIES.has(category) || names.some(name => HIDDEN_COMMANDS.has(name))
+    if (wa.waOnly) hidden = true
+    entries.push({ key, plugin, names, category, hidden, waOnly: wa.waOnly, waReason: wa.reason })
+  }
+  entries.sort((a, b) => Number(a.waOnly) - Number(b.waOnly))
+
+  for (const entry of entries) {
+    const { key, plugin, names, category, waOnly } = entry
+    let hidden = entry.hidden
     // Varian dalam satu keluarga fitur: cukup satu baris menu.
     const inFamily = names.find(name => canonical.has(name))
     if (inFamily) {
@@ -124,9 +134,9 @@ export function buildCatalog(plugins = globalThis.plugins) {
     const item = {
       key,
       category,
-      command: primary,
+      command: names[0],
       aliases: names,
-      usage: usageOf(plugin, primary),
+      usage: usageOf(plugin, names[0]),
       description: String(plugin.description || '').slice(0, 120),
       owner: Boolean(plugin.owner),
       admin: Boolean(plugin.admin),
@@ -134,9 +144,23 @@ export function buildCatalog(plugins = globalThis.plugins) {
       group: Boolean(plugin.group),
       limited: Boolean(plugin.limit),
       hidden,
+      waOnly,
+      waReason: entry.waReason,
     }
     if (!hidden) items.push(item)
-    for (const name of names) if (!byCommand.has(name)) byCommand.set(name, item)
+    // Nama utama (perintah pertama) menang atas alias, supaya `/stiker`
+    // dijalankan plugin yang memang bernama `stiker`, bukan plugin lain yang
+    // kebetulan punya regex cocok.
+    const [primary, ...aliases] = names
+    if (!byCommand.has(primary)) byCommand.set(primary, item)
+    entry.aliases = aliases
+    entry.item = item
+  }
+  // Alias diisi setelah semua nama utama terdaftar.
+  for (const entry of entries) {
+    for (const alias of entry.aliases || []) {
+      if (!byCommand.has(alias)) byCommand.set(alias, entry.item)
+    }
   }
   const byCategory = new Map()
   const seenPerCategory = new Map()

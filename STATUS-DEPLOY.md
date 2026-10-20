@@ -1730,3 +1730,25 @@ Verifikasi live ulang (server, grup BackUp, pesan dihapus): `/start` → **2 pes
 - Tes: **135 platform** (10 tes baru di `tests/platform/batch8.test.mjs`), 0 gagal.
 
 **Catatan:** perintah yang disembunyikan tetap hidup (`/bratvid2` bisa diketik). Kalau nanti ingin benar-benar menghapus plugin, cukup hapus berkasnya — tetapi batch ini sengaja tidak menghapus agar tidak ada fitur yang hilang.
+
+## Task70 batch 9 — fitur khusus WhatsApp dihapus dari Telegram (tetap hidup di WA & jadibot) (2026-10-20)
+
+**Permintaan user:** "fitur yang ga support di telegram seperti game catur yang rich HTML khusus WA sama fitur lain hapus aja di bot telegram, tapi pertahanin di bot whatsapp jadibot".
+
+**Akar masalah:** 36 plugin mengirim `richResponseMessage`/`botForwardedMessage` — pesan HTML/JS interaktif yang dirender aplikasi WhatsApp (papan catur, tetris, snake, dino, tetris, slots, dll.). Bot API Telegram tidak punya jenis pesan ini; jembatan hanya bisa mengirim teks placeholder `(pesan ini tidak bisa ditampilkan di Telegram)`. Jadi fiturnya tampil di menu tetapi pasti gagal dipakai. Penyebab lain: plugin pairing/sesi WhatsApp (`requestPairingCode`, `useMultiFileAuthState`).
+
+**Perbaikan (tanpa menyentuh satu pun berkas plugin):**
+- `lib/platform/telegram/wa-only.js` (baru): mendeteksi fitur mustahil dari isi berkas plugin (statis, tanpa menjalankan kode): `richResponseMessage|botForwardedMessage` → "memakai pesan rich HTML interaktif WhatsApp"; `requestPairingCode|useMultiFileAuthState|waitForConnectionUpdate` → "butuh pairing/sesi WhatsApp". Hasil di-cache per berkas (mtime+size). Kalau berkas tidak ditemukan → dianggap **didukung** (lebih baik fitur tampil daripada hilang karena gagal baca).
+- `catalog.js`: item mendapat `waOnly` + `waReason`; item waOnly **tidak** masuk menu/kategori/pencarian, tetapi tetap terdaftar di `byCommand` agar bisa dijawab jelas. Urutan build diubah dua tahap: plugin yang didukung Telegram diproses lebih dulu, jadi kalau dua plugin memakai nama yang sama (mis. `/brat` versi WA-only vs versi biasa) yang menang adalah yang benar-benar bisa jalan. Nama utama juga kini menang atas alias (`/stiker` → plugin yang memang bernama `stiker`).
+- `plugin-bridge.js`: perintah waOnly dijawab `⛔ /catur khusus WhatsApp… Buka dari bot WhatsApp atau jadibot WA` dan **handler tidak dijalankan**; dicatat ke audit sebagai `telegram.plugin.wa_only`.
+- `commands.js`: kartu opsi (`opt:<perintah>`) untuk perintah waOnly menampilkan penjelasan yang sama, bukan tombol ▶️ Jalankan yang pasti gagal.
+
+**Verifikasi nyata (server, 2 051 plugin termuat):**
+- Katalog Telegram: **1 649 item / 21 kategori** (sebelum 1 686) — 33 plugin WA-only dikeluarkan dari menu: game 110 → **86**, info 43 → **40**, download 28 → **27**, search 87 → **86**, owner 161 → **159**.
+- `/catur` di Telegram: ditolak dengan pesan jelas; handler tidak dijalankan. `/menu game` **tidak** memuat `catur`/`tetris`, tetapi `akinator` (yang didukung) tetap ada.
+- Perintah yang tetap harus jalan dicek ulang: `/brat` → `maker/brat.js`, `/stiker` → `sticker/usanagi-sticker.js`, `/qc` → `maker/qc.js`, `/tourl` → `tools/tools-tourl.js` (semua **tidak** terkena filter).
+- Bot WhatsApp & jadibot **tidak tersentuh**: tidak ada berkas `plugins/**` yang diubah, dan `handler.js`/`lib/jadibot.js` tidak memakai katalog Telegram (dicek: tidak ada referensi `platform/telegram` di jalur WA/jadibot). Jadi `/catur` tetap berjalan seperti biasa dari WhatsApp dan jadibot.
+- Health setelah restart: `catalog {plugins: 1649, categories: 21}`.
+- Tes: **142 platform** (7 tes baru di `tests/platform/batch9.test.mjs`), 0 gagal.
+
+**Batas jujur:** deteksi berbasis isi berkas, bukan uji coba live per plugin. Kalau ada plugin yang memakai rich HTML lewat helper lain (bukan string `richResponseMessage`), plugin itu belum ikut tersaring — tinggal tambahkan polanya. Sebaliknya, plugin yang menyentuh API WA tetapi masih bisa menghasilkan teks (mis. `sendInteractive` → daftar teks) sengaja **tidak** dihapus.

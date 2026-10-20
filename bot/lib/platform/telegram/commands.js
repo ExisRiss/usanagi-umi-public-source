@@ -156,6 +156,15 @@ async function sendOption(ctx, command) {
   const name = String(command || '').toLowerCase()
   const found = catalog.findItem(name)
   if (!found) return ctx.send('Perintah itu tidak tersedia.')
+  if (found.waOnly) {
+    return renderInPlace(ctx, [
+      `⛔ <b>/${escapeHtml(name)}</b> khusus WhatsApp`,
+      '',
+      found.waReason ? `Fitur ini ${escapeHtml(found.waReason)} — tidak bisa ditampilkan di Telegram.` : 'Fitur ini butuh kemampuan yang hanya ada di WhatsApp.',
+      '',
+      '<i>Fitur tetap tersedia di bot WhatsApp dan jadibot WA milikmu.</i>',
+    ].join('\n'))
+  }
   const { note } = describeOption(name)
   const group = catalog.findFunction(name)
   const usage = found.usage?.length ? found.usage : [name]
