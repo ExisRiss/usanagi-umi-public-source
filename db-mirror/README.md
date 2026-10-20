@@ -3,14 +3,15 @@
 > Server `83595f4b` (panel `beyy.ikynebula.my.id`) dan node lama **167.99.67.212
 > sudah mati**, jadi game web tidak jalan dari sana lagi.
 >
-> **Kondisi sekarang:** game berjalan **di dalam container bot** (`b3f9c8df`,
-> panel `beyy.serverprivv.my.id`, IP `167.99.193.164`), dinyalakan oleh
-> `scripts/companion.js` bersama tunnel `umi-games-gwenna` (6f82f294).
+> **Kondisi sekarang (Task77, 20 Okt 2026):** game berjalan **di dalam container
+> bot** (`f7811b23`, panel `beyy-ganteng-store-panel.voltxyz.my.id`), dinyalakan
+> oleh `scripts/companion.js` bersama tunnel `umi-games-gwenna` (6f82f294).
+> Tunnel API (`72975e9b`) dipasang `start-panel.sh` sebelum companion.
 >
 > | Bagian | Port internal | Alamat publik |
 > |---|---|---|
 > | Game web (`game.js`) | `127.0.0.1:3900` | `https://game.gwenna.my.id` |
-> | API bot & verifikasi token | `127.0.0.1:3366` | `https://api.gwenna.my.id` |
+> | API bot & verifikasi token | `127.0.0.1:2176` | `https://api.gwenna.my.id` |
 >
 > Deploy: `node tools/deploy-game.mjs` (unggah ke container lalu restart).
 > Tunnel: `tunnel-games.yml` (bukan lagi `tunnel-config.yml`).

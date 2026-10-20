@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Deploy modul bot + companion ke container bot (server b3f9c8df, panel
- * serverprivv) lewat File API panel.
+ * Deploy modul bot + companion ke container bot (server f7811b23, panel
+ * beyy-ganteng-store sejak Task77) lewat File API panel.
  *
  *   node tools/deploy-bot.mjs               # backup + unggah + restart
  *   node tools/deploy-bot.mjs --no-restart  # hanya unggah
@@ -29,14 +29,17 @@ const NO_RESTART = args.includes('--no-restart')
 const ONLY = args.includes('--only') ? args[args.indexOf('--only') + 1] : ''
 const NO_BACKUP = args.includes('--no-backup')
 
+const CRED_FILE = ['panel4-credentials.env', 'panel-new-credentials.env']
+  .map((name) => path.join(SECRETS, name))
+  .find((file) => fs.existsSync(file))
 const env = Object.fromEntries(
-  fs.readFileSync(path.join(SECRETS, 'panel-new-credentials.env'), 'utf8')
+  fs.readFileSync(CRED_FILE, 'utf8')
     .split('\n').filter((l) => l.trim() && !l.trim().startsWith('#'))
     .map((l) => { const i = l.indexOf('='); return [l.slice(0, i).trim(), l.slice(i + 1).trim()] }),
 )
 const BASE = env.PTERO_PANEL_URL.replace(/\/+$/, '')
 const KEY = env.PTERO_CLIENT_API_KEY
-const SERVER = process.env.PTERO_SERVER || 'b3f9c8df'
+const SERVER = process.env.PTERO_SERVER || env.PTERO_SERVER_JADIBOT || 'f7811b23'
 const API = `${BASE}/api/client/servers/${SERVER}`
 const HEAD = { Authorization: `Bearer ${KEY}`, Accept: 'application/json' }
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-')
