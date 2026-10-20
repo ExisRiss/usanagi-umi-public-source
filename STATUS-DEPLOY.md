@@ -1779,3 +1779,29 @@ Verifikasi live ulang (server, grup BackUp, pesan dihapus): `/start` → **2 pes
 - Tes: **153 platform** (11 tes baru di `tests/platform/batch10.test.mjs`), 0 gagal.
 
 **Batas jujur:** kategori "Khusus WhatsApp" ikut terhitung di `/health` sebagai satu kategori (22), padahal isinya bukan plugin. Deteksi tetap berbasis isi berkas + import relatif; plugin yang membangun rich message secara dinamis (string dirakit runtime) belum tentu tertangkap — kalau ketemu, tambahkan polanya.
+
+## Task70 batch 11 — Auto-AI memakai Gemini asli (2026-10-20)
+
+**Permintaan user:** "auto ai nya buat realistis pake apikey gemini yang pernah ku kasih".
+
+**Apa yang dibuat:**
+1. **`lib/gemini-client.js` (baru)** — klien Gemini resmi untuk Auto-AI.
+   - Endpoint `POST {GEMINI_API_BASE}/models/{model}:generateContent`, kunci dikirim lewat header **`x-goog-api-key`** (tidak pernah di URL), teks error dilewatkan `redactProviderSecrets`.
+   - Model baku **`gemini-3.5-flash`**, cadangan `gemini-3.6-flash` → `gemini-3.1-flash-lite`. Ini hasil uji langsung ke API: `gemini-2.5-flash` sudah ditolak untuk pengguna baru ("no longer available to new users"), sedangkan 3.7/3.8 sedang 503 "high demand".
+   - `thinkingConfig.thinkingBudget = 0` untuk model 2.5/3.x: tanpa itu jawaban pendek kehabisan token karena dipakai "berpikir" (uji: 308 token & `finishReason MAX_TOKENS` vs 21 token & `STOP`).
+   - Kunci dibaca dari `options.apiKey` → `GEMINI_API_KEY`/`GOOGLE_API_KEY` → berkas `.env.gemini` (mode 600) → `global.umiAutoAI`/`global.usanagiAI`.
+2. **`lib/auto-ai.js`** — `aiProviderState()` + `askAutoAiModel()`: **Gemini dulu → Groq bila Gemini gagal → 503 kalau keduanya tidak ada**. Anggaran token dihitung per penyedia (Gemini TPM 250 000). Bila tidak ada kunci sama sekali, Auto-AI tetap nonaktif dengan pesan yang sama seperti sebelumnya.
+3. **`plugins/owner/umi-aikey.js` (baru)** — kelola kunci tanpa restart: `/aikey status`, `/aikey set <KUNCI>` (menolak kalau dikirim di grup, kunci disamarkan di balasan, pesan asal dihapus bila bisa), `/aikey test` (panggilan Gemini sungguhan + latensi + jumlah token), `/aikey hapus`.
+
+**Verifikasi nyata di server (`/home/container`):**
+- Kunci user dipasang di `/home/container/.env.gemini` (mode **600**) lewat `persistGeminiRuntimeConfig`; bukan di repo, bukan di log.
+- `chatGemini` dari server: model `gemini-3.5-flash`, **1 074 ms**, 26 token, jawaban "Halo".
+- `planAutoAI` (jalur Auto-AI sebenarnya) dengan kunci yang sama: `kind: answer`, provider `gemini`, **1 462 ms**, jawaban "Halo! Lagi siap nemenin kamu ngobrol nih. Kamu sendiri gimana hari ini? …"; percakapan yang mengarah ke fitur menghasilkan `kind: command`. **Tidak ada** baris `[AUTO-AI] Gemini gagal` di `server.log`.
+- Restart: **2 052 plugin** termuat (naik 1 dari 2 051 karena `/aikey`), bot siap, `[TELEGRAM] @AlzRiss_bot polling aktif (bot main)`, relay health `{ok:true, uptime …}`.
+- Tes: **178 tes platform** (20 baru: `tests/platform/batch11.test.mjs` + `batch11-aikey.test.mjs`) dan **13 tes Auto-AI** — semua lulus.
+
+**Batas jujur:**
+- Kunci Gemini yang lama **tidak ditemukan** di workspace, di `.secrets`, maupun di server; karena itu kunci yang dipakai adalah kunci yang dikirim ulang user di chat. Nilainya tidak ditulis di dokumen ini.
+- Bukti "Gemini asli" diambil dengan memanggil kode yang sama dari server (`node`), bukan dengan mengirim pesan WhatsApp sungguhan — pesan WA butuh nomor pengirim nyata. Jalur kode yang dieksekusi identik (`chatGemini` → `askAutoAiModel` → `planAutoAI`).
+- Anggaran token Gemini dicatat per proses (bukan persisten); setelah restart hitungan mulai dari nol lagi.
+- Kalau kunci dicabut/limit, Auto-AI otomatis turun ke Groq; kalau Groq juga tidak ada, pengguna menerima 503 "Auto-AI belum dikonfigurasi oleh owner."

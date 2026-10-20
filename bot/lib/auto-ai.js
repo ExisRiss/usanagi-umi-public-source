@@ -1,8 +1,49 @@
 import { limitsEnabled } from './limit-mode.js'
 import { isOwnOutboundEcho } from './command-response.js'
 import { chatGroq, getGroqSettings, groqBudget } from './groq-client.js'
+import { chatGemini, getGeminiSettings, geminiBudget } from './gemini-client.js'
 import { conversationKey, conversationMemory, conversationOnly, conversationText, forgetConversation } from './auto-ai-conversation.js'
 import { AUTO_AI_SYSTEM_PROMPT, AUTO_AI_CONVERSATION_PROMPT } from './auto-ai-prompt.js'
+
+/**
+ * Urutan penyedia Auto-AI: Gemini dulu (kalau kuncinya ada), Groq sebagai
+ * cadangan. Keduanya panggilan API sungguhan — tidak ada balasan karangan.
+ */
+export function aiProviderState() {
+  const gemini = getGeminiSettings()
+  const groq = getGroqSettings()
+  const geminiReady = Boolean(gemini.configured && gemini.enabled)
+  const groqReady = Boolean(groq.configured && groq.enabled)
+  return {
+    gemini: { ready: geminiReady, model: gemini.model },
+    groq: { ready: groqReady, model: groq.model },
+    enabled: geminiReady || groqReady,
+    provider: geminiReady ? 'gemini' : groqReady ? 'groq' : null,
+  }
+}
+
+/** Panggil model: Gemini → (gagal) Groq. Error terakhir yang dilempar. */
+export async function askAutoAiModel(messages, options = {}) {
+  const state = aiProviderState()
+  let firstError = null
+  if (state.gemini.ready) {
+    try {
+      const reply = await chatGemini(messages, options)
+      return { ...reply, provider: 'gemini' }
+    } catch (error) {
+      firstError = error
+      // Kunci salah/kuota habis → coba Groq; kesalahan isi (mis. filter
+      // keamanan) juga boleh jatuh ke cadangan supaya pengguna tetap dilayani.
+      if (!state.groq.ready) throw error
+      console.warn('[AUTO-AI] Gemini gagal, pakai Groq:', String(error?.message || error).slice(0, 120))
+    }
+  }
+  if (state.groq.ready) {
+    const reply = await chatGroq(messages, options)
+    return { ...reply, provider: 'groq' }
+  }
+  throw firstError || Object.assign(new Error('Auto-AI belum dikonfigurasi oleh owner.'), { status: 503 })
+}
 
 const cooldowns = new Map(), locks = new Set(), seen = new Map()
 const DANGEROUS = /(?:^|[-_])(?:eval|exec|shell|bash|terminal|restartall|logout|delsession|clearsession|deleteall|resetdb|cleardb|addowner|delowner|setowner|setkey|setapikey|gettoken|apikey|credentials|secret|dumpsession|kickall|removeall|buy|pay|buypanel|orderpanel|buyvps|buydomain|topup|purchase|transfer|spam\w*|bomb|crash|rvo|viewonce|fakepay)(?:$|[-_])/i
@@ -309,7 +350,7 @@ export async function planAutoAI(context, options = {}) {
     if (botConfig.registrationRequired !== false && !context.userData?.registered && !context.isOwner) {
       return { kind: 'answer', answer: `kenalan dulu yuk, ketik ${activePrefix}daftar Nama,Umur` }
     }
-    if (!getGroqSettings().enabled) return { kind: 'skip' }
+    if (!aiProviderState().enabled) return { kind: 'skip' }
     const catalog = buildCommandCatalog(context.plugins || global.plugins, context)
     if (/^siapa(?:kah)?\s+(?:developer|pengembang|pembuat)(?:\s+(?:lu|lo|kamu|mu|bot(?: ini)?))?[?!.,\s]*$/i.test(input)) return { kind: 'answer', answer: 'Developerku AlzRiss, yang mengembangkan Umi dan platform Jadibot ini.' }
     const chatOnly = conversationOnly(input)
@@ -320,7 +361,7 @@ export async function planAutoAI(context, options = {}) {
       return { kind: 'answer', answer, conversation: pendingConversation }
     }
     const roles = { group: Boolean(m.isGroup), owner: Boolean(context.isOwner), admin: Boolean(context.isAdmin), botAdmin: Boolean(context.isBotAdmin), premium: Boolean(context.isPrems) }
-    const caller = options.callModel || chatGroq
+    const caller = options.callModel || askAutoAiModel
     // Chat-only uses one model call without command candidates. Context is bounded;
     // feature requests may use one extra catalog search, under the existing Groq budget.
     const ask = async (candidates) => caller([
@@ -336,7 +377,14 @@ export async function planAutoAI(context, options = {}) {
       maxTokens: options.maxTokens || 500,
       temperature: options.temperature ?? (chatOnly ? 0.65 : 0.4),
       timeoutMs: Math.min(16000, Number(options.budgetMs) || 16000),
-      fallbackModels: options.fallbackModels || ['openai/gpt-oss-20b'],
+      // Batas token untuk Gemini lebih lega (JSON rencana + jawaban) dan
+      // "thinking" dimatikan supaya balasan chat tetap cepat & tidak terpotong.
+      thinking: false,
+      // Gemini memakai daftar cadangan bawaannya sendiri (lib/gemini-client.js);
+      // daftar di bawah hanya untuk Groq.
+      fallbackModels: options.fallbackModels || (aiProviderState().provider === 'gemini'
+        ? undefined
+        : ['openai/gpt-oss-20b']),
     })
     // Permintaan yang sudah sangat jelas dijalankan langsung (tanpa token Groq).
     const sequence = chatOnly ? null : directSequence(input,catalog)
@@ -367,8 +415,10 @@ export async function planAutoAI(context, options = {}) {
     }
     // Kalau kuota menit ini hampir habis, jangan paksa Groq membalas 429.
     if (!options.callModel && !options.ignoreBudget) {
-      const budget = groqBudget()
-      if (budget.remaining < 700) return { kind: 'answer', answer: 'bentar ya, ai-ku lagi penuh. coba lagi semenit lagi 🙏' }
+      const state = aiProviderState()
+      const budget = state.provider === 'gemini' ? geminiBudget() : groqBudget()
+      const floor = state.provider === 'gemini' ? Math.max(2000, budget.limit * 0.02) : 700
+      if (budget.remaining < floor) return { kind: 'answer', answer: 'bentar ya, ai-ku lagi penuh. coba lagi semenit lagi 🙏' }
     }
     let candidates = chatOnly ? [] : searchCatalog(catalog, input, 8)
     pendingConversation = conversationMemory.prepare(memoryKey, input, '')
@@ -413,7 +463,7 @@ export async function planAutoAI(context, options = {}) {
   } catch (error) {
     const detail = String(error?.message || '')
     const pesan = /batas|limit|429/i.test(detail)
-      ? 'aduh ai-ku lagi kena limit groq, coba lagi sebentar ya 😅'
+      ? 'aduh ai-ku lagi kena limit, coba lagi sebentar ya 😅'
       : /koneksi|jaringan|timeout|batas waktu/i.test(detail)
         ? 'ai-ku lagi susah konek, coba lagi ya 🙏'
         : 'aduh ada kendala di ai-ku, coba lagi nanti ya'
