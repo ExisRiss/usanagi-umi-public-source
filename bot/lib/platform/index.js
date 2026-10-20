@@ -60,6 +60,25 @@ async function ensureMainBot(env) {
   return bots.MAIN_BOT_ID
 }
 
+const TELEGRAM_START_DELAYS = [0, 3000, 8000]
+
+/** Coba jalankan adapter beberapa kali dengan jeda; percobaan terakhir dilempar. */
+async function startWithRetry(adapter, { logger = console, delays = TELEGRAM_START_DELAYS } = {}) {
+  let lastError = null
+  for (let attempt = 0; attempt < delays.length; attempt += 1) {
+    if (delays[attempt]) await new Promise(resolve => setTimeout(resolve, delays[attempt]))
+    try {
+      await adapter.start()
+      if (attempt > 0) logger.log?.(`[PLATFORM] Telegram berhasil start pada percobaan ke-${attempt + 1}.`)
+      return
+    } catch (error) {
+      lastError = error
+      logger.warn?.(`[PLATFORM] Telegram start gagal (percobaan ${attempt + 1}/${delays.length}): ${error.message}`)
+    }
+  }
+  throw lastError
+}
+
 export async function startPlatform({ env = process.env, logger = console } = {}) {
   if (started) return platformState()
   migrate()
@@ -92,7 +111,11 @@ export async function startPlatform({ env = process.env, logger = console } = {}
           baseUrl: env.PLATFORM_PUBLIC_BASE_URL || '',
         })
         adapters.set(botId, adapter)
-        await adapter.start()
+        // Telegram kadang lambat saat bot baru boot (getMe timeout 12 s). Tanpa
+        // percobaan ulang, satu timeout membuat bot Telegram mati sampai
+        // restart berikutnya. `start()` yang gagal di init belum membuat loop
+        // polling, jadi aman dipanggil ulang (tidak ada dua poller).
+        await startWithRetry(adapter, { logger })
       }
     } catch (error) {
       logger.error?.('[PLATFORM] Gagal menjalankan bot Telegram:', error.message)

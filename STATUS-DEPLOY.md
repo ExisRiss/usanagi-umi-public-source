@@ -1840,3 +1840,62 @@ User mengirim ulang kunci Gemini yang mau dipakai. Yang dilakukan:
 - Pesan arsip lama (44 MB yang tidak bisa diunduh bot) dan bagian versi lama sudah dihapus dari grup.
 
 **Batas jujur:** arsip > 20 MB **tidak bisa** diunduh lewat bot; itu sebabnya dipecah. Kalau butuh satu berkas dengan cepat, `--only` tetap mengunduh seluruh bagian dulu (42 MB) sebelum mengekstrak satu berkas — belum ada pembagian per-blok.
+
+## /terabox diperbaiki — API resmi TeraBox, bukan situs mati (2026-10-20)
+
+**Laporan user:** `/terabox <link>` selalu gagal:
+`Fitur tidak selesai dalam 45 detik` → `Error downloading from TeraBox: Request failed with status code 500`.
+
+**Akar masalah (bukan tebakan):** plugin lama (`plugins/downloader/downloader-terabox.js`)
+mengandalkan situs pihak ketiga **terabxdownloader.org** (scrape `wp-admin/admin-ajax.php`
++ nonce). Situs itu sekarang tidak melayani permintaan → HTTP 500, jadi setiap link gagal,
+termasuk link yang valid. Link yang dikirim user (`…/wap/share/filelist?surl=…`) juga tidak
+pernah diparse khusus — yang dikirim mentah ke situs mati itu.
+
+**Apa yang diganti:**
+1. **`lib/terabox.js` (baru)** — klien API resmi TeraBox, mengikuti alur yang dipakai halaman
+   share TeraBox sendiri:
+   - `GET /sharing/link?surl=<surl>` → cookie sesi anonim (`browserid`, `csrfToken`, `TSID`).
+   - `GET /api/shorturlinfo?…&shorturl=1<surl>` → judul, `shareid`, `uk`, `sign`, `timestamp`, isi root.
+   - `GET /share/list?dir=…&root=0&sign=…&timestamp=…&shareid=…&uk=…` → isi subfolder (rekursif, maks 3 level).
+   - `GET /share/download?fid_list=[fs_id]&sign=…` → link unduhan (**wajib cookie akun**).
+   - Parse semua bentuk link: `/s/1xxxx`, `/wap/share/filelist?surl=`, `/sharing/link?surl=`, surl polos.
+   - `shorturl` dinormalkan ke bentuk berawalan **1** (tanpa itu API menjawab `errno 2`).
+   - 10 mirror dicoba berurutan (terabox.app, terabox.com, 1024tera.com, nephobox, teraboxlink, …).
+2. **`plugins/downloader/downloader-terabox.js` ditulis ulang** — tidak lagi menyentuh situs pihak ketiga;
+   menampilkan daftar file + ukuran, bisa pilih nomor file (`/terabox <link> 2`), mengirim media hanya
+   kalau di bawah batas platform (Telegram 45 MB).
+3. **`plugins/owner/umi-tbcookie.js` (baru)** — owner mengatur cookie akun TeraBox tanpa restart:
+   `/tbcookie status | set ndus=… | test <link> | hapus`. Cookie disimpan di `.env.terabox` mode **600**,
+   ditolak kalau dikirim di grup, dan tidak pernah dipantulkan utuh.
+4. **`lib/platform/index.js`** — start bot Telegram sekarang **dicoba ulang 3×** (jeda 0/3/8 s). Tanpa ini,
+   satu kali `getMe` timeout saat boot membuat bot Telegram mati sampai restart berikutnya.
+
+**Fakta yang diuji langsung ke API TeraBox (20 Okt 2026):**
+| Uji | Hasil |
+|---|---|
+| `shorturl` tanpa awalan `1` | `errno 400210 need verify_v2` |
+| `shorturl=1<surl>` tanpa cookie halaman | `errno 400210` |
+| `shorturl=1<surl>` setelah ambil cookie halaman | `errno 0` + data |
+| Langkah 1–3 (baca isi) tanpa login | **jalan** |
+| `/share/download` tanpa cookie akun | `errno 400310 need verify_v2` — dan di browser pun tombol Download memunculkan modal Login |
+| Situs pihak ketiga `terabxdownloader.org` | mati (HTTP 500) — itulah penyebab error yang dilaporkan |
+
+**Verifikasi di server produksi (`/home/container`):**
+- `resolveTeraBoxShare` dengan link user: **2 896 ms**, `errno 0`, judul `Nenxiaotu Cosplay Cartethiya`,
+  1 folder, 1 file `join telegram @senseiaja.mp4` **388 MB**.
+- Dry-run perintah `/terabox` (kode asli, jaringan asli): **2 843 ms**, balasan berisi daftar file +
+  penjelasan bahwa link unduhan butuh akun. Tidak ada lagi timeout 45 detik.
+- Restart: **2 053 plugin** termuat, `errno` plugin bersih; `[TELEGRAM] @AlzRiss_bot polling aktif (bot main)`
+  (percobaan 1 timeout, percobaan 2 berhasil — retry bekerja).
+- Tes: **194 tes platform** (16 baru di `tests/platform/batch12-terabox.test.mjs`), 0 gagal.
+
+**Batas jujur:**
+- **Membaca** isi link sekarang berfungsi penuh tanpa akun. **Mengunduh** file tetap butuh cookie akun
+  TeraBox — itu keputusan TeraBox, bukan bug kita: tanpa cookie, API mereka menolak memberi `dlink`
+  dan situs resminya sendiri memunculkan Login saat tombol Download ditekan.
+- Jalur unduhan (cookie → `dlink` → kirim media) sudah diimplementasikan dan diuji dengan respons tiruan
+  (termasuk kasus cookie kedaluwarsa `errno 400310`), tetapi **belum** diuji dengan akun TeraBox nyata
+  karena belum ada cookie yang tersedia saat pengerjaan.
+- File 388 MB contoh ini juga di atas batas kirim Telegram (45 MB), jadi yang dikirim tetap pesan teks +
+  daftar file, bukan medianya.
