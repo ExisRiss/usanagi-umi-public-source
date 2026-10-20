@@ -1199,7 +1199,17 @@ async function route(req, res) {
     if (!statsAuthorized(req)) return send(res, 401, { error: 'unauthorized' })
     const db = loadDb()
     const sessions = Object.values(db.sessions || {})
-    const online = sessions.filter(s => s.status === 'connected' || s.status === 'online').length
+    let online = sessions.filter(s => s.status === 'connected' || s.status === 'online').length
+    /* Task77: registry platform tidak menyimpan status koneksi, sehingga
+       hitungan online selalu 0 walau jadibot benar-benar tersambung.
+       Pembersih sesi menulis status nyata di data/jadibot-session-cleaner.json. */
+    if (!online) {
+      try {
+        const raw = fs.readFileSync(path.join(process.cwd(), 'data', 'jadibot-session-cleaner.json'), 'utf8')
+        const entries = (JSON.parse(raw) || {}).entries || {}
+        online = sessions.filter(s => entries[String(s.sessionId)] && entries[String(s.sessionId)].online === true).length
+      } catch { /* berkas belum ada: biarkan 0 */ }
+    }
     return send(res, 200, { ok: true, sessions: sessions.length, online, users: sessions.length })
   }
 
