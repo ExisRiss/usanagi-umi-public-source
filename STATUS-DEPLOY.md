@@ -1805,3 +1805,13 @@ Verifikasi live ulang (server, grup BackUp, pesan dihapus): `/start` → **2 pes
 - Bukti "Gemini asli" diambil dengan memanggil kode yang sama dari server (`node`), bukan dengan mengirim pesan WhatsApp sungguhan — pesan WA butuh nomor pengirim nyata. Jalur kode yang dieksekusi identik (`chatGemini` → `askAutoAiModel` → `planAutoAI`).
 - Anggaran token Gemini dicatat per proses (bukan persisten); setelah restart hitungan mulai dari nol lagi.
 - Kalau kunci dicabut/limit, Auto-AI otomatis turun ke Groq; kalau Groq juga tidak ada, pengguna menerima 503 "Auto-AI belum dikonfigurasi oleh owner."
+
+### Batch 11 — kunci Gemini diganti (2026-10-20, tanpa restart)
+
+User mengirim ulang kunci Gemini yang mau dipakai. Yang dilakukan:
+
+- Kunci baru ditulis ke `/home/container/.env.gemini` lewat `persistGeminiRuntimeConfig` (mode **600**), menggantikan kunci sebelumnya. Nilai kunci **tidak** ditulis di dokumen ini dan tidak masuk repo.
+- Verifikasi kecocokan tanpa membocorkan isi: `sha256(kunci)` 16 karakter pertama yang dihitung di server **sama** dengan yang dihitung lokal (`a2061c52c50c9f1b`, panjang 53 karakter).
+- **Tidak perlu restart.** Proses bot yang sama (PID 9069, uptime ±11 menit) langsung memakai kunci baru karena `gemini-client` membaca ulang berkas setiap 15 detik.
+- Bukti panggilan nyata setelah penggantian: `chatGemini` → `gemini-3.5-flash`, **1 002 ms**, 27 token, balasan "Halo."; `planAutoAI` (jalur Auto-AI) → `kind: answer`, provider **gemini**, **1 613 ms**, jawaban "Halo! Aku lagi di sini, siap nemenin kamu ngobrol. …". Log tidak memuat `Gemini gagal`, jadi tidak ada fallback ke Groq.
+- Kunci lama otomatis tidak dipakai lagi karena berkas `.env.gemini` ditimpa (bukan ditambahkan). Kunci baru juga disimpan di `/home/user/.secrets/task62-gemini.env` (mode 600) di workspace, di luar repo.
