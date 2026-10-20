@@ -1,4 +1,4 @@
-window.__UMI_JS_VER='20261020-botfix4';
+window.__UMI_JS_VER='20261020-botfix5';
 (() => {
 'use strict'
 function applyMainBotToggle(status){const button=$('toggleMainBot'),chip=$('mainBotToggleState');if(!button||!chip)return;const enabled=Boolean(status&&status.main_bot_enabled);button.dataset.enabled=enabled?'1':'0';button.textContent=enabled?'MATIKAN BOT UTAMA':'AKTIFKAN BOT UTAMA';chip.textContent=enabled?'AKTIF':'NONAKTIF';chip.className=`chip ${enabled?'partner':'owner'}`}
@@ -120,7 +120,7 @@ async function copyMainBotPairCode(){const code=$('mainBotPairCode')?.dataset.co
  * jadi selalu terlihat di halaman Bot Utama walau buffer log sudah berputar. */
 function applyMainPairingStatus(status={}){state.mainStatusHasServer=true;const raw=String(status.pairing_code||'').replace(/[^a-z0-9]/gi,'').toUpperCase();const age=Number(status.pairing_code_age_seconds);/* kode pairing hidup ±60 detik; di atas 120 detik anggap kedaluwarsa supaya owner tidak memasukkan kode mati */const fresh=Boolean(raw)&&(!Number.isFinite(age)||age<=120);if(fresh)state.mainPairCode=raw;const output=$('mainBotPairCode'),copy=$('copyMainBotPairCode'),note=$('mainBotPairingStatus');if(raw&&fresh){const formatted=formatPairCode(raw);if(output){output.textContent=formatted.display;output.dataset.code=formatted.code}if(copy)copy.disabled=false}else{state.mainPairCode='';if(output){output.textContent='••••-••••';output.dataset.code=''}if(copy)copy.disabled=true}
 if(!note)return;const info=status.pairing_number_set?`Nomor tersimpan: ${status.pairing_number_masked||'-'}.`:'Belum ada nomor tersimpan.';
-if(status.pairing_error){note.textContent=`Pairing gagal: ${status.pairing_error} Kalau penyebabnya sesi rusak/logout, tekan HAPUS SESI BOT UTAMA lalu MINTA CODE LAGI.`}
+if(status.pairing_error){const err=String(status.pairing_error);/* saran HAPUS SESI hanya relevan untuk masalah koneksi/sesi, bukan saat WhatsApp membatasi permintaan */const sessionHint=/rate|Tunggu|dibatasi/i.test(err)?'':" Kalau penyebabnya sesi rusak/logout, tekan HAPUS SESI BOT UTAMA lalu MINTA CODE LAGI.";note.textContent=`Pairing gagal: ${err}${sessionHint}`}
 else if(status.pairing_pending){note.textContent='Meminta kode pairing ke WhatsApp… tunggu ±15 detik; halaman ini menyegarkan sendiri tiap 4 detik.'}
 else if(raw&&fresh){note.textContent=`${info} Kode dibuat ${Number.isFinite(age)?`${age} detik lalu`:'baru saja'}. Buka WhatsApp → Perangkat tertaut → Tautkan dengan nomor telepon, lalu masukkan kode (hidup ±60 detik). Kalau kedaluwarsa, tekan MINTA CODE LAGI.`}
 else if(raw&&!fresh){note.textContent=`${info} Kode terakhir (${raw.replace(/(.{4})(.{4})/,'$1-$2')}) sudah kedaluwarsa — dibuat ${Math.round(age/60)} menit lalu. Tekan MINTA CODE LAGI untuk kode baru.`}

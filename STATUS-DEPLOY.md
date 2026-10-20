@@ -1977,4 +1977,4 @@ Ringkas: tombol pairing di halaman **Bot Utama** kini benar-benar meminta kode k
 - Nomor bot utama tidak pernah ditampilkan utuh: hanya `6282******396`.
 
 **Deploy:** backend lewat panel API (`f7811b23`, upload→delete→rename, ukuran & SHA-256 cocok, `power restart`), website `node tools/deploy-website.mjs` → `dpl_85j8ntajo-exisriss-projects.vercel.app` (production `https://alzriss-comunity.vercel.app`).
-**Commit:** `31190d8` + commit lanjutan Task78 (lihat `TASK78-REPORT.md`).
+**Commit:** `31190d8` (fase 1) + `988d5b6` (fase 2) + commit dokumentasi; rincian di `TASK78-REPORT.md`.
