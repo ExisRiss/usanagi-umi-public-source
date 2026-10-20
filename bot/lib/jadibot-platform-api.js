@@ -276,6 +276,9 @@ async function routeOwnerConsole(req, res, pathname) {
   if (pathname === '/api/owner-console/main-config' && req.method === 'POST') {
     if (typeof global.resetMainBotConfig !== 'function') throw Object.assign(new Error('Runtime bot belum siap.'), { status: 503 })
     const result = await global.resetMainBotConfig()
+    // Konfigurasi baru (tanpa nomor) butuh socket bersih; muat ulang handler
+    // supaya tombol SIMPAN & MINTA CODE berikutnya tidak kena socket mati.
+    if (typeof global.reloadHandler === 'function') { try { await global.reloadHandler(true) } catch {} }
     return send(res, 200, { ok: true, ...result, status: mainBotStatus() })
   }
 

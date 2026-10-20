@@ -386,6 +386,18 @@ async function waitForMainPairingSocket(timeoutMs = MAIN_PAIRING_SOCKET_WAIT_MS)
  * pemilik yang menekan tombol harus melihat kode atau alasan gagalnya. */
 const MAIN_MANUAL_PAIRING_MIN_GAP_MS = 5000;
 
+/* Terjemahkan error teknis Baileys/WhatsApp supaya halaman Bot Utama tidak
+ * menampilkan istilah library, dan beri saran tindakan yang benar. */
+function mainPairingFriendlyError(rawMessage) {
+    const message = String(rawMessage || '').trim();
+    if (/already pending/i.test(message)) return 'Kode pairing sebelumnya masih aktif di WhatsApp. Masukkan kode itu dulu, atau tunggu ±60 detik lalu minta kode lagi.';
+    if (/rate-overlimit|rate.?limit|too many/i.test(message)) return 'WhatsApp membatasi permintaan kode (rate-overlimit). Tunggu ±10 menit sebelum minta kode lagi; jangan menekan tombol berulang.';
+    if (/never answered the pairing request|timed?\s?out/i.test(message)) return 'WhatsApp belum menjawab permintaan kode. Tunggu 1–2 menit lalu coba MINTA CODE LAGI.';
+    if (/connection failure|connection terminated|stream errored|connection closed|socket/i.test(message)) return 'Koneksi WhatsApp terputus saat pairing. Tekan HAPUS SESI BOT UTAMA, lalu MINTA CODE LAGI.';
+    if (/logged\s?out|sesi telah logout/i.test(message)) return 'Sesi bot utama sudah logout. Tekan HAPUS SESI BOT UTAMA, lalu MINTA CODE LAGI.';
+    return message || 'Pairing gagal. Coba lagi.';
+}
+
 global.requestPairing = async function(options = {}) {
     const force = options === true || options?.force === true;
     if (!global.mainBotEnabled) return global.lastPairingCode || null;
@@ -470,12 +482,20 @@ global.requestPairing = async function(options = {}) {
             }
         }
 
-        const pairingConn = await waitForMainPairingSocket();
-        if (!pairingConn) throw new Error('Socket WhatsApp belum siap. Tunggu koneksi lalu masukkan nomor kembali.');
+        // Socket bisa berganti tepat setelah sesi dihapus/di-reload (tombol HAPUS
+        // SESI). Dulu kondisi itu langsung menggagalkan pairing walau hanya
+        // transien, sehingga owner harus menekan tombol dua kali. Sekarang
+        // tunggu socket baru dan ulangi pemeriksaan beberapa kali.
+        let pairingConn = null;
         console.log(chalk.blue('\n⏳ Menyiapkan pairing code...'));
-        await pause(MAIN_PAIRING_REQUEST_DELAY_MS);
-        if (pairingConn !== global.conn || !mainPairingSocketUsable(pairingConn)) {
-            throw new Error('Socket WhatsApp berubah saat pairing. Prompt akan muncul lagi setelah koneksi siap.');
+        for (let attempt = 0; attempt < 4 && !pairingConn; attempt += 1) {
+            const candidate = await waitForMainPairingSocket(attempt === 0 ? MAIN_PAIRING_SOCKET_WAIT_MS : 15000);
+            if (!candidate) break;
+            await pause(MAIN_PAIRING_REQUEST_DELAY_MS);
+            if (candidate === global.conn && mainPairingSocketUsable(candidate)) pairingConn = candidate;
+        }
+        if (!pairingConn) {
+            throw new Error('Socket WhatsApp belum siap atau sedang berganti. Tunggu beberapa detik lalu minta kode lagi.');
         }
 
         global.pairingRequested = true;
@@ -495,8 +515,12 @@ global.requestPairing = async function(options = {}) {
         return global.lastPairingCode;
     } catch (error) {
         global.pairingRequested = false;
-        global.lastPairingError = String(error?.message || 'Pairing gagal.');
-        console.log(chalk.red('❌ Pairing belum berhasil:'), error.message);
+        const rawMessage = String(error?.message || 'Pairing gagal.');
+        // Pesan teknis Baileys diterjemahkan supaya halaman Bot Utama tidak
+        // menampilkan instruksi library (cancelPairingCode) ke owner.
+        const friendly = mainPairingFriendlyError(rawMessage);
+        global.lastPairingError = friendly;
+        console.log(chalk.red('❌ Pairing belum berhasil:'), rawMessage);
         return null;
     } finally {
         global.pairingInputShown = false;
@@ -516,16 +540,28 @@ global.requestMainPairing = async function() {
     if (!global.mainBotEnabled) {
         throw Object.assign(new Error('Bot utama sedang nonaktif. Aktifkan dulu lalu coba lagi.'), { status: 409 });
     }
+    // Baileys menolak permintaan kedua selama kode sebelumnya masih pending.
+    // Kalau kode lama masih muda, tampilkan kode itu lagi (masih berlaku di
+    // WhatsApp) daripada melempar error teknis berbahasa Inggris ke website.
+    const previous = global.lastPairingCode;
+    if (previous?.code && Date.now() - previous.at < 75000) {
+        global.lastPairingError = null;
+        return { ...previous, reused: true };
+    }
     if (global.conn?.authState?.creds?.registered) {
         throw Object.assign(new Error('Sesi bot utama masih tertaut. Hapus sesi dulu kalau ingin pairing nomor baru.'), { status: 409 });
     }
     global.pairingPending = true;
     try {
         global.lastPairingError = null;
-        if (!global.mainPairingSocketReady && typeof global.reloadHandler === 'function') {
+        // Socket bisa "siap" di flag tapi ws-nya sudah tertutup (mis. setelah
+        // RESET CONFIG). Coba tunggu dulu; kalau tetap tidak bisa dipakai,
+        // paksa muat ulang handler sekali lalu tunggu lagi.
+        let readyConn = await waitForMainPairingSocket(12000);
+        if (!readyConn && typeof global.reloadHandler === 'function') {
             try { await global.reloadHandler(true) } catch {}
+            readyConn = await waitForMainPairingSocket(20000);
         }
-        const readyConn = await waitForMainPairingSocket(25000);
         if (!readyConn) {
             throw Object.assign(new Error(global.lastPairingError || 'Socket WhatsApp belum siap. Tunggu beberapa detik lalu coba lagi.'), { status: 503 });
         }

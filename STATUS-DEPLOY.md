@@ -1956,3 +1956,25 @@ Saat `.premium on` dijalankan dan daftar masih kosong, bot langsung menyuruh pem
 - Uji HTTP langsung ke `127.0.0.1:2176`: tanpa secret **401**, role user **403**, owner **200**; `POST {enabled:false}` → `enabled:false`, `POST {enabled:true}` → `enabled:true`; `catalogPlugins:2055`. Dua akun uji dibersihkan dari `platform_users` setelah tes.
 - Website deploy `dpl_7B3JhwohEc3us335cNEgaPDTHzoG` READY: `/dashboard` memuat `MODE PREMIUM BOT` + `premium_enabled`, `/assets/app.js?v=20261020-premium` memuat pencarian fitur, `/platform` memuat `Mode Premium Platform`, `/assets/platform.js?v=20261020-premium` memuat `loadPremium`, `/api/ecosystem/premium-mode` → 401 tanpa login (route hidup & terjaga).
 - Tes otomatis: `node --test tests/platform/` **217/217 lulus** (209 lama + 8 tes premium baru).
+
+## Task78 — Pairing bot utama dari website, hapus sesi/config, urutan menu, AI Agent Gemini (2026-10-20)
+
+Ringkas: tombol pairing di halaman **Bot Utama** kini benar-benar meminta kode ke WhatsApp, kode **tampil di halaman** (bukan hanya konsol panel), ditambah tombol **HAPUS SESI** & **RESET CONFIG**, urutan menu dirapikan ("Keluar" paling bawah), dan AI Agent/AI Owner dipindah ke provider **Gemini**.
+
+| # | Area | Perubahan | Bukti verifikasi |
+|---|---|---|---|
+| 1 | Bot runtime (`bot/main.js`) | `global.requestMainPairing()` (manual, tidak ditelan cooldown), `global.resetMainBotSession()` (hapus `sessions/*` + reset `initAuthCreds()` di memori), `global.resetMainBotConfig()` (hapus `.main-bot.env`), `global.pairingPending`, kode pairing disimpan di memori (`global.lastPairingCode`) dan dibagikan lewat status | `POST /api/owner-console/main-session` → `removed:1`, lalu `pairing_code` terbit **<15 dtk** |
+| 2 | Route owner (`bot/lib/jadibot-platform-api.js`) | `pairing-request`, `main-session`, `main-config` menjawab **instan** (pairing jalan di latar belakang), `pairing_pending`/`pairing_code`/`pairing_code_age_seconds`/`pairing_error`/`session_saved` di `mainBotStatus()`, route `POST /api/owner-agent/test` | `GET /api/owner-console/status` mengembalikan field di atas (200) |
+| 3 | Gemini (`bot/lib/gemini-client.js`, `bot/lib/umi-agent.js`) | `isValidGeminiKey`, `toGeminiPayload` memperbaiki `functionResponse.name`, pesan 429 menyebut kuota + estimasi retry, `primaryError` (401 model cadangan tidak menutupi error utama), `agentTest()`, provider `gemini` di AI Agent/AI Owner | `GET /api/owner-agent/status` → `configured:true, provider:gemini, model:gemini-3.5-flash` |
+| 4 | Website API (`website/api/platform.js`) | Whitelist provider `groq|openrouter|gemini` (default **gemini**), relay `agent/test`, `main-console/pairing-request`, `main-console/main-session`, `main-console/main-config`, flag `request:true` di `pairing-number` | `POST /api/platform/main-console/pairing-request` tanpa login → **401** (route hidup & terjaga) |
+| 5 | Website UI (`website/index.html`, `website/public/index.html`, `website/public/assets/app.js`) | Nav: … Bot Utama, Owner, MMORPG, AI Agent, AI Owner, **Keluar (paling bawah)**; tombol `requestMainBotPairCode`, `deleteMainBotSession`, `resetMainBotConfig`, `testAgentConnection`; kode pairing dibaca dari **status server** (parser log hanya cadangan) + kedaluwarsa 120 dtk; polling status 4 dtk; cooldown 60 dtk antar permintaan kode | Deploy `dpl_85j8ntajo…` READY; `assets/app.js?v=20261020-botfix4` (`__UMI_JS_VER='20261020-botfix4'`) |
+| 6 | Uji UI (Playwright, login owner) | Kode tampil di `#mainBotPairCode` (contoh `FDPK-FMNF`, `V8GL-VW5J`), HAPUS SESI → kode baru, RESET CONFIG → nomor kosong + bot aktif, toggle on/off bot utama & autoread tersimpan di server, menu urut benar | Screenshot di `/home/user/shots/task78-*.png` |
+| 7 | Tes otomatis | `node --test bot/tests/platform/` **217/217 lulus** | jalankan ulang setelah patch Task78 |
+
+**Batas jujur (bukan mock):**
+- Key Gemini owner `AQ.…` **ditolak Google** pada 2026-10-20: `401 ACCESS_TOKEN_TYPE_UNSUPPORTED` / `API_KEY_SERVICE_BLOCKED` di `gemini-3.5-flash` maupun model lain, juga lewat `?key=` dan `Authorization: Bearer`. Jadi AI Agent/AI Owner **sudah** memakai Gemini + key owner, tetapi **belum bisa membalas** sampai owner memasang key baru (UI kini menyebut pesan itu apa adanya, bukan "berhasil").
+- WhatsApp membatasi permintaan kode berulang (`rate-overlimit`) setelah ±10 permintaan pada jam yang sama; UI sekarang menampilkan pesan Indonesia + cooldown 60 dtk, dan pairing tetap berhasil setelah sesi dihapus & jeda.
+- Nomor bot utama tidak pernah ditampilkan utuh: hanya `6282******396`.
+
+**Deploy:** backend lewat panel API (`f7811b23`, upload→delete→rename, ukuran & SHA-256 cocok, `power restart`), website `node tools/deploy-website.mjs` → `dpl_85j8ntajo-exisriss-projects.vercel.app` (production `https://alzriss-comunity.vercel.app`).
+**Commit:** `31190d8` + commit lanjutan Task78 (lihat `TASK78-REPORT.md`).

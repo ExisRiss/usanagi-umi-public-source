@@ -234,7 +234,16 @@ function errorFor(status, payload) {
     return Object.assign(new Error('Key Gemini tidak valid; hubungi owner.'), { status: 401, providerMessage: detail })
   }
   if (status === 400) return Object.assign(new Error(`Permintaan Gemini ditolak: ${detail || 'format tidak didukung'}.`), { status: 400 })
-  if ([401, 403].includes(status)) return Object.assign(new Error('Key Gemini tidak punya akses ke model ini; hubungi owner.'), { status })
+  if ([401, 403].includes(status)) {
+    // Dibedakan supaya pesan ke owner jujur: ACCESS_TOKEN_TYPE_UNSUPPORTED /
+    // API_KEY_INVALID berarti key-nya sendiri sudah tidak berlaku (kedaluwarsa
+    // atau dicabut), bukan soal izin model. Diperiksa 2026-10-20: key `AQ.…`
+    // owner ditolak Google di semua model, jadi owner perlu memasang key baru.
+    if (/ACCESS_TOKEN_TYPE_UNSUPPORTED|API_KEY_INVALID|API key not valid|API_KEY_SERVICE_BLOCKED/i.test(raw)) {
+      return Object.assign(new Error('Key Gemini ditolak Google (tidak valid/kedaluwarsa). Pasang key baru lewat halaman AI Owner atau .env.gemini di server bot.'), { status: 401, providerMessage: detail })
+    }
+    return Object.assign(new Error('Key Gemini tidak punya akses ke model ini; hubungi owner.'), { status })
+  }
   if (status === 404) return Object.assign(new Error('Model Gemini tidak ditemukan; hubungi owner.'), { status: 404 })
   if (status === 429) {
     const wait = (() => {
