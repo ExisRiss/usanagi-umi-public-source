@@ -305,25 +305,31 @@ if (isStatus) return
 const realmAccessCommand = isRealmAccessCommand(m.text, activePrefix)
 const prefix = { test: text => String(text || '').startsWith(activePrefix) }
 
+// AutoAI di chat pribadi: percakapan 1:1 tidak perlu mention seperti di grup.
+const autoAIEnabledForBot = (cfg = {}) => {
+  if (global.umiAutoAI?.enabled === false) return false
+  if (cfg.autoAIEnabled === false) return false
+  if (cfg.values?.autoAI?.enabled === false) return false
+  return cfg.type === 'jadibot' ? cfg.values?.autoAI?.enabled !== false : true
+}
+
 if (!isGroup) {
   const body = typeof m.text === 'string' ? m.text.trim() : ''
+  const hasPrefix = prefix.test(body)
 
-  // harus diawali prefix
-  if (!prefix.test(body) && !shouldAutoAITrigger(m, this, botConfig)) return
+  // Tanpa prefix: hanya lanjut kalau AutoAI memang aktif untuk bot ini
+  // (atau sedang dalam balasan/mention yang sah).
+  if (!hasPrefix && !autoAIEnabledForBot(botConfig) && !shouldAutoAITrigger(m, this, botConfig)) return
 
   // ambil command setelah prefix
-  const cmd = prefix.test(body) ? body.slice(activePrefix.length).trim() : body
+  const cmd = hasPrefix ? body.slice(activePrefix.length).trim() : body
 
   // kalau cuma "." atau "!" dll → skip
   if (!cmd) return
 
-  // cek premium
-  if (!isPrems && !realmAccessCommand) {
-    // if (!userData.lastWarn || Date.now() - userData.lastWarn > 10000) {
-      // userData.lastWarn = Date.now()
-      // await m.reply('🚫 Private chat hanya untuk user premium!')
-    return
-  }
+  // Catatan: sebelumnya ada `return` diam-diam untuk semua non-premium di sini,
+  // sehingga chat pribadi tidak pernah dibalas sama sekali (tanpa pesan apa pun).
+  // Chat pribadi sekarang dilayani normal; plugin premium tetap dicek per-plugin.
 }
 
 // ==================
