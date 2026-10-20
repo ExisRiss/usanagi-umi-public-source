@@ -46,7 +46,7 @@ import {
   searchFeatures,
 } from './premium-mode.js'
 import { cleanupBackupExport, getBackupExportFile, prepareBackupExport } from './vercel-backup-export.js'
-import { agentChat, agentStatus, ownerAgentShell, startUmiAgentWorker, updateAgentSettings } from './umi-agent.js'
+import { agentChat, agentStatus, agentTest, ownerAgentShell, startUmiAgentWorker, updateAgentSettings } from './umi-agent.js'
 import { buyPanelPackage, buyProduct, createWalletTopup, handleTripayCallback, manualTopupRequests, panelAutoOrderStatus, reviewManualTopup, shopCatalog, startPanelAutoOrder, testPanelConnection, updatePanelPackages, updatePanelSettings, adjustWallet, creditWalletForGame, debitWalletForGame, walletOrders, walletStatus } from './panel-autoorder.js'
 
 
@@ -171,6 +171,25 @@ function ownerConsoleOutput(cursor = 0) {
   return { cursor: ownerConsole.cursor, reset, chunks }
 }
 
+/* Satu permintaan pairing pada satu waktu. Hasil/alasannya tetap terbaca
+ * lewat mainBotStatus() (pairing_code / pairing_error / pairing_pending). */
+let backgroundPairingPromise = null
+function startBackgroundPairing() {
+  if (backgroundPairingPromise) return backgroundPairingPromise
+  if (typeof global.requestMainPairing !== 'function') return null
+  // Pemanggilan ulang saat masih berjalan sengaja diabaikan supaya WhatsApp
+  // tidak dibanjiri permintaan kode.
+  backgroundPairingPromise = Promise.resolve()
+    .then(() => global.requestMainPairing())
+    .catch(error => {
+      global.lastPairingError = String(error?.message || 'Pairing gagal.')
+      console.log('[MAIN-BOT] Permintaan pairing gagal:', global.lastPairingError)
+      return null
+    })
+    .finally(() => { backgroundPairingPromise = null })
+  return backgroundPairingPromise
+}
+
 async function routeOwnerConsole(req, res, pathname) {
   verifyOwnerConsoleTicket(req, pathname)
   const url = new URL(req.url, 'http://localhost')
@@ -212,19 +231,52 @@ async function routeOwnerConsole(req, res, pathname) {
   // Nomor bot utama disimpan permanen (mode 600) supaya pairing tidak lagi
   // bergantung pada prompt console yang bisa tertutup saat socket reconnect.
   if (pathname === '/api/owner-console/pairing-number' && req.method === 'POST') {
-    const number = normalizeMainBotNumber((await bodyJson(req)).number)
+    const input = await bodyJson(req)
+    const number = normalizeMainBotNumber(input.number)
     if (number.length < 8 || number.length > 15) throw Object.assign(new Error('Nomor bot utama tidak valid.'), { status: 400 })
     if (typeof global.applyMainPairingNumber !== 'function') throw Object.assign(new Error('Runtime bot belum siap menerima nomor.'), { status: 503 })
     global.applyMainPairingNumber(number)
     if (!global.mainBotEnabled && typeof global.setMainBotEnabled === 'function') {
       await global.setMainBotEnabled(true)
-    } else if (typeof global.reloadHandler === 'function' && !global.conn?.authState?.creds?.registered) {
-      // Bot sudah aktif tapi socket-nya mungkin sedang diam. Memuat ulang handler
-      // memicu event `connecting`, dan hanya saat itulah WhatsApp menerima
-      // permintaan pairing code.
-      try { await global.reloadHandler(true) } catch {}
     }
-    return send(res, 200, { ok: true, status: mainBotStatus() })
+    // Task77: permintaan kode dijalankan di latar belakang. Respons tetap cepat
+    // (website memantau status setiap 2 detik), jadi relay Vercel tidak kena
+    // timeout saat socket WhatsApp butuh waktu untuk siap.
+    if (input.request !== false && !global.conn?.authState?.creds?.registered) {
+      startBackgroundPairing()
+    }
+    return send(res, 200, {
+      ok: true,
+      pairing_code: global.lastPairingCode?.code || '',
+      pairing_error: global.lastPairingError || '',
+      status: mainBotStatus(),
+    })
+  }
+
+  // Tombol "MINTA CODE LAGI" — nomor tidak berubah, hanya meminta kode baru.
+  if (pathname === '/api/owner-console/pairing-request' && req.method === 'POST') {
+    if (typeof global.requestMainPairing !== 'function') throw Object.assign(new Error('Runtime bot belum siap.'), { status: 503 })
+    startBackgroundPairing()
+    return send(res, 200, { ok: true, pairing_code: global.lastPairingCode?.code || '', status: mainBotStatus() })
+  }
+
+  // Hapus sesi WhatsApp bot utama — dipakai saat sesi rusak/logout agar bisa
+  // pairing ulang. Sesi jadibot tidak ikut terhapus.
+  if (pathname === '/api/owner-console/main-session' && req.method === 'POST') {
+    if (typeof global.resetMainBotSession !== 'function') throw Object.assign(new Error('Runtime bot belum siap.'), { status: 503 })
+    const result = await global.resetMainBotSession()
+    // Setelah sesi bersih, minta kode baru di latar belakang bila nomor sudah
+    // tersimpan. Kalau belum ada nomor, cukup siapkan ulang socket.
+    if (mainBotStateForStatus().pairingNumber && global.mainBotEnabled) startBackgroundPairing()
+    else if (typeof global.reloadHandler === 'function') { try { await global.reloadHandler(true) } catch {} }
+    return send(res, 200, { ok: true, removed: result?.removed || 0, pairing_code: global.lastPairingCode?.code || '', pairing_error: global.lastPairingError || '', status: mainBotStatus() })
+  }
+
+  // Reset konfigurasi bot utama (.main-bot.env): nomor pairing + status on/off.
+  if (pathname === '/api/owner-console/main-config' && req.method === 'POST') {
+    if (typeof global.resetMainBotConfig !== 'function') throw Object.assign(new Error('Runtime bot belum siap.'), { status: 503 })
+    const result = await global.resetMainBotConfig()
+    return send(res, 200, { ok: true, ...result, status: mainBotStatus() })
   }
 
   if (pathname === '/api/owner-console/autoread' && req.method === 'GET') {
@@ -264,6 +316,10 @@ async function routeOwnerAgent(req, res, pathname) {
   if (pathname === '/api/owner-agent/settings' && req.method === 'POST') {
     const input = await bodyJson(req)
     return send(res, 200, updateAgentSettings(input, actor))
+  }
+  // Tes koneksi provider AI (dipakai tombol "TES KONEKSI AI").
+  if (pathname === '/api/owner-agent/test' && req.method === 'POST') {
+    return send(res, 200, await agentTest(actor))
   }
   if (pathname === '/api/owner-agent/shell' && req.method === 'POST') {
     const input = await bodyJson(req)
@@ -606,6 +662,18 @@ export function mainBotStatus() {
     // Nomor hanya ditampilkan sebagian; nilainya tidak pernah dikirim utuh.
     pairing_number_masked: maskMainBotNumber(mainBotStateForStatus().pairingNumber),
     pairing_unavailable: Boolean(global.pairingUnavailable),
+    // Task77: kode pairing dibagikan lewat status (bukan hanya di log console)
+    // supaya halaman Bot Utama selalu bisa menampilkannya walau buffer log
+    // sudah berputar atau console tertutup. Hanya endpoint owner bertiket yang
+    // bisa membaca nilai ini.
+    pairing_code: global.lastPairingCode?.code || '',
+    pairing_code_at: global.lastPairingCode?.at || null,
+    pairing_code_age_seconds: global.lastPairingCode?.at
+      ? Math.max(0, Math.floor((Date.now() - global.lastPairingCode.at) / 1000))
+      : null,
+    pairing_error: global.lastPairingError || '',
+    pairing_pending: Boolean(global.pairingPending),
+    session_saved: fs.existsSync(path.join(process.cwd(), 'sessions', 'creds.json')),
     autoread: readAutoreadState().autoread,
     autoread_partial: readAutoreadState().partial,
     autoread_settings: readAutoreadState().jids,

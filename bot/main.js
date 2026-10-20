@@ -33,6 +33,7 @@ import { readMainBotState, writeMainBotState, normalizeMainBotNumber } from './l
 import { installErrorHooks } from './lib/error-hub.js';
 import {
     useMultiFileAuthState,
+    initAuthCreds,
     Browsers,
     fetchLatestBaileysVersion,
     makeCacheableSignalKeyStore,
@@ -380,11 +381,30 @@ async function waitForMainPairingSocket(timeoutMs = MAIN_PAIRING_SOCKET_WAIT_MS)
     return null;
 }
 
-global.requestPairing = async function() {
-    if (!global.mainBotEnabled) return;
-    if (global.pairingRequested || global.conn?.authState?.creds?.registered || global.pairingInputShown) return;
-    if (global.pairingUnavailable) return;
-    if (Date.now() - lastPairingCodeRequestAt < MAIN_PAIRING_REQUEST_COOLDOWN_MS) return;
+/* Dipakai tombol "MINTA CODE" di website. Permintaan manual tidak boleh
+ * ditelan diam-diam oleh guard otomatis (cooldown/pairingUnavailable), karena
+ * pemilik yang menekan tombol harus melihat kode atau alasan gagalnya. */
+const MAIN_MANUAL_PAIRING_MIN_GAP_MS = 5000;
+
+global.requestPairing = async function(options = {}) {
+    const force = options === true || options?.force === true;
+    if (!global.mainBotEnabled) return global.lastPairingCode || null;
+    if (global.conn?.authState?.creds?.registered && !force) return null;
+    if (force) {
+        // Jeda kecil saja supaya tombol tidak menembak WhatsApp berulang kali.
+        if (Date.now() - lastPairingCodeRequestAt < MAIN_MANUAL_PAIRING_MIN_GAP_MS) {
+            return global.lastPairingCode || null;
+        }
+        global.pairingUnavailable = false;
+        global.pairingRequested = false;
+        global.pairingInputShown = false;
+        global.lastPairingError = null;
+    } else {
+        if (global.pairingRequested || global.pairingInputShown) return null;
+        if (global.pairingUnavailable) return null;
+        if (Date.now() - lastPairingCodeRequestAt < MAIN_PAIRING_REQUEST_COOLDOWN_MS) return null;
+        global.lastPairingError = null;
+    }
     global.pairingInputShown = true;
 
     // Nomor bisa diberikan lewat environment PAIRING_NUMBER.
@@ -470,10 +490,14 @@ global.requestPairing = async function() {
         // Disimpan hanya di memori (tidak ke berkas/log) supaya owner bisa
         // membacanya dari halaman Bot Utama tanpa membuka konsol panel.
         global.lastPairingCode = { code, at: Date.now() };
+        global.lastPairingError = null;
         console.log(chalk.green('✅ Buka WhatsApp → Perangkat tertaut → Tautkan dengan nomor telepon.\n'));
+        return global.lastPairingCode;
     } catch (error) {
         global.pairingRequested = false;
+        global.lastPairingError = String(error?.message || 'Pairing gagal.');
         console.log(chalk.red('❌ Pairing belum berhasil:'), error.message);
+        return null;
     } finally {
         global.pairingInputShown = false;
         if (rl) {
@@ -481,6 +505,85 @@ global.requestPairing = async function() {
             try { rl.close(); } catch {}
         }
     }
+};
+
+/* Permintaan pairing dari halaman Bot Utama di website.
+ *
+ * Bedanya dengan requestPairing(): permintaan ini manual (tombol owner),
+ * jadi tidak boleh "diam saja" karena cooldown atau pairingUnavailable.
+ * Kalau gagal, alasannya dilempar ke pemanggil supaya tampil di website. */
+global.requestMainPairing = async function() {
+    if (!global.mainBotEnabled) {
+        throw Object.assign(new Error('Bot utama sedang nonaktif. Aktifkan dulu lalu coba lagi.'), { status: 409 });
+    }
+    if (global.conn?.authState?.creds?.registered) {
+        throw Object.assign(new Error('Sesi bot utama masih tertaut. Hapus sesi dulu kalau ingin pairing nomor baru.'), { status: 409 });
+    }
+    global.pairingPending = true;
+    try {
+        global.lastPairingError = null;
+        if (!global.mainPairingSocketReady && typeof global.reloadHandler === 'function') {
+            try { await global.reloadHandler(true) } catch {}
+        }
+        const readyConn = await waitForMainPairingSocket(25000);
+        if (!readyConn) {
+            throw Object.assign(new Error(global.lastPairingError || 'Socket WhatsApp belum siap. Tunggu beberapa detik lalu coba lagi.'), { status: 503 });
+        }
+        const result = await global.requestPairing({ force: true });
+        if (!result?.code) {
+            throw Object.assign(new Error(global.lastPairingError || 'WhatsApp belum mengembalikan kode pairing. Coba lagi.'), { status: 502 });
+        }
+        return result;
+    } finally {
+        global.pairingPending = false;
+    }
+};
+
+/* Hapus sesi WhatsApp bot utama (sessions/* di root) lalu siapkan socket baru.
+ * Folder sessions/jadibot/<nomor> TIDAK disentuh — sesi jadibot tetap jalan. */
+global.resetMainBotSession = async function() {
+    const sessionDir = path.join(process.cwd(), 'sessions');
+    try { await global.conn?.ws?.close(); } catch {}
+    const removed = [];
+    try {
+        for (const entry of fs.readdirSync(sessionDir, { withFileTypes: true })) {
+            if (!entry.isFile()) continue;
+            try { fs.unlinkSync(path.join(sessionDir, entry.name)); removed.push(entry.name); } catch {}
+        }
+    } catch {}
+    // Creds di memori ikut direset: tanpa ini makeWASocket() berikutnya tetap
+    // memakai creds lama yang masih "registered" sehingga pairing tidak muncul.
+    try {
+        const fresh = initAuthCreds();
+        for (const key of Object.keys(state.creds)) delete state.creds[key];
+        Object.assign(state.creds, fresh);
+    } catch (error) {
+        console.log(chalk.yellow('[MAIN-BOT] Gagal mereset creds di memori:'), error.message);
+    }
+    global.pairingRequested = false;
+    global.pairingInputShown = false;
+    global.pairingUnavailable = false;
+    global.lastPairingCode = null;
+    global.lastPairingError = null;
+    lastPairingCodeRequestAt = 0;
+    console.log(chalk.yellow(`[MAIN-BOT] Sesi bot utama dihapus (${removed.length} berkas). Pairing ulang diperlukan.`));
+    return { removed: removed.length };
+};
+
+/* Hapus konfigurasi bot utama (.main-bot.env): nomor pairing & status on/off.
+ * Setelah reset, bot utama aktif dan siap menerima nomor baru dari website. */
+global.resetMainBotConfig = async function() {
+    try { fs.rmSync(path.join(process.cwd(), '.main-bot.env'), { force: true }); } catch {}
+    delete process.env.PAIRING_NUMBER;
+    global.mainBotEnabled = true;
+    global.pairingRequested = false;
+    global.pairingInputShown = false;
+    global.pairingUnavailable = false;
+    global.lastPairingCode = null;
+    global.lastPairingError = null;
+    lastPairingCodeRequestAt = 0;
+    console.log(chalk.yellow('[MAIN-BOT] Konfigurasi bot utama direset: nomor pairing dihapus, bot diaktifkan.'));
+    return { enabled: true, pairingNumber: '' };
 };
 
 /* ============================================================

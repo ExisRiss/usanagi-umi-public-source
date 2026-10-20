@@ -1,4 +1,5 @@
 import { chatGroq, getGroqSettings, DEFAULT_GROQ_MODEL, redactProviderSecrets, persistGroqRuntimeConfig } from './groq-client.js'
+import { chatGemini, getGeminiSettings, isValidGeminiKey, persistGeminiRuntimeConfig, DEFAULT_GEMINI_MODEL } from './gemini-client.js'
 /* Usanagi Umi Agent — server-side OpenRouter agent runtime */
 
 import fs from 'node:fs'
@@ -78,35 +79,52 @@ function decryptSecret(payload) {
 function readSettings() {
   ensureDirs()
   const groq = getGroqSettings()
+  const gemini = getGeminiSettings()
   let data = {}
   try { data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')) } catch {}
-  let legacyKey = '', groqKey = ''
+  let legacyKey = '', groqKey = '', geminiKey = ''
   try { legacyKey = decryptSecret(data.openrouter) } catch {}
   try { groqKey = decryptSecret(data.groq) } catch {}
-  const provider = ['groq','openrouter'].includes(data.provider) ? data.provider : legacyKey ? 'openrouter' : 'groq'
+  try { geminiKey = decryptSecret(data.gemini) } catch {}
+  const stored = ['groq','openrouter','gemini'].includes(data.provider) ? data.provider : ''
+  // Tanpa pilihan tersimpan: ikuti key yang paling siap. Gemini didahulukan
+  // karena .env.gemini diisi owner untuk AI Agent & AI Owner.
+  const provider = stored || (legacyKey ? 'openrouter' : gemini.configured ? 'gemini' : 'groq')
+  const storedModel = safeText(data.models && data.models[provider],160) || (data.provider === provider ? safeText(data.model,160) : '')
+  const model = storedModel
+    || (provider === 'groq' ? groq.model : provider === 'gemini' ? gemini.model : DEFAULT_MODEL)
+  const apiKey = provider === 'groq' ? (groqKey || groq.apiKey)
+    : provider === 'gemini' ? (geminiKey || gemini.apiKey)
+    : legacyKey
   return {
     provider,
-    model: (provider === 'groq' && data.provider !== 'groq' ? groq.model : safeText(data.model,160)) || (provider === 'groq' ? groq.model : DEFAULT_MODEL),
-    apiKey: provider === 'groq' ? groqKey || groq.apiKey : legacyKey,
+    model,
+    apiKey,
     updatedAt: safeText(data.updatedAt,64), updatedBy:safeText(data.updatedBy,80),
   }
 }
 
 function writeSettings({apiKey,model,provider,updatedBy}) {
   const previous=readSettings()
-  const selected=['groq','openrouter'].includes(provider)?provider:previous.provider
+  const selected=['groq','openrouter','gemini'].includes(provider)?provider:previous.provider
   let stored={}
   try{stored=JSON.parse(fs.readFileSync(SETTINGS_FILE,'utf8'))}catch{}
   let savedKey=''
   try{savedKey=decryptSecret(stored[selected])}catch{}
-  const key=safeText(apiKey,1000)||savedKey||(selected===previous.provider?previous.apiKey:selected==='groq'?getGroqSettings().apiKey:'')
+  const fallbackKey=selected==='groq'?getGroqSettings().apiKey:selected==='gemini'?getGeminiSettings().apiKey:''
+  const key=safeText(apiKey,1000)||savedKey||(selected===previous.provider?previous.apiKey:fallbackKey)
   if(!key||key.length<16)throw Object.assign(new Error('API key untuk provider ini belum dikonfigurasi.'),{status:400})
   if(selected==='groq'&&!/^gsk_[A-Za-z0-9_-]{20,200}$/.test(key))throw Object.assign(new Error('Format key Groq tidak valid.'),{status:400})
-  const selectedModel=safeText(model,160)||stored.models?.[selected]||(selected===previous.provider?previous.model:selected==='groq'?DEFAULT_GROQ_MODEL:DEFAULT_MODEL)
+  if(selected==='gemini'&&!isValidGeminiKey(key))throw Object.assign(new Error('Format key Gemini tidak valid.'),{status:400})
+  const defaultModel=selected==='groq'?DEFAULT_GROQ_MODEL:selected==='gemini'?getGeminiSettings().model||DEFAULT_GEMINI_MODEL:DEFAULT_MODEL
+  const selectedModel=safeText(model,160)||(stored.models&&stored.models[selected])||(selected===previous.provider?previous.model:defaultModel)
   if(!/^[A-Za-z0-9._:/-]{1,160}$/.test(selectedModel))throw Object.assign(new Error('Format model tidak valid.'),{status:400})
   const next={...stored,version:2,provider:selected,model:selectedModel,models:{...(stored.models||{}),[previous.provider]:previous.model,[selected]:selectedModel},[selected]:encryptSecret(key),updatedAt:new Date().toISOString(),updatedBy:safeText(updatedBy,80)}
   ensureDirs()
+  // Groq & Gemini menulis berkas runtime 600 supaya Auto-AI / restart tetap
+  // memakai key yang sama; OpenRouter hanya disimpan terenkripsi di sini.
   if(selected==='groq')persistGroqRuntimeConfig({apiKey:key,model:next.model})
+  if(selected==='gemini')persistGeminiRuntimeConfig({apiKey:key,model:next.model})
   const temp=`${SETTINGS_FILE}.${process.pid}.tmp`
   fs.writeFileSync(temp,`${JSON.stringify(next)}\n`,{mode:0o600});fs.renameSync(temp,SETTINGS_FILE)
   audit('agent.settings.updated',{actor:updatedBy,provider:selected,model:next.model})
@@ -228,6 +246,7 @@ async function callAgentModel(messages, tools, timeoutMs = 20000) {
   const settings = readSettings()
   if (!settings.apiKey) throw Object.assign(new Error('AI belum dikonfigurasi oleh owner.'), { status: 503 })
   if (settings.provider === 'groq') return chatGroq(messages, { apiKey:settings.apiKey, model:settings.model, tools, timeoutMs, maxTokens:2000 })
+  if (settings.provider === 'gemini') return chatGemini(messages, { apiKey:settings.apiKey, model:settings.model, tools, timeoutMs, maxTokens:2000 })
   const response = await fetch(OPENROUTER_URL, {
     method: 'POST',
     headers: {
@@ -321,9 +340,25 @@ export async function agentChat({ userId, prompt, owner = false }) {
   throw new Error('Agent menghentikan rangkaian tool yang terlalu panjang.')
 }
 
+/* Tes koneksi ringan untuk halaman AI Owner: satu permintaan kecil ke
+ * provider aktif. Dipakai tombol "TES KONEKSI AI" supaya owner tahu apakah
+ * key/model benar-benar hidup (bukan hanya "tersimpan"). */
+export async function agentTest(actor) {
+  const settings = readSettings()
+  if (!settings.apiKey) throw Object.assign(new Error('AI belum dikonfigurasi oleh owner.'), { status: 503 })
+  const started = Date.now()
+  const message = await callAgentModel([
+    { role: 'system', content: 'Balas satu kata saja: SIAP' },
+    { role: 'user', content: 'ping' },
+  ], [], 20000)
+  const reply = safeText(message?.content || '', 200)
+  audit('agent.test', { actor, provider: settings.provider, model: settings.model, ms: Date.now() - started })
+  return { ok: true, provider: settings.provider, model: settings.model, reply, ms: Date.now() - started }
+}
+
 export function agentStatus() {
   const settings = readSettings()
-  return { configured: Boolean(settings.apiKey), provider:settings.provider, model: settings.model || (settings.provider==='groq'?DEFAULT_GROQ_MODEL:DEFAULT_MODEL), updatedAt: settings.updatedAt || null, workerActive: Boolean(workerTimer), health: healthSnapshot() }
+  return { configured: Boolean(settings.apiKey), provider:settings.provider, model: settings.model || (settings.provider==='groq'?DEFAULT_GROQ_MODEL:settings.provider==='gemini'?DEFAULT_GEMINI_MODEL:DEFAULT_MODEL), updatedAt: settings.updatedAt || null, workerActive: Boolean(workerTimer), health: healthSnapshot() }
 }
 
 export function updateAgentSettings(input, actor) {
@@ -357,4 +392,4 @@ export function startUmiAgentWorker(secretProvider) {
   workerTimer.unref?.()
 }
 
-export default { agentChat, agentStatus, updateAgentSettings, ownerAgentShell, startUmiAgentWorker }
+export default { agentChat, agentStatus, agentTest, updateAgentSettings, ownerAgentShell, startUmiAgentWorker }

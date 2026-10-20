@@ -724,11 +724,23 @@ export default async function handler(req, res) {
       requireOwner(profile)
       rateLimit(req, `platform:agent-settings:${user.id}`, 10, 60 * 60 * 1000)
       const apiKey = String(req.body?.apiKey ?? req.body?.openrouterApiKey ?? '')
-      const provider = String(req.body?.provider || (req.body?.openrouterApiKey ? 'openrouter' : 'groq'))
+      // Task78: Gemini ikut didukung dan jadi default — key Gemini owner sudah
+      // terpasang di server bot (.env.gemini), jadi AI Agent & AI Owner memakai
+      // provider yang benar-benar hidup, bukan menebak Groq/OpenRouter.
+      const provider = String(req.body?.provider || (req.body?.openrouterApiKey ? 'openrouter' : 'gemini'))
       const model = String(req.body?.model ?? '').trim()
-      if (!['groq','openrouter'].includes(provider) || (apiKey && apiKey.length < 16) || apiKey.length > 1000 || apiKey.includes('\0') || model.includes('\0') || model.length > 160) return send(res, 400, { error: 'Konfigurasi AI tidak valid.' })
+      if (!['groq','openrouter','gemini'].includes(provider) || (apiKey && apiKey.length < 16) || apiKey.length > 1000 || apiKey.includes('\0') || model.includes('\0') || model.length > 160) return send(res, 400, { error: 'Konfigurasi AI tidak valid.' })
       await audit(user, 'agent.settings.update', user.id, { provider, model })
       return send(res, 200, await botAgentRequest('settings', user, { method: 'POST', body: { apiKey, provider, model } }))
+    }
+    // Tes koneksi provider AI aktif (tombol "TES KONEKSI AI" di AI Owner).
+    // Hasil apa adanya: kalau kuota habis, pesan 429 dari bot yang diteruskan.
+    if (path === 'agent/test' && req.method === 'POST') {
+      requireOwner(profile)
+      rateLimit(req, `platform:agent-test:${user.id}`, 6, 10 * 60 * 1000)
+      const result = await botAgentRequest('test', user, { method: 'POST', body: {} })
+      await audit(user, 'agent.connection.test', user.id, { provider: result?.provider || null, ok: Boolean(result?.ok) })
+      return send(res, 200, result)
     }
     if (path === 'agent/shell' && req.method === 'POST') {
       requireOwner(profile)
@@ -829,8 +841,38 @@ export default async function handler(req, res) {
       rateLimit(req, `platform:main-bot-number:${user.id}`, 10, 60 * 1000)
       const number = String(req.body?.number ?? '').replace(/\D/g, '')
       if (number.length < 8 || number.length > 15) return send(res, 400, { error: 'Nomor bot utama tidak valid.' })
-      const result = await botConsoleRequest('pairing-number', user, { method: 'POST', body: { number } })
+      const result = await botConsoleRequest('pairing-number', user, { method: 'POST', body: { number, request: true } })
       await audit(user, 'main_bot.pairing_number_set', null, { prefix: number.slice(0, 4) })
+      return send(res, 200, result)
+    }
+
+    // Tombol "MINTA CODE LAGI": nomor tidak berubah, hanya minta kode baru.
+    // Server bot menjawab cepat lalu pairing jalan di latar belakang; halaman
+    // memantau status tiap beberapa detik, jadi relay tidak kena timeout.
+    if (path === 'main-console/pairing-request' && req.method === 'POST') {
+      requireOwner(profile)
+      rateLimit(req, `platform:main-bot-code:${user.id}`, 12, 60 * 1000)
+      const result = await botConsoleRequest('pairing-request', user, { method: 'POST', body: {} })
+      await audit(user, 'main_bot.pairing_request', null, {})
+      return send(res, 200, result)
+    }
+
+    // Hapus sesi WhatsApp bot utama (bukan sesi jadibot). Ini resep yang terbukti
+    // memperbaiki sesi rusak/logout sehingga pairing code kembali terbit.
+    if (path === 'main-console/main-session' && req.method === 'POST') {
+      requireOwner(profile)
+      rateLimit(req, `platform:main-bot-session:${user.id}`, 6, 5 * 60 * 1000)
+      const result = await botConsoleRequest('main-session', user, { method: 'POST', body: {} })
+      await audit(user, 'main_bot.session_deleted', null, { files: Number(result?.removed) || 0 })
+      return send(res, 200, result)
+    }
+
+    // Reset konfigurasi bot utama (.main-bot.env): nomor pairing + status on/off.
+    if (path === 'main-console/main-config' && req.method === 'POST') {
+      requireOwner(profile)
+      rateLimit(req, `platform:main-bot-config:${user.id}`, 6, 30 * 60 * 1000)
+      const result = await botConsoleRequest('main-config', user, { method: 'POST', body: {} })
+      await audit(user, 'main_bot.config_reset', null, {})
       return send(res, 200, result)
     }
 

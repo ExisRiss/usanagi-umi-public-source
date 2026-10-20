@@ -67,6 +67,12 @@ export function getGeminiSettings() {
   return { apiKey, model, enabled, configured: Boolean(apiKey), tpm, provider: 'gemini' }
 }
 
+/** Bentuk kunci yang diterima: AIza…, AQ.… (format AI Studio baru), ya29.… */
+export function isValidGeminiKey(value) {
+  const key = String(value || '').trim()
+  return key.length >= 24 && key.length <= 400 && /^[A-Za-z0-9._-]+$/.test(key)
+}
+
 /** Status aman untuk ditampilkan (tanpa kunci). */
 export function geminiStatus() {
   const settings = getGeminiSettings()
@@ -123,6 +129,10 @@ function sanitizeSchema(schema) {
 export function toGeminiPayload(messages = [], options = {}, model = '') {
   const systemParts = []
   const contents = []
+  // Gemini butuh nama fungsi pada setiap functionResponse. Pesan role "tool"
+  // gaya OpenAI hanya membawa tool_call_id, jadi namanya diambil dari
+  // tool_calls asisten sebelumnya (dipakai agentChat di umi-agent.js).
+  const callNames = new Map()
   const push = (role, parts) => {
     if (!parts.length) return
     const last = contents[contents.length - 1]
@@ -137,9 +147,10 @@ export function toGeminiPayload(messages = [], options = {}, model = '') {
       continue
     }
     if (role === 'tool') {
+      const resolved = callNames.get(String(message.tool_call_id || ''))
       push('user', [{
         functionResponse: {
-          name: String(message.name || message.tool_name || 'tool'),
+          name: String(message.name || message.tool_name || resolved || 'tool'),
           response: { result: textOf(message.content) },
         },
       }])
@@ -152,7 +163,9 @@ export function toGeminiPayload(messages = [], options = {}, model = '') {
       for (const call of message.tool_calls) {
         let args = {}
         try { args = JSON.parse(call?.function?.arguments || '{}') } catch { args = {} }
-        parts.push({ functionCall: { name: String(call?.function?.name || 'tool'), args } })
+        const callName = String(call?.function?.name || 'tool')
+        if (call?.id) callNames.set(String(call.id), callName)
+        parts.push({ functionCall: { name: callName, args } })
       }
       push('model', parts)
       continue
@@ -223,7 +236,20 @@ function errorFor(status, payload) {
   if (status === 400) return Object.assign(new Error(`Permintaan Gemini ditolak: ${detail || 'format tidak didukung'}.`), { status: 400 })
   if ([401, 403].includes(status)) return Object.assign(new Error('Key Gemini tidak punya akses ke model ini; hubungi owner.'), { status })
   if (status === 404) return Object.assign(new Error('Model Gemini tidak ditemukan; hubungi owner.'), { status: 404 })
-  if (status === 429) return Object.assign(new Error('Batas penggunaan Gemini tercapai. Coba lagi sebentar.'), { status: 429 })
+  if (status === 429) {
+    const wait = (() => {
+      const match = /retry in\s+(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?/i.exec(raw)
+      if (!match) return ''
+      const hours = Number(match[1] || 0); const minutes = Number(match[2] || 0); const seconds = Math.round(Number(match[3] || 0))
+      const parts = []
+      if (hours) parts.push(`${hours} jam`)
+      if (minutes) parts.push(`${minutes} menit`)
+      if (!hours && !minutes && seconds) parts.push(`${seconds} detik`)
+      return parts.join(' ')
+    })()
+    const daily = /free_tier|per day|daily/i.test(raw) ? ' (kuota harian gratis)' : ''
+    return Object.assign(new Error(`Kuota Gemini habis${daily}.${wait ? ` Coba lagi dalam ${wait}.` : ' Coba lagi sebentar.'}`), { status: 429 })
+  }
   if (status === 503) return Object.assign(new Error('Gemini sedang sibuk. Coba lagi.'), { status: 503 })
   return Object.assign(new Error('Gemini sedang tidak dapat merespons.'), { status: status >= 500 ? 502 : status })
 }
@@ -287,7 +313,11 @@ export async function chatGemini(messages, options = {}) {
   const primary = String(options.model || settings.model || DEFAULT_GEMINI_MODEL)
   const models = [...new Set([primary, ...(options.fallbackModels || GEMINI_FALLBACK_MODELS)].filter(Boolean))]
   let lastError = null
-  for (const model of models) {
+  // Error model utama disimpan terpisah: kalau model cadangan ditolak (401/404)
+  // atau ikut kena 429, pesan yang dilaporkan tetap menjelaskan penyebab utama.
+  let primaryError = null
+  for (let modelIndex = 0; modelIndex < models.length; modelIndex += 1) {
+    const model = models[modelIndex]
     let thinking = options.thinking
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const payload = toGeminiPayload(messages, { ...options, thinking }, model)
@@ -295,13 +325,19 @@ export async function chatGemini(messages, options = {}) {
         return await requestGenerate({ apiKey, model, payload, timeout, options })
       } catch (error) {
         lastError = error
+        if (modelIndex === 0) primaryError = error
         // Model lama menolak `thinkingConfig` → ulangi sekali tanpa itu.
         if (attempt === 0 && Number(error?.status) === 400 && /thinking/i.test(String(error.message))) {
           thinking = 'omit'
           continue
         }
         // 429/503 = gangguan sementara: coba model lain (kuota terpisah).
-        if (![429, 503].includes(Number(error?.status))) throw error
+        if (![429, 503].includes(Number(error?.status))) {
+          // Model utama gagal permanen (key/model salah) → laporkan apa adanya.
+          // Model cadangan yang ditolak (401/404) jangan menutupi error utama.
+          if (modelIndex === 0) throw error
+          break
+        }
         if (attempt === 0 && Number(error?.retryAfterMs) > 0 && Number(error.retryAfterMs) <= 2000) {
           await sleep(Number(error.retryAfterMs) + 150)
           continue
@@ -310,7 +346,7 @@ export async function chatGemini(messages, options = {}) {
       }
     }
   }
-  throw lastError || Object.assign(new Error('Gemini tidak dapat merespons.'), { status: 502 })
+  throw primaryError || lastError || Object.assign(new Error('Gemini tidak dapat merespons.'), { status: 502 })
 }
 
 /** Simpan kunci ke `.env.gemini` (mode 600) supaya bertahan setelah restart. */
@@ -330,6 +366,7 @@ export function persistGeminiRuntimeConfig({ apiKey, model } = {}) {
 
 export default {
   DEFAULT_GEMINI_MODEL,
+  isValidGeminiKey,
   getGeminiSettings,
   geminiStatus,
   geminiBudget,
