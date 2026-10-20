@@ -1920,3 +1920,39 @@ pernah diparse khusus — yang dikirim mentah ke situs mati itu.
 - **Perbaikan:** gate premium dihapus (chat pribadi dilayani normal; plugin premium tetap dicek per-plugin di baris `plugin.premium`), dan pesan biasa di DM kini memicu AutoAI bila bot mengaktifkannya (`values.autoAI.enabled !== false`) — grup tetap butuh mention/reply seperti sebelumnya. Tidak ada fitur yang dihapus.
 - **Verifikasi produksi sesudah restart (PID 34741, 2054 plugin, 16 jadibot):** `main/usanagi-menu.js` sukses `09:55:13Z` dan `ai/autogpt chat.js` sukses `09:55:44Z` (keduanya setelah restart; sebelumnya `_system/_allmenu.js` terakhir `09:39:18Z` — dari bridge Telegram, bukan DM). Konfirmasi pengguna: "sudah tes DM, bot balas". `data/errors` hanya berisi 1 baris uji manual, tidak ada error baru.
 - **Catatan:** 16 sesi jadibot tetap `connected: null` di `data/jadibot-platform.json` (kolom itu tidak diperbarui) — status online yang benar dari `health.jadibotConnected` (=16) dan log `berhasil terhubung`.
+
+## Task75 — Mode Premium ON/OFF (platform + per bot) & daftar fitur premium (2026-10-20)
+
+Permintaan: saklar premium on/off di website atau di bot (khusus owner/developer); saat ON, pemilik bot memasukkan fitur bot mana yang mau dijadikan premium.
+
+**Dua lapis saklar**
+1. **Platform** — `platform_meta.premium_system` (SQLite `data/database/usanagi.sqlite`). Hanya owner/developer (`premium.manage`). OFF = semua fitur premium di semua bot gratis.
+2. **Per bot** — `bot-config.json` → `premium = { enabled, plugins[] }`. Bisa diubah pemilik bot di website (Settings) atau lewat `.premium on|off` di WhatsApp.
+
+Fitur dikunci hanya bila **saklar platform ON dan saklar bot ON**. OFF di salah satu lapis membebaskan semua fitur, termasuk plugin yang aslinya bertanda `premium`/`premiumOnly` — jadi tombol OFF benar-benar "premium off", bukan sekadar mengabaikan daftar custom. Default keduanya ON supaya perilaku bot lama tidak berubah.
+
+**Daftar fitur premium** menerima: nama command (`sticker`), `command:sticker`, `plugin:maker/stiker.js`, `tag:ai` / `kategori:ai`, atau nama file plugin. Input divalidasi terhadap katalog 2055 plugin yang benar-benar termuat; typo ditolak dengan saran fitur terdekat.
+
+**Perintah bot** (`plugins/owner/premium-mode.js`, command `premium`):
+- `.premium` / `.premium status` — status dua saklar + daftar (semua pengguna boleh lihat)
+- `.premium list` — daftar fitur premium
+- `.premium cari <kata>` — cari fitur di katalog (contoh `.premium cari sticker`)
+- `.premium on|off` — saklar bot (owner/developer bot)
+- `.premium add <fitur>` / `del` / `set` / `reset` — kelola daftar (owner/developer bot)
+- `.premium global on|off` — saklar platform (khusus owner utama/developer terkunci)
+
+Saat `.premium on` dijalankan dan daftar masih kosong, bot langsung menyuruh pemilik memasukkan fitur (contoh `.premium add sticker, brat, toimg`). Pengguna non-premium yang menekan fitur terkunci menerima pesan berisi nama fitur + `wa.me/<nomor owner bot>`.
+
+**Website**
+- `Settings → MODE PREMIUM BOT` (index.html + app.js): toggle mode premium bot, textarea daftar fitur, kotak cari fitur (klik untuk menambah), notice status saklar platform. Simpan lewat `settings/apply` (`premium_enabled`, `premium_plugins`, divalidasi backend).
+- Owner console `/platform` → menu **Premium** (platform.html + platform.js): status saklar platform + tombol MATIKAN/NYALAKAN, tercatat di audit `premium.system.toggle`.
+- API: `GET/POST /api/platform-system/premium-mode` (RBAC `premium.manage`), `GET /api/premium/catalog?q=` (bot API, butuh login), `settings/get` kini mengembalikan `premium` + `premium_system`.
+
+**Berkas berubah:** `bot/lib/premium-mode.js` (baru), `bot/plugins/owner/premium-mode.js` (baru), `bot/lib/bot-config.js`, `bot/handler.js`, `bot/lib/jadibot-platform-api.js`, `bot/lib/platform/api.js`, `bot/lib/platform/roles.js`, `website/api/ecosystem.js`, `website/api/proxy.js`, `website/index.html`, `website/public/index.html`, `website/public/assets/app.js`, `website/public/platform.html`, `website/public/assets/platform.js`, `bot/tests/platform/premium-mode.test.mjs` (baru).
+
+**Verifikasi produksi (bukan mock)**
+- Deploy 7 berkas ke `/home/container` (sha256 cocok semua) → restart PID 34741 → **35697**; `Successfully Loaded 2055 Plugins` (2042 → 2055 pada restart sebelumnya; +1 plugin `.premium`), 17 sesi jadibot, Telegram polling aktif, `data/errors` tidak bertambah untuk fitur ini.
+- Skrip cek di server memakai config asli (`6282***659`): `SYSTEM {enabled:true}`; `LOCKED_WHEN_ON true`, `LOCKED_WHEN_BOT_OFF false`, `LOCKED_BUILTIN_ON true`, `LOCKED_BUILTIN_OFF false`.
+- Uji HTTP langsung ke `127.0.0.1:2176`: tanpa secret **401**, role user **403**, owner **200**; `POST {enabled:false}` → `enabled:false`, `POST {enabled:true}` → `enabled:true`; `catalogPlugins:2055`. Dua akun uji dibersihkan dari `platform_users` setelah tes.
+- Website deploy `dpl_7B3JhwohEc3us335cNEgaPDTHzoG` READY: `/dashboard` memuat `MODE PREMIUM BOT` + `premium_enabled`, `/assets/app.js?v=20261020-premium` memuat pencarian fitur, `/platform` memuat `Mode Premium Platform`, `/assets/platform.js?v=20261020-premium` memuat `loadPremium`, `/api/ecosystem/premium-mode` → 401 tanpa login (route hidup & terjaga).
+- Tes otomatis: `node --test tests/platform/` **217/217 lulus** (209 lama + 8 tes premium baru).
