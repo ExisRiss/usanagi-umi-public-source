@@ -9,6 +9,7 @@
  * Tidak ada data karangan: jumlah dan nama perintah dihitung dari plugin yang
  * benar-benar dimuat di proses ini.
  */
+import { FEATURE_GROUPS, HIDDEN_COMMANDS, HIDDEN_CATEGORIES, prettyCommand } from './features.js'
 
 /** Urutan + label kategori. `mobile` dipakai untuk tombol menu utama. */
 export const CATEGORY_META = {
@@ -95,13 +96,34 @@ function usageOf(plugin, primary) {
 export function buildCatalog(plugins = globalThis.plugins) {
   const items = []
   const byCommand = new Map()
+  // `canonical` = perintah pertama pada FEATURE_GROUPS. Varian sesudahnya tetap
+  // bisa dipakai, tetapi hanya perintah pertama yang tampil di menu.
+  const canonical = new Map()
+  for (const group of FEATURE_GROUPS) {
+    group.commands.forEach((name, index) => {
+      if (index === 0) canonical.set(name, group.id)
+    })
+  }
+  const seenCanonical = new Set()
   for (const [key, plugin] of pluginEntries(plugins)) {
     const names = commandNames(plugin)
     if (!names.length) continue
     const primary = names[0]
+    const category = categoryOf(key, plugin)
+    // Tersembunyi TIDAK berarti mati: perintahnya tetap terdaftar di
+    // `byCommand` (bisa diketik langsung) tetapi tidak ditampilkan di menu.
+    let hidden = HIDDEN_CATEGORIES.has(category)
+      || names.some(name => HIDDEN_COMMANDS.has(name))
+    // Varian dalam satu keluarga fitur: cukup satu baris menu.
+    const inFamily = names.find(name => canonical.has(name))
+    if (inFamily) {
+      const groupId = canonical.get(inFamily)
+      if (seenCanonical.has(groupId)) hidden = true
+      else seenCanonical.add(groupId)
+    }
     const item = {
       key,
-      category: categoryOf(key, plugin),
+      category,
       command: primary,
       aliases: names,
       usage: usageOf(plugin, primary),
@@ -111,8 +133,9 @@ export function buildCatalog(plugins = globalThis.plugins) {
       premium: Boolean(plugin.premium),
       group: Boolean(plugin.group),
       limited: Boolean(plugin.limit),
+      hidden,
     }
-    items.push(item)
+    if (!hidden) items.push(item)
     for (const name of names) if (!byCommand.has(name)) byCommand.set(name, item)
   }
   const byCategory = new Map()
@@ -161,6 +184,44 @@ export function categories(plugins = globalThis.plugins) {
       count: built.byCategory.get(id)?.length || 0,
     }))
     .filter(entry => entry.count > 0)
+}
+
+/**
+ * Fitur ringkas untuk menu utama: hanya keluarga dari FEATURE_GROUPS yang
+ * perintah utamanya benar-benar termuat di proses ini.
+ * @returns {{id:string,label:string,icon:string,description:string,category:string,options:object[]}[]}
+ */
+export function functions(plugins = globalThis.plugins) {
+  const built = catalog(plugins)
+  // Satu perintah hanya muncul di satu grup (mis. `/spotify` ada di unduh dan
+  // musik — tampil sekali saja) supaya daftar opsi tidak dobel.
+  const claimed = new Set()
+  return FEATURE_GROUPS
+    .map(group => {
+      const options = group.commands
+        .map(name => {
+          if (claimed.has(name)) return null
+          const item = built.byCommand.get(name)
+          if (!item) return null
+          claimed.add(name)
+          return {
+            command: name,
+            usage: item.usage[0] || item.command,
+            description: group.notes?.[name] || item.description || prettyCommand(name),
+            category: item.category,
+          }
+        })
+        .filter(Boolean)
+      return { ...group, options }
+    })
+    .filter(group => group.options.length > 0)
+}
+
+/** Cari keluarga fitur berdasarkan id atau salah satu perintahnya. */
+export function findFunction(idOrCommand, plugins = globalThis.plugins) {
+  const wanted = String(idOrCommand || '').trim().toLowerCase().replace(/^\//, '')
+  if (!wanted) return null
+  return functions(plugins).find(group => group.id === wanted || group.commands.includes(wanted)) || null
 }
 
 /** Tebak kategori dari kata yang dikirim pengguna (`stiker`, `sticker`, `grup`, ...). */

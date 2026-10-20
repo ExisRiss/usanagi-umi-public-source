@@ -1709,3 +1709,24 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 2. Untuk menu lama yang sudah terlanjur berupa video+tombol, `renderInPlace` mencoba `editMessageText` → gagal karena tidak ada teks → **`editMessageCaption`** (bila teks ≤1024) → baru kirim pesan baru.
 
 Verifikasi live ulang (server, grup BackUp, pesan dihapus): `/start` → **2 pesan** (video id 44 tanpa tombol, teks menu id 45 dengan tombol); tekan tombol **status** → `sends+0, edits+1`; tekan kategori **game halaman 2** → `sends+0, edits+1`. Tes: **125 platform** (17 di `batch7.test.mjs`), 0 gagal.
+
+## Task70 batch 8 — menu dipadatkan: satu fitur = satu entri, opsi + deskripsi (2026-10-20)
+
+**Permintaan user:** "fiturnya kasih ringkas aja, kalau emang bratvid2 gausah, umi-stiker hapus aja biar lebih ringkas, tapi kalau ada fitur yang sama kasih opsi ke user + deskripsi setiap opsi".
+
+**Yang dilakukan (tanpa menghapus satu plugin pun):**
+- `lib/platform/telegram/features.js` (baru): `FEATURE_GROUPS` (10 keluarga fitur: brat, stiker dari gambar, paket stiker, unduh, musik, AI tanya-jawab, AI gambar, pesan palsu, logo, anime) berisi daftar opsi + catatan deskripsi per opsi; `HIDDEN_COMMANDS` (varian yang membingungkan: `bratvid2`, `brat2`, `bratanya`, `bratpick`, `bratgreen`, `bratgura`, `kannabrat`, `bratcewek`, `bratextra`, `bratwhite`, salinan `stikerwa`, perintah uji `tes/bot/ping`); `HIDDEN_CATEGORIES` (`umi-extra`, `pelengkap`, `data`, `notif`, `_system`).
+- `catalog.js`: item punya penanda `hidden`. Item tersembunyi **tidak** muncul di menu/kategori/pencarian, tetapi **tetap terdaftar** di `byCommand` sehingga masih bisa dipanggil dengan mengetik perintahnya — tidak ada fitur yang dimatikan. Varian dalam satu keluarga fitur hanya menampilkan perintah utama.
+- `catalog.js`: `functions()` mengelompokkan fitur (satu perintah hanya muncul di satu grup, jadi `/spotify` tidak dobel), `findFunction()` mencari grup dari id/perintah.
+- `commands.js`: `sendFunction()` — satu halaman per keluarga fitur, tiap opsi **bernomor + deskripsi** dan tombol `/perintah`; `sendOption()` — kartu satu perintah (cara pakai, deskripsi, tombol ▶️ Jalankan + ↩️ Semua opsi). Keduanya memakai `renderInPlace` sehingga mengganti halaman **mengedit pesan yang sama**.
+- Menu utama sekarang menaruh **8 tombol fitur populer** di atas dan hanya **6 kategori** (sebelumnya 10), supaya tidak penuh.
+
+**Verifikasi nyata di server (2 051 plugin termuat):**
+- Katalog: **1 686 item / 21 kategori** (sebelumnya 1 691/25) karena varian + `umi-extra`/`pelengkap` disembunyikan.
+- `functions()`: **10 grup / 77 opsi**, contoh: brat → `/brat` (hitam-putih biasa), `/bratvid` (versi bergerak), `/cewekbrat` (gaya karakter perempuan); unduh → 16 opsi (fb, ig, tiktok, ytmp4, ytmp3, aio, …); AI gambar → 7 opsi.
+- Tidak ada opsi dobel (dicek otomatis), `/brat`, `/bratvid`, `/stiker`, `/play`, `/fb`, `/aiimg`, `/qc` semuanya ada di menu; `bratvid2`/`bratanya` tetap bisa dipanggil tapi tidak tampil; kategori `umi-extra` tidak tampil.
+- Live di grup BackUp: `/menu` → tekan **fitur brat** → `sends+0 edits+1`; kartu opsi **bratvid** → `sends+0 edits+1`; **halaman 2 unduh** → `sends+0 edits+1`; **fitur stiker** → `sends+0 edits+1`. Total 4 klik, 0 pesan baru.
+- Health setelah restart: `catalog {plugins: 1686, categories: 21}`.
+- Tes: **135 platform** (10 tes baru di `tests/platform/batch8.test.mjs`), 0 gagal.
+
+**Catatan:** perintah yang disembunyikan tetap hidup (`/bratvid2` bisa diketik). Kalau nanti ingin benar-benar menghapus plugin, cukup hapus berkasnya — tetapi batch ini sengaja tidak menghapus agar tidak ada fitur yang hilang.

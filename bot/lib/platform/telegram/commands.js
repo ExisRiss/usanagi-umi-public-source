@@ -54,13 +54,19 @@ function menuKeyboard(ctx, router) {
   if (router.allowed(ctx, 'rpg')) platform.push(['🐉 RPG', 'rpg'])
   for (let index = 0; index < platform.length; index += 2) rows.push(platform.slice(index, index + 2).map(([label, view]) => row(label, view)))
 
-  // Kategori plugin (yang punya isi). Enam yang paling sering dipakai di depan.
+  // Fitur populer: satu tombol per keluarga fitur (brat, unduh, musik, AI, …),
+  // isinya opsi yang dijelaskan saat dibuka. Ini yang membuat menu ringkas.
+  const popular = catalog.functions().slice(0, 8)
+  const fnButtons = popular.map(entry => row(`${entry.icon} ${entry.label}`, `fn:${entry.id}`))
+  for (let index = 0; index < fnButtons.length; index += 2) rows.push(fnButtons.slice(index, index + 2))
+
+  // Kategori plugin lain (game, fun, tools, grup, …) — bila isinya masih ada.
   const priority = ['game', 'fun', 'maker', 'sticker', 'tools', 'group', 'owner', 'ai', 'downloader', 'economy']
   const all = catalog.categories()
   const shown = [...all].sort((a, b) => {
     const ai = priority.indexOf(a.id); const bi = priority.indexOf(b.id)
     return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || b.count - a.count
-  }).slice(0, 10)
+  }).slice(0, 6)
   const catButtons = shown.map(entry => row(`${entry.icon} ${entry.label}`, `cat:${entry.id}`))
   for (let index = 0; index < catButtons.length; index += 2) rows.push(catButtons.slice(index, index + 2))
 
@@ -73,7 +79,48 @@ function menuKeyboard(ctx, router) {
   return inline(rows)
 }
 
-/** Render satu halaman kategori + tombol navigasi. */
+/**
+ * Tampilan satu keluarga fitur: setiap opsi (cara pakai berbeda) dijelaskan
+ * satu baris, lengkap dengan tombol pilih.
+ */
+export async function sendFunction(ctx, groupId, page = 1) {
+  const group = catalog.findFunction(groupId)
+  if (!group) return ctx.send('Fitur itu tidak tersedia.')
+  const PER_PAGE = 6
+  const pages = Math.max(1, Math.ceil(group.options.length / PER_PAGE))
+  const current = Math.min(Math.max(1, Math.floor(Number(page) || 1)), pages)
+  const slice = group.options.slice((current - 1) * PER_PAGE, current * PER_PAGE)
+  const lines = [
+    `${group.icon} <b>${escapeHtml(group.label.toUpperCase())}</b>`,
+    `<i>${escapeHtml(group.description)}</i>`,
+    `<i>${group.options.length} opsi · halaman ${current}/${pages}</i>`,
+    '',
+  ]
+  slice.forEach((option, index) => {
+    lines.push(`<b>${(current - 1) * PER_PAGE + index + 1}.</b> <code>/${escapeHtml(option.command)}</code>`)
+    lines.push(`   ${escapeHtml(option.description)}`)
+  })
+  lines.push('', '<i>Tekan tombol opsi untuk melihat cara pakainya, atau ketik perintahnya langsung.</i>')
+  const nav = (label, target) => ({
+    text: label,
+    callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view: `fn:${group.id}:${target}` } })}`,
+  })
+  const buttons = []
+  const chooser = slice.map(option => ({
+    text: `/${option.command}`,
+    callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view: `opt:${option.command}` } })}`,
+  }))
+  for (let index = 0; index < chooser.length; index += 3) buttons.push(chooser.slice(index, index + 3))
+  if (pages > 1) buttons.push([...(current > 1 ? [nav('⬅️', current - 1)] : []), ...(current < pages ? [nav('➡️', current + 1)] : [])])
+  buttons.push([{
+    text: '📂 Kategori lain',
+    callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view: 'allmenu' } })}`,
+  }])
+  const rendered = await renderInPlace(ctx, lines.join('\n'), { reply_markup: inline(buttons) })
+  if (rendered?.edited) return { edited: true, page: current, message_id: rendered.message_id }
+  return rendered
+}
+
 export async function sendCategory(ctx, categoryId, page = 1) {
   const view = catalog.pageOf(categoryId, page)
   if (!view.total) return ctx.send('Kategori itu belum punya perintah.')
@@ -91,6 +138,49 @@ export async function sendCategory(ctx, categoryId, page = 1) {
   const rendered = await renderInPlace(ctx, view.text, { reply_markup: keyboard })
   if (rendered?.edited) return { edited: true, page: view.page, message_id: rendered.message_id }
   return rendered
+}
+
+/** Deskripsi satu opsi: catatan FEATURE_GROUPS, atau bantuan plugin aslinya. */
+function describeOption(command) {
+  const item = catalog.findItem(command)
+  const group = catalog.findFunction(command)
+  const note = group?.options.find(option => option.command === command)?.description
+  if (note) return { item, note }
+  const usage = item?.usage?.[0] || command
+  const desc = item?.description || ''
+  return { item, note: desc || `Pakai: /${usage}` }
+}
+
+/** Kartu satu perintah: cara pakai + deskripsi + tombol jalankan. */
+async function sendOption(ctx, command) {
+  const name = String(command || '').toLowerCase()
+  const found = catalog.findItem(name)
+  if (!found) return ctx.send('Perintah itu tidak tersedia.')
+  const { note } = describeOption(name)
+  const group = catalog.findFunction(name)
+  const usage = found.usage?.length ? found.usage : [name]
+  const lines = [
+    `🔧 <b>/${escapeHtml(name)}</b>`,
+    group ? `<i>${escapeHtml(group.label)}</i>` : '',
+    '',
+    escapeHtml(note),
+    '',
+    '<b>Cara pakai</b>',
+    ...usage.slice(0, 4).map(line => `<code>/${escapeHtml(String(line).replace(/^[/.]/, ''))}</code>`),
+    '',
+    `<i>Kategori: ${escapeHtml(found.category)}</i>`,
+  ].filter(line => line !== '')
+  const buttons = [[{
+    text: '▶️ Jalankan',
+    callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view: `cmd:${name}:` } })}`,
+  }]]
+  if (group) {
+    buttons[0].push({
+      text: '↩️ Semua opsi',
+      callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view: `fn:${group.id}:1` } })}`,
+    })
+  }
+  return renderInPlace(ctx, lines.join('\n'), { reply_markup: inline(buttons) })
 }
 
 async function statusText() {
@@ -1083,6 +1173,14 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
     // Halaman kategori plugin: `cat:<kategori>:<halaman>`.
     const cat = view.match(/^cat:([a-z0-9_-]+)(?::(\d+))?$/)
     if (cat) return sendCategory(ctx, cat[1], Number(cat[2]) || 1)
+
+    // Keluarga fitur ringkas: `fn:<id>:<halaman>`.
+    const fn = view.match(/^fn:([a-z0-9_-]+)(?::(\d+))?$/)
+    if (fn) return sendFunction(ctx, fn[1], Number(fn[2]) || 1)
+
+    // Kartu satu opsi: `opt:<perintah>`.
+    const opt = view.match(/^opt:([a-z0-9_-]+)$/)
+    if (opt) return sendOption(ctx, opt[1])
 
     // Aksi perintah dengan argumen: `cmd:rpg:kerja`, `cmd:saham:beli`.
     const cmd = view.match(/^cmd:([a-z0-9_-]+)(?::(.+))?$/)
