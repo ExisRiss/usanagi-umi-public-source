@@ -113,6 +113,14 @@ function requireOwner(profile) {
   if (!profile?.roles?.includes('owner')) throw Object.assign(new Error('Hanya owner platform yang diizinkan.'), { status: 403 })
 }
 
+// Task79: halaman Setting/Pairing/Console Bot Utama dipisah dan dibuka untuk
+// owner, partner, dan developer. Route owner lain tetap requireOwner.
+const MAIN_BOT_ROLES = new Set(['partner', 'owner', 'developer'])
+function requireMainBot(profile) {
+  const roles = Array.isArray(profile?.roles) ? profile.roles : []
+  if (!roles.some(role => MAIN_BOT_ROLES.has(role))) throw Object.assign(new Error('Hanya owner, partner, dan developer yang diizinkan.'), { status: 403 })
+}
+
 async function audit(user, action, target = '', metadata = {}) {
   try {
     await dataRequest('platform_audit_logs', { method: 'POST', body: { actor_id: user.id, actor_email: user.email, action, target: text(target, 500), metadata } })
@@ -816,16 +824,16 @@ export default async function handler(req, res) {
     }
 
     if (path === 'main-console/status' && req.method === 'GET') {
-      requireOwner(profile)
+      requireMainBot(profile)
       return send(res, 200, { status: await botConsoleRequest('status', user) })
     }
     if (path === 'main-console/logs' && req.method === 'GET') {
-      requireOwner(profile)
+      requireMainBot(profile)
       const cursor = Math.max(0, Math.min(9007199254740991, Math.floor(Number(req.query.cursor) || 0)))
       return send(res, 200, await botConsoleRequest(`logs?cursor=${cursor}`, user))
     }
     if (path === 'main-console/input' && req.method === 'POST') {
-      requireOwner(profile)
+      requireMainBot(profile)
       rateLimit(req, `platform:main-console-input:${user.id}`, 30, 60 * 1000)
       const input = String(req.body?.input ?? '')
       if (!input || input.length > 4096 || input.includes('\0')) return send(res, 400, { error: 'Input terminal tidak valid.' })
@@ -837,7 +845,7 @@ export default async function handler(req, res) {
     // Nomor bot utama disimpan permanen di server bot. Websitenya sendiri tidak
     // pernah menyimpan nomor ini, dan audit tidak merekam nilainya.
     if (path === 'main-console/pairing-number' && req.method === 'POST') {
-      requireOwner(profile)
+      requireMainBot(profile)
       rateLimit(req, `platform:main-bot-number:${user.id}`, 10, 60 * 1000)
       const number = String(req.body?.number ?? '').replace(/\D/g, '')
       if (number.length < 8 || number.length > 15) return send(res, 400, { error: 'Nomor bot utama tidak valid.' })
@@ -850,7 +858,7 @@ export default async function handler(req, res) {
     // Server bot menjawab cepat lalu pairing jalan di latar belakang; halaman
     // memantau status tiap beberapa detik, jadi relay tidak kena timeout.
     if (path === 'main-console/pairing-request' && req.method === 'POST') {
-      requireOwner(profile)
+      requireMainBot(profile)
       rateLimit(req, `platform:main-bot-code:${user.id}`, 12, 60 * 1000)
       const result = await botConsoleRequest('pairing-request', user, { method: 'POST', body: {} })
       await audit(user, 'main_bot.pairing_request', null, {})
@@ -860,7 +868,7 @@ export default async function handler(req, res) {
     // Hapus sesi WhatsApp bot utama (bukan sesi jadibot). Ini resep yang terbukti
     // memperbaiki sesi rusak/logout sehingga pairing code kembali terbit.
     if (path === 'main-console/main-session' && req.method === 'POST') {
-      requireOwner(profile)
+      requireMainBot(profile)
       rateLimit(req, `platform:main-bot-session:${user.id}`, 6, 5 * 60 * 1000)
       const result = await botConsoleRequest('main-session', user, { method: 'POST', body: {} })
       await audit(user, 'main_bot.session_deleted', null, { files: Number(result?.removed) || 0 })
@@ -869,7 +877,7 @@ export default async function handler(req, res) {
 
     // Reset konfigurasi bot utama (.main-bot.env): nomor pairing + status on/off.
     if (path === 'main-console/main-config' && req.method === 'POST') {
-      requireOwner(profile)
+      requireMainBot(profile)
       rateLimit(req, `platform:main-bot-config:${user.id}`, 6, 30 * 60 * 1000)
       const result = await botConsoleRequest('main-config', user, { method: 'POST', body: {} })
       await audit(user, 'main_bot.config_reset', null, {})
@@ -879,11 +887,11 @@ export default async function handler(req, res) {
     // Auto read (centang biru otomatis) bot utama — dibaca handler bot dari
     // settings[<jid bot>].autoread, jadi tidak perlu restart bot.
     if (path === 'main-console/autoread' && req.method === 'GET') {
-      requireOwner(profile)
+      requireMainBot(profile)
       return send(res, 200, await botConsoleRequest('autoread', user))
     }
     if (path === 'main-console/autoread' && req.method === 'POST') {
-      requireOwner(profile)
+      requireMainBot(profile)
       rateLimit(req, `platform:main-autoread:${user.id}`, 30, 60 * 1000)
       const enabled = req.body?.enabled
       if (typeof enabled !== 'boolean') return send(res, 400, { error: 'Nilai enabled harus true atau false.' })
@@ -893,7 +901,7 @@ export default async function handler(req, res) {
     }
 
     if (path === 'main-console/main-bot' && req.method === 'POST') {
-      requireOwner(profile)
+      requireMainBot(profile)
       rateLimit(req, `platform:main-bot-toggle:${user.id}`, 20, 60 * 1000)
       const enabled = req.body?.enabled
       if (typeof enabled !== 'boolean') return send(res, 400, { error: 'Nilai enabled harus true atau false.' })
