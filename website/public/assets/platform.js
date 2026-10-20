@@ -148,6 +148,7 @@
     // isi tabel dibatasi backend (scope 'own').
     telegram: 'telegram.own',
     mainbot: 'mainbot.manage',
+    premium: 'premium.manage',
     servers: 'server.read',
     users: 'platform.users.read',
     audit: 'platform.audit.read',
@@ -173,6 +174,7 @@
     dashboard: ['Ringkasan', 'Satu backend, satu sumber data, dua antarmuka.'],
     telegram: ['Telegram', 'Konfigurasi bot, validasi token, dan status koneksi.'],
     mainbot: ['Bot Utama', 'Nomor bebas (nomor biasa boleh) asal pairing di bot utama. Khusus owner.'],
+    premium: ['Premium', 'Saklar mode premium platform. Khusus owner/developer.'],
     servers: ['Server', 'Maksimum 10 slot. Slot kosong tidak dipantau.'],
     rpg: ['RPG', 'Profil dan papan peringkat dari mesin RPG yang sama dengan WhatsApp.'],
     saham: ['Saham', 'Pasar dari service website yang sama — tanpa harga karangan.'],
@@ -198,6 +200,7 @@
       if (view === 'dashboard') await loadDashboard()
       if (view === 'telegram') await loadBots()
       if (view === 'mainbot') await loadMainBot()
+      if (view === 'premium') await loadPremium()
       if (view === 'servers') await loadServers()
       if (view === 'rpg') await loadRpg()
       if (view === 'saham') await loadSaham()
@@ -349,6 +352,27 @@
       ${!data.runtimeReady ? '<p class="muted">Runtime pairing belum siap. Coba muat ulang halaman ini beberapa saat lagi.</p>' : ''}`
     const form = $('#mainBotForm')
     if (form) form.elements.number.value = ''
+  }
+
+  /* ------------------------------------------------------------ premium */
+  async function loadPremium() {
+    const data = await api('premium-mode')
+    const on = data.enabled !== false
+    $('#premiumStatus').innerHTML = `
+      <dl class="kv">
+        <dt>Status</dt><dd><span class="badge ${on ? 'ok' : 'bad'}">${on ? 'ON — fitur premium aktif' : 'OFF — semua fitur gratis'}</span></dd>
+        <dt>Diubah</dt><dd>${data.updatedAt ? esc(when(data.updatedAt)) : '—'}</dd>
+        <dt>Oleh</dt><dd>${esc(data.updatedBy || '—')}</dd>
+        <dt>Katalog plugin</dt><dd>${fmt(data.catalogPlugins || 0)}</dd>
+        <dt>Sesi bot</dt><dd>${fmt(data.sessions || 0)}</dd>
+      </dl>
+      <p class="muted">${on
+        ? 'Pemilik bot masih bisa mematikan mode premium khusus bot miliknya, dan memilih fitur premium lewat Settings atau <code>.premium</code>.'
+        : 'Seluruh fitur premium sekarang gratis di semua bot. Nyalakan lagi untuk mengaktifkan kembali pembatasan premium.'}</p>`
+    const button = $('#togglePremium')
+    button.dataset.enabled = on ? '1' : '0'
+    button.textContent = on ? 'MATIKAN MODE PREMIUM' : 'NYALAKAN MODE PREMIUM'
+    button.className = `btn ${on ? 'btn-danger' : 'btn-primary'}`
   }
 
   async function botAction(id, action) {
@@ -826,6 +850,27 @@
       if (logs) await serverLogs(logs.dataset.logs)
     })
     $('#closeServerDetail').addEventListener('click', () => { $('#serverDetailCard').hidden = true })
+
+    const premiumButton = $('#togglePremium')
+    if (premiumButton) {
+      premiumButton.addEventListener('click', async () => {
+        const enabled = premiumButton.dataset.enabled !== '1'
+        const ok = await confirmDialog(
+          enabled ? 'Nyalakan mode premium?' : 'Matikan mode premium?',
+          enabled
+            ? 'Semua bot kembali menerapkan fitur premium sesuai daftar masing-masing.'
+            : 'Semua fitur premium di semua bot menjadi gratis sampai dinyalakan lagi.',
+        )
+        if (!ok) return
+        try {
+          await api('premium-mode', { method: 'POST', body: { enabled } })
+          toast(`Mode premium platform ${enabled ? 'ON' : 'OFF'}.`)
+          await loadPremium()
+        } catch (error) { toast(error.message, true) }
+      })
+    }
+    const refreshPremium = $('#refreshPremium')
+    if (refreshPremium) refreshPremium.addEventListener('click', () => loadPremium().catch(error => toast(error.message, true)))
 
     $('#userTable').addEventListener('click', async event => {
       const button = event.target.closest('[data-save-role]')

@@ -38,6 +38,13 @@ import {
 import { clearScopedPrefixes } from '../core/awang-prefix.js'
 import { koinStatus, convertKoin, numberForToken } from './game-koin-topup.js'
 import { parseNewsletterInput } from './awang-id.js'
+import {
+  getPremiumSystem,
+  normalizePremiumEntries,
+  premiumConfigFor,
+  resolvePremiumEntry,
+  searchFeatures,
+} from './premium-mode.js'
 import { cleanupBackupExport, getBackupExportFile, prepareBackupExport } from './vercel-backup-export.js'
 import { agentChat, agentStatus, ownerAgentShell, startUmiAgentWorker, updateAgentSettings } from './umi-agent.js'
 import { buyPanelPackage, buyProduct, createWalletTopup, handleTripayCallback, manualTopupRequests, panelAutoOrderStatus, reviewManualTopup, shopCatalog, startPanelAutoOrder, testPanelConnection, updatePanelPackages, updatePanelSettings, adjustWallet, creditWalletForGame, debitWalletForGame, walletOrders, walletStatus } from './panel-autoorder.js'
@@ -831,6 +838,8 @@ function profileSettings(profile) {
     wait_text: v.wait,
     error_text: v.eror,
     multiplier: v.multiplier,
+    premium: premiumConfigFor(profile),
+    premium_system: getPremiumSystem(),
     disabled_plugins: profile.disabledPlugins || [],
     enabled_custom_plugins: profile.enabledCustomPlugins || [],
   }
@@ -919,6 +928,37 @@ function applySettings(profile, input) {
       sendMusic: input.tiktok.sendMusic !== false,
       maxPhotos: Math.max(1, Math.min(20, Number(input.tiktok.maxPhotos) || 8)),
     }
+  }
+  // Task75: mode premium bot. ON/OFF dan daftar fitur premium per bot.
+  if (input.premium_enabled !== undefined) {
+    if (typeof input.premium_enabled !== 'boolean') {
+      throw Object.assign(new Error('Mode Premium ON/OFF harus true atau false.'), { status: 400 })
+    }
+    profile.premium = { ...(profile.premium || {}), enabled: input.premium_enabled }
+  }
+  if (input.premium_plugins !== undefined) {
+    if (!Array.isArray(input.premium_plugins)) {
+      throw Object.assign(new Error('Daftar fitur premium harus berupa array.'), { status: 400 })
+    }
+    if (input.premium_plugins.length > 300) {
+      throw Object.assign(new Error('Maksimum 300 fitur premium.'), { status: 400 })
+    }
+    const plugins = normalizePremiumEntries(input.premium_plugins.map(item => safeText(item, 120)))
+    const unknown = []
+    for (const entry of plugins) {
+      const resolved = resolvePremiumEntry(entry)
+      if (!resolved.ok) unknown.push(resolved)
+    }
+    if (unknown.length) {
+      const hints = unknown.slice(0, 5).map(item => {
+        const suggestions = (item.suggestions || []).slice(0, 2)
+          .map(feature => `${feature.commands[0] || feature.basename.replace(/\.js$/, '')}`)
+          .join(', ')
+        return suggestions ? `${item.entry} (mungkin: ${suggestions})` : item.entry
+      })
+      throw Object.assign(new Error(`Fitur premium tidak dikenal: ${hints.join('; ')}`), { status: 400 })
+    }
+    profile.premium = { ...(profile.premium || {}), plugins }
   }
   if (Array.isArray(input.disabled_plugins)) {
     profile.disabledPlugins = [...new Set(input.disabled_plugins.map(x => safeText(x, 150)).filter(Boolean))].slice(0, 500)
@@ -1366,6 +1406,20 @@ async function route(req, res) {
       console.error('[JADIBOT-DELETE]', number, error?.message || error)
     }
     return send(res, 200, { ok: true, session_id: number })
+  }
+
+  if (pathname === '/api/premium/catalog' && req.method === 'GET') {
+    const query = String(url.searchParams.get('q') || '').trim().slice(0, 60)
+    const limit = Math.max(1, Math.min(50, Number(url.searchParams.get('limit')) || 20))
+    const features = searchFeatures(query, limit).map(feature => ({
+      key: feature.key,
+      name: feature.name,
+      commands: feature.commands.slice(0, 3),
+      tags: feature.tags.slice(0, 4),
+      premium: feature.premium,
+      description: feature.description,
+    }))
+    return send(res, 200, { ok: true, query, total: features.length, features })
   }
 
   if (pathname === '/api/settings/get' && req.method === 'GET') {

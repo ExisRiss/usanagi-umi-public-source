@@ -22,6 +22,8 @@ export const PERMISSIONS = {
   'telegram.status': ['owner', 'developer', 'admin'],
   // Nomor bot utama platform: hanya owner (permintaan pemilik, 2026-10-20).
   'mainbot.manage': ['owner'],
+  // Mode premium platform: owner & developer boleh mematikan/menyalakan.
+  'premium.manage': ['owner', 'developer'],
   'server.read': ['owner', 'developer', 'admin'],
   'server.panel.manage': ['owner', 'developer'],
   'server.control': ['owner', 'developer'],

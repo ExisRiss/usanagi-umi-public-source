@@ -26,6 +26,7 @@ import { can, permissionsOf, ROLES, normalizeRole, canAssignRole } from './roles
 import { hasSecretKey, redact } from './secrets.js'
 import { platformSummary } from './index.js'
 import { readMainBotState, normalizeMainBotNumber } from '../main-bot-config.js'
+import { getPremiumSystem, setPremiumSystem } from '../premium-mode.js'
 
 const MAX_JSON = 512 * 1024
 const MAX_UPLOAD = 50 * 1024 * 1024
@@ -435,6 +436,30 @@ export async function handlePlatformApi(req, res, pathname, search, env = proces
       const result = await applyMainBotNumber(number)
       audit({ actorUserId: actor.userId, platform: 'web', action: 'mainbot.pairing-number', resource: number.replace(/^(\d{4})\d+(\d{3})$/, '$1***$2') })
       return send(res, 200, { ok: true, ...result })
+    }
+
+    // Saklar mode premium platform (owner/developer). Task75.
+    if (route === '/premium-mode' && method === 'GET') {
+      requirePerm(actor.userId, 'premium.manage')
+      const state = getPremiumSystem()
+      let features = 0
+      try { features = Object.keys(global.plugins || {}).length } catch {}
+      const bots = listSessions() || []
+      return send(res, 200, { ...state, catalogPlugins: features, sessions: bots.length })
+    }
+    if (route === '/premium-mode' && method === 'POST') {
+      const role = requirePerm(actor.userId, 'premium.manage')
+      const body = await readJson(req)
+      if (typeof body.enabled !== 'boolean') return send(res, 400, { error: 'Field enabled harus true atau false.' })
+      const state = setPremiumSystem(body.enabled, actor.userId)
+      audit({
+        actorUserId: actor.userId,
+        platform: 'web',
+        action: 'premium.system.toggle',
+        resource: 'premium-system',
+        meta: { enabled: state.enabled, role },
+      })
+      return send(res, 200, state)
     }
 
     // Log error terbaru (dipakai halaman owner + agen lewat relay).

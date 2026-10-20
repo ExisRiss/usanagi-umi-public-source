@@ -27,6 +27,7 @@ import { getActivePrefix } from './core/awang-prefix.js'
 import { prefixStorageKey, isPluginDisabled } from './lib/bot-config.js'
 import { limitsEnabled } from './lib/limit-mode.js'
 import { canUseOwnerPlugin } from './lib/owner-policy.js'
+import { isPremiumFeatureLocked, premiumOwnerContact } from './lib/premium-mode.js'
 import {
   isGroupAdmin as resolveGroupAdmin,
   isBotAdmin as resolveBotGroupAdmin,
@@ -717,8 +718,19 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 					fail('mods', m, this);
 					continue;
 				}
-				if ((plugin.premium || plugin.premiumOnly) && !isPrems) {
-					// Premium
+				// Task75: mode premium dua lapis. Saklar platform (owner/developer)
+				// dan saklar per bot + daftar fitur premium milik pemilik bot.
+				// OFF di salah satu lapis = fitur premium (termasuk plugin bertanda
+				// premium bawaan) terbuka untuk semua pengguna bot itu.
+				if (!isPrems && isPremiumFeatureLocked(botConfig, {
+					key: name,
+					basename: pluginBasename,
+					name: plugin.name || '',
+					command,
+					tags: Array.isArray(plugin.tags) ? plugin.tags : [],
+				}, { builtinPremium: Boolean(plugin.premium || plugin.premiumOnly) })) {
+					m.__premiumFeature = `${usedPrefix}${command}`;
+					m.__premiumOwner = premiumOwnerContact(botConfig);
 					fail('premium', m, this);
 					continue;
 				}
@@ -1429,7 +1441,21 @@ global.dfail = (type, m, conn) => {
 
     mods: (m, conn) => conn.reply(m.chat, `Hehe~ hanya moderator yang boleh pakai fitur ini`, m),
 
-    premium: (m, conn) => conn.reply(m.chat, `Ups~ fitur ini khusus pengguna premium`, m),
+    premium: (m, conn) => {
+      const feature = String(m.__premiumFeature || '').trim()
+      const owner = String(m.__premiumOwner || '').replace(/\D/g, '')
+      const lines = [
+        '💎 *FITUR PREMIUM*',
+        feature
+          ? `Fitur *${feature}* hanya untuk pengguna premium di bot ini.`
+          : 'Fitur ini khusus pengguna premium di bot ini.',
+        owner
+          ? `Mau akses? Hubungi owner bot: wa.me/${owner}`
+          : 'Mau akses? Hubungi owner bot untuk aktivasi premium.',
+        'Owner bot bisa mengatur daftar fitur premium lewat perintah *.premium*',
+      ]
+      return conn.reply(m.chat, lines.join('\n'), m)
+    },
 
     group: (m, conn) => conn.reply(m.chat, `Ara~ command ini cuma bisa dipakai di grup`, m),
 

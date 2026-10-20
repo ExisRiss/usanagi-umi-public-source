@@ -25,6 +25,7 @@
       <button type="button" class="nav-item is-active" data-view="dashboard"><span aria-hidden="true">▦</span> Ringkasan</button>
       <button type="button" class="nav-item" data-view="telegram"><span aria-hidden="true">✈</span> Telegram</button>
       <button type="button" class="nav-item" data-view="mainbot"><span aria-hidden="true">☎</span> Bot Utama</button>
+      <button type="button" class="nav-item" data-view="premium"><span aria-hidden="true">💎</span> Premium</button>
       <button type="button" class="nav-item" data-view="servers"><span aria-hidden="true">▤</span> Server</button>
       <button type="button" class="nav-item" data-view="rpg"><span aria-hidden="true">🎮</span> RPG</button>
       <button type="button" class="nav-item" data-view="saham"><span aria-hidden="true">💹</span> Saham</button>
@@ -206,6 +207,28 @@
         </div>
       </section>
 
+      <section class="view" data-view="premium" hidden>
+        <div class="card narrow">
+          <div class="card-head">
+            <h2>Mode Premium Platform</h2>
+            <span class="muted">khusus owner/developer</span>
+          </div>
+          <p class="muted">
+            Saklar ini menyalakan atau mematikan <b>seluruh</b> mode premium di semua bot WhatsApp.
+            Saat <b>OFF</b>, semua fitur premium — plugin bawaan maupun daftar fitur premium milik
+            tiap bot — terbuka untuk semua pengguna. Saat <b>ON</b>, pemilik bot mengisi sendiri
+            fitur mana yang mau dijadikan premium lewat website → Settings → Mode Premium,
+            atau lewat perintah <code>.premium</code> di WhatsApp.
+          </p>
+          <div id="premiumStatus" class="stack"></div>
+          <div class="form-actions">
+            <button class="btn btn-primary" id="togglePremium" type="button">Muat status…</button>
+            <button class="btn btn-ghost" id="refreshPremium" type="button">Muat ulang</button>
+          </div>
+          <p class="muted">Setiap perubahan dicatat di audit dengan aksi <code>premium.system.toggle</code>.</p>
+        </div>
+      </section>
+
       <section class="view" data-view="link" hidden>
         <div class="card narrow">
           <h2>Tautkan akun Telegram</h2>
@@ -240,6 +263,6 @@
   </form>
 </dialog>
 
-<script src="/assets/platform.js" defer></script>
+<script src="/assets/platform.js?v=20261020-premium" defer></script>
 </body>
 </html>

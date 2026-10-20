@@ -34,6 +34,9 @@ const ALLOWED = [
   { method: 'POST', pattern: /^main-bot\/number$/ },
   // Log error terbaru (owner/developer).
   { method: 'GET', pattern: /^errors$/ },
+  // Saklar mode premium platform (owner/developer).
+  { method: 'GET', pattern: /^premium-mode$/ },
+  { method: 'POST', pattern: /^premium-mode$/ },
   { method: 'GET', pattern: /^servers$/ },
   { method: 'GET', pattern: /^servers\/overview$/ },
   { method: 'PUT', pattern: /^servers\/\d+$/ },

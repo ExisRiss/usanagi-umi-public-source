@@ -44,6 +44,32 @@ function normalizeDefaultLimit(value, fallback = 25) {
   return Math.max(0, Math.min(100000, Math.trunc(number)))
 }
 
+/**
+ * Mode Premium per bot: saklar ON/OFF + daftar fitur yang dikunci.
+ * Entri disimpan dalam huruf kecil supaya pencocokan tidak peka huruf besar.
+ */
+export function normalizePremiumConfig(value) {
+  const raw = value && typeof value === 'object' && !Array.isArray(value) ? value : {}
+  const source = Array.isArray(raw.plugins) ? raw.plugins : []
+  const plugins = []
+  const seen = new Set()
+  for (const item of source) {
+    const entry = String(item === undefined || item === null ? '' : item)
+      .trim()
+      .toLowerCase()
+      .replace(/^[.#!/\\]+/, '')
+      .slice(0, 120)
+    if (!entry || seen.has(entry)) continue
+    seen.add(entry)
+    plugins.push(entry)
+    if (plugins.length >= 300) break
+  }
+  return {
+    enabled: raw.enabled !== false,
+    plugins,
+  }
+}
+
 function merge(base, override) {
   if (!base || typeof base !== 'object' || Array.isArray(base)) return override === undefined ? clone(base) : clone(override)
   const output = clone(base) || {}
@@ -144,6 +170,7 @@ function defaults() {
     eror: String(mainValues.eror || '🚩 Terjadi kesalahan.'),
     multiplier: Number(mainValues.multiplier) || 38,
     ownerNumbers: normalizeJadibotOwners(configured.ownerNumbers || []),
+    premium: normalizePremiumConfig(configured.premium || {}),
     disabledPlugins: Array.isArray(configured.disabledPlugins) ? [...configured.disabledPlugins] : [],
     enabledCustomPlugins: Array.isArray(configured.enabledCustomPlugins) ? [...configured.enabledCustomPlugins] : [],
   }
@@ -164,6 +191,10 @@ function sanitize(raw = {}) {
   output.groupGoodbyeTemplates = normalizeGroupWelcomeTemplates(output.groupGoodbyeTemplates)
   output.stickpack = String(output.stickpack || output.namebot).slice(0, 80)
   output.ownerNumbers = normalizeJadibotOwners(output.ownerNumbers || [])
+  output.premium = normalizePremiumConfig({
+    enabled: raw.premium && typeof raw.premium === 'object' ? raw.premium.enabled : output.premium?.enabled,
+    plugins: raw.premium && typeof raw.premium === 'object' ? raw.premium.plugins : output.premium?.plugins,
+  })
   output.disabledPlugins = [...new Set((Array.isArray(output.disabledPlugins) ? output.disabledPlugins : []).map(String).map(v => v.trim()).filter(Boolean))].slice(0, 500)
   output.enabledCustomPlugins = [...new Set((Array.isArray(output.enabledCustomPlugins) ? output.enabledCustomPlugins : []).map(String).map(v => v.replace(/\\/g, '/').trim().toLowerCase()).filter(v => /^custom\/[a-z0-9_.-]+\.js$/.test(v)))].slice(0, 100)
   return output
@@ -193,6 +224,7 @@ export function loadJadibotConfig(number, sessionPath = '', { create = true } = 
     onlyGroup: values.onlyGroup,
     registrationRequired: values.registrationRequired,
     ownerNumbers: values.ownerNumbers,
+    premium: values.premium,
     disabledPlugins: values.disabledPlugins,
     enabledCustomPlugins: values.enabledCustomPlugins,
     file,
@@ -248,6 +280,7 @@ export function saveJadibotConfig(profile) {
     tiktokRich: profile.values?.tiktokRich,
     groupWelcomeTemplates: profile.values?.groupWelcomeTemplates,
     groupGoodbyeTemplates: profile.values?.groupGoodbyeTemplates,
+    premium: profile.premium,
     disabledPlugins: profile.disabledPlugins,
     enabledCustomPlugins: profile.enabledCustomPlugins,
   })

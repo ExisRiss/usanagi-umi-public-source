@@ -5,7 +5,7 @@ import { requestBot } from './_bot-transport.js'
 const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST', 'PATCH', 'DELETE', 'OPTIONS'])
 const ALLOWED_PATHS = new Set([
   'health', 'sessions', 'session/pairing', 'session/status', 'session/restart',
-  'session/logout', 'settings/get', 'settings/apply', 'settings/reset',
+  'session/logout', 'settings/get', 'settings/apply', 'settings/reset', 'premium/catalog',
   'backup/list', 'backup/create', 'backup/restore', 'console/logs', 'console/run',
   'agent/status', 'agent/chat',
   'wallet/status', 'wallet/topup', 'wallet/shop', 'wallet/buy-panel', 'wallet/buy-product', 'wallet/orders',
