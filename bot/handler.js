@@ -11,7 +11,6 @@ import { runWithBotConnection } from './lib/bot-connection-context.js';
 import { smsg } from './lib/simple.js';
 import { generateWAMessageFromContent, proto } from '@rexxhayanasi/elaina-baileys'
 import { format } from 'util';
-import { reportPluginError } from './lib/error-report.js';
 import { recordError } from './lib/error-hub.js';
 import { fileURLToPath } from 'url';
 import path from 'path';
