@@ -70,6 +70,12 @@ function menuKeyboard(ctx, router) {
   const catButtons = shown.map(entry => row(`${entry.icon} ${entry.label}`, `cat:${entry.id}`))
   for (let index = 0; index < catButtons.length; index += 2) rows.push(catButtons.slice(index, index + 2))
 
+  // "Dummy" kategori: fitur yang hanya bisa dipakai di WhatsApp. Ditampilkan
+  // supaya pengguna tahu ke mana fitur yang mereka kenal dari bot WhatsApp,
+  // bukan hilang tanpa penjelasan.
+  const waOnlyCount = all.find(entry => entry.id === 'waonly')?.count || 0
+  if (waOnlyCount) rows.push([row(`🔒 Khusus WhatsApp (${waOnlyCount})`, 'cat:waonly')])
+
   const extra = [row('📂 Semua Menu', 'allmenu'), row('❓ Bantuan', 'help')]
   if (router.allowed(ctx, 'jadibot')) extra.unshift(row('📱 Jadibot', 'jadibot'))
   if (router.allowed(ctx, 'tourl')) extra.unshift(row('🔗 To URL', 'tourl'))

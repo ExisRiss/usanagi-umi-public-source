@@ -1752,3 +1752,30 @@ Verifikasi live ulang (server, grup BackUp, pesan dihapus): `/start` → **2 pes
 - Tes: **142 platform** (7 tes baru di `tests/platform/batch9.test.mjs`), 0 gagal.
 
 **Batas jujur:** deteksi berbasis isi berkas, bukan uji coba live per plugin. Kalau ada plugin yang memakai rich HTML lewat helper lain (bukan string `richResponseMessage`), plugin itu belum ikut tersaring — tinggal tambahkan polanya. Sebaliknya, plugin yang menyentuh API WA tetapi masih bisa menghasilkan teks (mis. `sendInteractive` → daftar teks) sengaja **tidak** dihapus.
+
+## Task70 batch 10 — deteksi lebih ketat + kategori dummy "Khusus WhatsApp" (2026-10-20)
+
+**Permintaan user:** "bikin lah biar engga masuk dan bikin dummy fitur".
+
+**Apa yang diperbaiki:**
+1. **Deteksi lebih ketat (fitur WA-only benar-benar tidak masuk).**
+   - `wa-only.js` sekarang juga memeriksa **import relatif** (maks 2 tingkat), jadi plugin yang memakai helper rich lewat berkas lain ikut tertangkap. Ditambah pola helper internal `awang-table` dan `awang-rich-forward` yang selalu membungkus isi jadi papan/tabel rich HTML.
+   - Pengecualian tepat: helper `usanagi-ai-rich` **tidak** dilarang karena plugin pemakainya punya fallback teks (`/deepseek`, `/grok`, `/ai`). Jembatan Telegram sekarang **melempar error** untuk pesan rich, sehingga fallback teks itulah yang terkirim — bukti: `/deepseek` tetap tersedia di Telegram.
+   - Urutan pendaftaran nama diubah jadi 4 lapis: nama utama plugin yang didukung → alias plugin didukung → nama utama plugin WA-only → aliasnya. Efek nyata: `/ig` kembali memakai `download/usanagi-instagram.js` (dulu sempat "ketukar" ke plugin WA-only yang memakai `ig` sebagai nama utama).
+   - Hasil di server: **52 plugin WA-only** (dari 33) — game 33, info 3, main 3, misc 2, music 2, download 2, downloader 1, owner 2, group 1, premium 1, tools 1, ai 1.
+2. **Dummy fitur: kategori "🔒 Khusus WhatsApp".**
+   - Bukan plugin palsu: halaman khusus yang **mendaftar semua fitur yang cuma bisa jalan di WhatsApp** lengkap dengan nama + keterangan, dibagi 5 halaman, masing-masing dengan kalimat "buka bot WhatsApp atau jadibot WA milikmu".
+   - Tombolnya ada di menu utama: `🔒 Khusus WhatsApp (52)`. Bisa juga lewat `/menu wa-only` (alias: `waonly`, `whatsapp`).
+   - Halaman ini ikut aturan edit-in-place: ganti halaman mengedit pesan yang sama.
+3. **Tombol/list/carousel WhatsApp diturunkan jadi teks bernomor** di `relayMessage` (bukan JSON mentah) supaya plugin berbasis `MessageBuilder` tetap terbaca di Telegram.
+
+**Perintah penting yang dicek ulang di server:** `/brat` OK, `/stiker` OK, `/play` OK, `/fb` OK, `/ig` **OK**, `/tiktok` OK, `/aiimg` OK, `/gemini` OK, `/deepseek` OK, `/tourl` OK, `/qc` OK, `/totalfitur` OK. Yang jadi khusus WhatsApp antara lain: `/catur`, `/chess`, `/tetris`, `/play2`, `/ttv4`, `/mypet`, `/blockblast`, `/dino`, `/flappy`, `/geometrydash`, `/minesweeper`, `/slot`, `/statusbot`.
+
+**Verifikasi live (grup BackUp, pesan dihapus):**
+- Menu: baris `🔒 Khusus WhatsApp (52)` muncul.
+- Tekan tombolnya → `sends+0 edits+1`, isi `🔒 KHUSUS WHATSAPP · 52 fitur · halaman 1/5` + penjelasan cara pakai. Halaman 2 → `edits+1`, halaman 5/5 → `edits+1` (tidak ada pesan baru).
+- `/catur` → ditolak jelas (`⛔ /catur khusus WhatsApp…`), handler tidak dijalankan.
+- Health setelah restart: `catalog {plugins: 1634, categories: 22}` (22 karena kategori dummy ikut dihitung).
+- Tes: **153 platform** (11 tes baru di `tests/platform/batch10.test.mjs`), 0 gagal.
+
+**Batas jujur:** kategori "Khusus WhatsApp" ikut terhitung di `/health` sebagai satu kategori (22), padahal isinya bukan plugin. Deteksi tetap berbasis isi berkas + import relatif; plugin yang membangun rich message secara dinamis (string dirakit runtime) belum tentu tertangkap — kalau ketemu, tambahkan polanya.

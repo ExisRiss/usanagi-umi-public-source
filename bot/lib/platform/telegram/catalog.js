@@ -40,6 +40,10 @@ export const CATEGORY_META = {
   data: { label: 'Data', icon: '🗂️' },
   pelengkap: { label: 'Pelengkap', icon: '🧩' },
   notif: { label: 'Notif', icon: '🔔' },
+  // Kategori "dummy": bukan plugin, melainkan daftar fitur yang hanya bisa
+  // jalan di WhatsApp. Muncul supaya pengguna Telegram tidak bingung ke mana
+  // fitur yang mereka kenal dari bot WhatsApp.
+  waonly: { label: 'Khusus WhatsApp', icon: '🔒' },
 }
 
 export const PAGE_SIZE = 12
@@ -106,6 +110,8 @@ export function buildCatalog(plugins = globalThis.plugins) {
     })
   }
   const seenCanonical = new Set()
+  const waOnlyItems = []
+  const waOnlySeen = new Set()
   // Dua tahap: plugin yang didukung Telegram didahulukan, supaya kalau dua
   // plugin memakai perintah yang sama (mis. `/brat` versi WA-only dan versi
   // biasa) yang dipakai di Telegram adalah yang benar-benar bisa jalan.
@@ -148,18 +154,29 @@ export function buildCatalog(plugins = globalThis.plugins) {
       waReason: entry.waReason,
     }
     if (!hidden) items.push(item)
-    // Nama utama (perintah pertama) menang atas alias, supaya `/stiker`
-    // dijalankan plugin yang memang bernama `stiker`, bukan plugin lain yang
-    // kebetulan punya regex cocok.
-    const [primary, ...aliases] = names
-    if (!byCommand.has(primary)) byCommand.set(primary, item)
-    entry.aliases = aliases
+    // Simpan satu entri per plugin untuk halaman "Khusus WhatsApp".
+    if (waOnly && !waOnlySeen.has(key) && !HIDDEN_CATEGORIES.has(category)) {
+      waOnlySeen.add(key)
+      waOnlyItems.push(item)
+    }
     entry.item = item
   }
-  // Alias diisi setelah semua nama utama terdaftar.
-  for (const entry of entries) {
-    for (const alias of entry.aliases || []) {
-      if (!byCommand.has(alias)) byCommand.set(alias, entry.item)
+  // Urutan pendaftaran nama: (1) nama utama plugin yang DIDUKUNG Telegram,
+  // (2) alias plugin yang didukung, (3) nama utama khusus WhatsApp, (4) alias
+  // khusus WhatsApp. Dengan begitu `/ig` tetap mengarah ke plugin yang bisa
+  // jalan, meski plugin WA-only memakai `ig` sebagai nama utamanya.
+  const supported = entries.filter(entry => !entry.waOnly)
+  const blocked = entries.filter(entry => entry.waOnly)
+  for (const pass of ['primary', 'alias']) {
+    for (const entry of supported) {
+      const list = pass === 'primary' ? [entry.names[0]] : entry.names.slice(1)
+      for (const name of list) if (!byCommand.has(name)) byCommand.set(name, entry.item)
+    }
+  }
+  for (const pass of ['primary', 'alias']) {
+    for (const entry of blocked) {
+      const list = pass === 'primary' ? [entry.names[0]] : entry.names.slice(1)
+      for (const name of list) if (!byCommand.has(name)) byCommand.set(name, entry.item)
     }
   }
   const byCategory = new Map()
@@ -178,7 +195,7 @@ export function buildCatalog(plugins = globalThis.plugins) {
     byCategory.get(item.category).push(item)
   }
   for (const list of byCategory.values()) list.sort((a, b) => a.command.localeCompare(b.command))
-  return { items, byCommand, byCategory, total: items.length }
+  return { items, byCommand, byCategory, waOnly: waOnlyItems, total: items.length }
 }
 
 let cache = { at: 0, plugins: null, catalog: null }
@@ -205,7 +222,7 @@ export function categories(plugins = globalThis.plugins) {
       label: meta.label,
       icon: meta.icon,
       mobile: Boolean(meta.mobile),
-      count: built.byCategory.get(id)?.length || 0,
+      count: id === 'waonly' ? (built.waOnly?.length || 0) : (built.byCategory.get(id)?.length || 0),
     }))
     .filter(entry => entry.count > 0)
 }
@@ -257,6 +274,7 @@ export function resolveCategory(word, plugins = globalThis.plugins) {
     pemilik: 'owner', gambar: 'maker', foto: 'maker', cari: 'search', musik: 'music', lagu: 'music',
     uang: 'economy', ekonomi: 'economy', lain: 'misc', lainnya: 'misc', lainnya_: 'misc', sistem: 'misc',
     download: 'downloader', unduh: 'downloader', relasi: 'relationship', cinta: 'relationship',
+    waonly: 'waonly', 'wa-only': 'waonly', wifi: 'waonly', whatsapp: 'waonly', wabot: 'waonly',
   }
   const id = CATEGORY_META[wanted] ? wanted : alias[wanted]
   if (id && CATEGORY_META[id]) return id
@@ -265,7 +283,9 @@ export function resolveCategory(word, plugins = globalThis.plugins) {
 }
 
 export function itemsOf(categoryId, plugins = globalThis.plugins) {
-  return catalog(plugins).byCategory.get(String(categoryId || '')) || []
+  const id = String(categoryId || '')
+  if (id === 'waonly') return catalog(plugins).waOnly || []
+  return catalog(plugins).byCategory.get(id) || []
 }
 
 export function findItem(name, plugins = globalThis.plugins) {
@@ -322,6 +342,12 @@ function badge(item) {
 
 /** Satu baris daftar perintah: `/kerja` — kerja <jumlah>. */
 export function formatItem(item, { detail = false } = {}) {
+  if (item.waOnly) {
+    // Baris di halaman "Khusus WhatsApp": nama + alasan, bukan cara pakai.
+    const name = String(item.command || '').replace(/[<>&]/g, '')
+    const desc = String(item.description || item.waReason || '').replace(/[<>&]/g, '').slice(0, 80)
+    return `🔒 /<b>${name}</b>${desc ? ` — ${desc}` : ''}`
+  }
   const usage = item.usage[0] || item.command
   const marks = badge(item)
   const head = `/<b>${usage.split(/\s+/)[0].replace(/[<>&]/g, '')}</b>`
@@ -343,11 +369,17 @@ export function pageOf(categoryId, page = 1, { plugins = globalThis.plugins, siz
   const current = Math.min(Math.max(1, Math.floor(Number(page) || 1)), pages)
   const slice = items.slice((current - 1) * size, current * size)
   const lines = [
-    `${meta.icon} <b>MENU ${String(meta.label).toUpperCase()}</b>`,
-    `<i>${total} perintah · halaman ${current}/${pages}</i>`,
-    '',
-    ...slice.map(item => formatItem(item)),
+    `${meta.icon} <b>${categoryId === 'waonly' ? 'KHUSUS WHATSAPP' : `MENU ${String(meta.label).toUpperCase()}`}</b>`,
+    `<i>${total} fitur · halaman ${current}/${pages}</i>`,
   ]
+  if (categoryId === 'waonly') {
+    lines.push(
+      '',
+      '<i>Fitur di bawah ini butuh kemampuan yang hanya ada di WhatsApp (mis. papan game interaktif). Tidak bisa dijalankan dari Telegram.</i>',
+      '<b>Cara pakai:</b> buka bot WhatsApp atau jadibot WA milikmu.',
+    )
+  }
+  lines.push('', ...slice.map(item => formatItem(item)))
   if (total > slice.length) lines.push('', '<i>Tekan ➡️ / ⬅️ untuk halaman lain, atau ketik perintahnya langsung.</i>')
   return { text: lines.join('\n'), page: current, pages, total, category: { id: categoryId, label: meta.label, icon: meta.icon } }
 }

@@ -286,6 +286,55 @@ async function profilePictureUrl(ctx, jid, type = 'image') {
   return url
 }
 
+/** Ubah payload tombol/list/carousel WhatsApp menjadi teks yang bisa dibaca. */
+function flattenInteractive(body = {}) {
+  const wrap = body.viewOnceMessage?.message || body.viewOnceMessageV2?.message || body.documentWithCaptionMessage?.message || body
+  const interactive = wrap.interactiveMessage
+  const buttons = wrap.buttonsMessage
+  const list = wrap.listMessage
+  const template = wrap.templateMessage?.hydratedTemplate || wrap.templateMessage?.hydratedFourRowTemplate
+  const carousel = wrap.carouselMessage?.cards
+  const lines = []
+  const text = value => (typeof value === 'string' ? value : value?.text || value?.title || '')
+  if (interactive) {
+    if (interactive.header?.title) lines.push(`<b>${waToHtml(text(interactive.header.title))}</b>`)
+    if (interactive.body?.text) lines.push(waToHtml(text(interactive.body.text)))
+    if (interactive.footer?.text) lines.push(`<i>${waToHtml(text(interactive.footer.text))}</i>`)
+    const params = interactive.nativeFlowMessage?.buttons || []
+    const labels = params.map(entry => {
+      try { return JSON.parse(entry.buttonParamsJson || '{}').title || null } catch { return null }
+    }).filter(Boolean)
+    if (labels.length) lines.push('', ...labels.map((label, index) => `${index + 1}. ${waToHtml(label)}`))
+  } else if (buttons) {
+    if (buttons.contentText) lines.push(waToHtml(buttons.contentText))
+    if (buttons.headerText) lines.unshift(`<b>${waToHtml(buttons.headerText)}</b>`)
+    if (buttons.footerText) lines.push(`<i>${waToHtml(buttons.footerText)}</i>`)
+    const labels = (buttons.buttons || []).map(entry => entry.buttonText?.displayText).filter(Boolean)
+    if (labels.length) lines.push('', ...labels.map((label, index) => `${index + 1}. ${waToHtml(label)}`))
+  } else if (list) {
+    if (list.title) lines.push(`<b>${waToHtml(list.title)}</b>`)
+    if (list.description) lines.push(waToHtml(list.description))
+    for (const section of list.sections || []) {
+      if (section.title) lines.push('', `<b>${waToHtml(section.title)}</b>`)
+      for (const row of section.rows || []) {
+        lines.push(`• ${waToHtml(row.title || '')}${row.description ? ` — ${waToHtml(row.description)}` : ''}`)
+      }
+    }
+  } else if (template) {
+    if (template.title) lines.push(`<b>${waToHtml(template.title)}</b>`)
+    if (template.body?.text) lines.push(waToHtml(template.body.text))
+    const labels = (template.buttons || []).map(entry => entry.quickReplyButton?.displayText || entry.urlButton?.displayText || entry.callButton?.displayText).filter(Boolean)
+    if (labels.length) lines.push('', ...labels.map((label, index) => `${index + 1}. ${waToHtml(label)}`))
+  } else if (Array.isArray(carousel) && carousel.length) {
+    carousel.forEach((card, index) => {
+      const inner = card?.header?.title || card?.body?.text
+      lines.push(`${index + 1}. ${waToHtml(String(inner || 'Kartu'))}`)
+    })
+  }
+  const joined = lines.filter(Boolean).join('\n').trim()
+  return joined || null
+}
+
 /** Bangun `m.quoted` dari pesan yang di-reply di Telegram. */
 function quotedFrom(ctx, sender, raw = null) {
   const reply = (raw || ctx.rawMessage)?.reply_to_message
@@ -353,10 +402,18 @@ function makeConn(ctx, message, jid) {
     sendFile: (chat, content, quoted, options) => sendContent(ctx, content, options),
     relayMessage: (chat, message_) => {
       const body = message_?.message || message_ || {}
+      // Rich HTML (papan game, tabel native) tidak ada padanannya. Lempar error
+      // supaya plugin memakai fallback teksnya sendiri kalau punya (mis. AI).
+      if (body.botForwardedMessage || body.richResponseMessage) {
+        throw new Error('Pesan rich HTML WhatsApp tidak bisa ditampilkan di Telegram.')
+      }
       const inner = body.imageMessage || body.videoMessage || body.documentMessage || body.extendedTextMessage || body.conversation
       if (typeof inner === 'string') return ctx.send(waToHtml(inner))
       if (inner?.caption) return ctx.send(waToHtml(inner.caption))
       if (inner?.text) return ctx.send(waToHtml(inner.text))
+      // Tombol/list/carousel WhatsApp diturunkan jadi teks bernomor.
+      const flattened = flattenInteractive(body)
+      if (flattened) return ctx.send(flattened)
       return ctx.send('<i>(pesan ini tidak bisa ditampilkan di Telegram)</i>')
     },
     sendSticker: async (chat, content) => {
