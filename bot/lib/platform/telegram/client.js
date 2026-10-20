@@ -161,6 +161,46 @@ export class TelegramClient {
     return this.call('sendVideo', payload, { timeout: 60000 })
   }
 
+  /** Stiker webp/gif via multipart (sendSticker), bukan dokumen biasa. */
+  async sendStickerFile(chatId, buffer, { filename = 'sticker.webp', mime = 'image/webp' } = {}) {
+    const form = new FormData()
+    form.append('chat_id', String(chatId))
+    form.append('sticker', new Blob([buffer], { type: mime }), filename)
+    return this.callMultipart('sendSticker', form)
+  }
+
+  /** Panggil Bot API dengan body multipart (FormData). */
+  async callMultipart(method, form, { timeout = 60000 } = {}) {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), timeout)
+    let response
+    try {
+      response = await fetch(`${this.base}/bot${this.token}/${method}`, { method: 'POST', body: form, signal: controller.signal })
+    } catch (error) {
+      const message = error.name === 'AbortError'
+        ? `Telegram tidak merespons (timeout ${timeout} ms).`
+        : redact(`Gagal menghubungi Telegram: ${error.message}`, this.token)
+      throw new TelegramError(message, { status: 504, code: 'network' })
+    } finally {
+      clearTimeout(timer)
+    }
+    let json = null
+    try { json = await response.json() } catch {}
+    if (!json) throw new TelegramError(`Respons Telegram tidak valid (HTTP ${response.status}).`, { status: 502 })
+    if (!json.ok) throw new TelegramError(json.description || `HTTP ${response.status}`, { status: Number(json.error_code || response.status), code: 'api' })
+    return json.result
+  }
+
+  getChat(chatId) { return this.call('getChat', { chat_id: chatId }) }
+  getChatAdministrators(chatId) { return this.call('getChatAdministrators', { chat_id: chatId }) }
+  getChatMemberCount(chatId) { return this.call('getChatMemberCount', { chat_id: chatId }) }
+  getChatMember(chatId, userId) { return this.call('getChatMember', { chat_id: chatId, user_id: userId }) }
+  getUserProfilePhotos(userId, limit = 1) { return this.call('getUserProfilePhotos', { user_id: userId, limit }) }
+  banChatMember(chatId, userId) { return this.call('banChatMember', { chat_id: chatId, user_id: userId }) }
+  unbanChatMember(chatId, userId) { return this.call('unbanChatMember', { chat_id: chatId, user_id: userId }) }
+  promoteChatMember(chatId, userId, rights = {}) { return this.call('promoteChatMember', { chat_id: chatId, user_id: userId, ...rights }) }
+  restrictChatMember(chatId, userId, permissions = {}) { return this.call('restrictChatMember', { chat_id: chatId, user_id: userId, permissions }) }
+
   /** Unduh berkas Telegram (maks 20 MB dari Bot API). */
   async downloadFile(fileId, { maxBytes = 20 * 1024 * 1024 } = {}) {
     const file = await this.getFile(fileId)

@@ -18,6 +18,7 @@ import fs from 'node:fs'
 import { audit } from '../audit.js'
 import { rpgJidFor } from '../rpg.js'
 import { findItem, handlerOf } from './catalog.js'
+import { storeMedia, mediaUrl } from '../media.js'
 
 const COMMAND_TIMEOUT_MS = 45000
 const MAX_TEXT = 3800
@@ -44,6 +45,68 @@ export function waToHtml(value) {
   text = text.replace(/_([^_\n]{1,200})_/g, '<i>$1</i>')
   text = text.replace(/`([^`\n]{1,200})`/g, '<code>$1</code>')
   return text.length > MAX_TEXT ? `${text.slice(0, MAX_TEXT)}…` : text
+}
+
+function sniffImage(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null
+  if (buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP') return 'image/webp'
+  if (buffer.subarray(0, 3).toString('ascii') === 'GIF') return 'image/gif'
+  if (buffer[0] === 0x89 && buffer.subarray(1, 4).toString('ascii') === 'PNG') return 'image/png'
+  if (buffer[0] === 0xff && buffer[1] === 0xd8) return 'image/jpeg'
+  return null
+}
+
+async function fetchMediaBuffer(url) {
+  if (/^https?:\/\//i.test(url)) {
+    const response = await fetch(url, { signal: AbortSignal.timeout(30000) })
+    if (!response.ok) throw new Error(`Media balas HTTP ${response.status}.`)
+    return Buffer.from(await response.arrayBuffer())
+  }
+  if (fs.existsSync(url)) return fs.readFileSync(url)
+  throw new Error('Berkas media tidak ditemukan.')
+}
+
+/**
+ * API pembuat stiker (mis. brat) kadang mengembalikan PNG/JPEG. Telegram hanya
+ * menerima WEBP untuk `sendSticker`, jadi konversi dulu bila `sharp` tersedia
+ * (dependensi bot). Kalau tidak ada, pemanggil jatuh ke kirim sebagai foto —
+ * fitur tetap jalan, hanya bukan stiker.
+ */
+async function toWebpSticker(buffer) {
+  try {
+    const { default: sharp } = await import('sharp')
+    if (!sharp) return null
+    return await sharp(buffer)
+      .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
+      .webp({ quality: 92 })
+      .toBuffer()
+  } catch {
+    return null
+  }
+}
+
+async function sendStickerBuffer(ctx, buffer) {
+  const mime = sniffImage(buffer)
+  if (mime === 'image/webp' || mime === 'image/gif') {
+    try {
+      return await ctx.client.sendStickerFile(ctx.chatId, buffer, {
+        filename: mime === 'image/gif' ? 'sticker.gif' : 'sticker.webp', mime,
+      })
+    } catch {}
+  } else if (mime) {
+    const webp = await toWebpSticker(buffer)
+    if (webp) {
+      try {
+        return await ctx.client.sendStickerFile(ctx.chatId, webp, { filename: 'sticker.webp', mime: 'image/webp' })
+      } catch {}
+    }
+    return sendMedia(ctx, 'photo', buffer, '')
+  }
+  return sendMedia(ctx, 'document', buffer, '', 'sticker.bin')
+}
+
+async function conn_sendStickerBuffer(ctx, buffer) {
+  return sendStickerBuffer(ctx, buffer)
 }
 
 function senderJidFor(ctx) {
@@ -130,6 +193,156 @@ async function sendContent(ctx, content, options = {}) {
 
 /* ─────────────────────────── shim conn/m ─────────────────────────── */
 
+/** JID semu platform (`999<telegramId>@s.whatsapp.net`) → id Telegram. */
+function telegramIdFromJid(jid) {
+  const digits = String(jid || '').replace(/\D/g, '')
+  if (!digits) return null
+  return digits.startsWith('999') && digits.length > 6 ? Number(digits.slice(3)) : Number(digits)
+}
+
+function isGroupChat(ctx) {
+  return String(ctx.chatId || '').startsWith('-')
+}
+
+/** Metadata grup Telegram: admin (nyata) + jumlah anggota. */
+async function groupMetadataFor(ctx, chat) {
+  if (!isGroupChat(ctx)) throw new Error('Perintah ini khusus grup.')
+  const chatId = chat || ctx.chatId
+  const client = ctx.client
+  const [admins, count] = await Promise.all([
+    client.getChatAdministrators(chatId).catch(() => []),
+    client.getChatMemberCount(chatId).catch(() => 0),
+  ])
+  const participants = (Array.isArray(admins) ? admins : []).map(entry => {
+    const user = entry.user || {}
+    return {
+      id: `${999}${String(user.id).padStart(10, '0')}@s.whatsapp.net`,
+      admin: entry.status === 'creator' ? 'superadmin' : 'admin',
+      name: [user.first_name, user.last_name].filter(Boolean).join(' ') || user.username || String(user.id),
+      telegramId: user.id,
+    }
+  })
+  return {
+    id: String(chatId),
+    subject: ctx.chatTitle || 'Grup Telegram',
+    participants,
+    size: Number(count) || participants.length,
+    announce: false,
+    restrict: false,
+  }
+}
+
+/** Aksi anggota grup: add/remove/promote/demote lewat Bot API. */
+async function participantsUpdate(ctx, jids, action) {
+  if (!isGroupChat(ctx)) throw new Error('Aksi ini hanya bisa di grup.')
+  const client = ctx.client
+  const ids = (Array.isArray(jids) ? jids : [jids]).map(telegramIdFromJid).filter(Boolean)
+  if (!ids.length) throw new Error('Tidak ada anggota yang bisa diproses dari Telegram.')
+  const results = []
+  for (const id of ids) {
+    try {
+      if (action === 'remove') await client.banChatMember(ctx.chatId, id).then(() => client.unbanChatMember(ctx.chatId, id))
+      else if (action === 'add') throw new Error('Menambahkan orang lain ke grup tidak bisa lewat bot Telegram.')
+      else if (action === 'promote') await client.promoteChatMember(ctx.chatId, id, { can_manage_chat: true, can_delete_messages: true, can_invite_users: true })
+      else if (action === 'demote') await client.promoteChatMember(ctx.chatId, id, { can_manage_chat: false, can_delete_messages: false, can_invite_users: false })
+      else throw new Error(`Aksi grup tidak dikenal: ${action}`)
+      results.push({ status: 'ok', id })
+    } catch (error) {
+      results.push({ status: String(error.message || error), id })
+    }
+  }
+  return results
+}
+
+/** Pengaturan grup: Telegram tidak punya padanan 1:1 dengan WhatsApp. */
+async function groupSettingUpdate(ctx, setting) {
+  if (!isGroupChat(ctx)) throw new Error('Aksi ini hanya bisa di grup.')
+  if (['announcement', 'not_announcement', 'locked', 'unlocked'].includes(String(setting))) {
+    throw new Error('Mode "hanya admin yang bisa kirim" tidak tersedia untuk bot Telegram (butuh hak owner grup). Pakai pengaturan grup di aplikasi Telegram.')
+  }
+  throw new Error(`Pengaturan grup "${setting}" tidak dikenal.`)
+}
+
+const avatarCache = new Map()
+
+/** Foto profil: diunduh, disimpan sebagai media bertanda tangan, kembalikan URL. */
+async function profilePictureUrl(ctx, jid, type = 'image') {
+  const id = telegramIdFromJid(jid)
+  if (!id) throw new Error('Foto profil tidak tersedia untuk identitas ini.')
+  const cacheKey = `${id}:${type}`
+  const cached = avatarCache.get(cacheKey)
+  if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.url
+  const photos = await ctx.client.getUserProfilePhotos(id, 1)
+  const sizes = photos?.photos?.[0]
+  if (!sizes?.length) throw new Error('Pengguna ini tidak punya foto profil atau menyembunyikannya.')
+  const best = [...sizes].sort((a, b) => (b.width * b.height) - (a.width * a.height))[0]
+  const { buffer } = await ctx.client.downloadFile(best.file_id, { maxBytes: 5 * 1024 * 1024 })
+  const stored = storeMedia(buffer, {
+    userId: ctx.userId, platform: 'telegram', name: 'avatar.jpg',
+    ttlMs: 10 * 60 * 1000, actor: { platformUserId: ctx.platformUserId },
+  })
+  const url = mediaUrl(stored.id, { userId: ctx.userId, ttlMs: 10 * 60 * 1000 })
+  avatarCache.set(cacheKey, { at: Date.now(), url })
+  return url
+}
+
+/** Bangun `m.quoted` dari pesan yang di-reply di Telegram. */
+function quotedFrom(ctx, sender, raw = null) {
+  const reply = (raw || ctx.rawMessage)?.reply_to_message
+  if (!reply) return null
+  const fromId = reply.from?.id
+  const senderJid = fromId ? `999${String(fromId).padStart(10, '0')}@s.whatsapp.net` : sender
+  const text = String(reply.text || reply.caption || '')
+  const pick = value => (Array.isArray(value) ? value[value.length - 1] : value)
+  let media = null
+  let fileId = null
+  if (reply.photo) {
+    const photo = pick(reply.photo)
+    fileId = photo?.file_id
+    media = { mtype: 'imageMessage', mime: 'image/jpeg', width: photo?.width, height: photo?.height }
+  } else if (reply.video) {
+    fileId = reply.video.file_id
+    media = { mtype: 'videoMessage', mime: reply.video.mime_type || 'video/mp4', seconds: reply.video.duration, width: reply.video.width, height: reply.video.height }
+  } else if (reply.sticker) {
+    fileId = reply.sticker.file_id
+    media = { mtype: 'stickerMessage', mime: reply.sticker.mime_type || 'image/webp', isAnimated: Boolean(reply.sticker.is_animated || reply.sticker.is_video) }
+  } else if (reply.document) {
+    fileId = reply.document.file_id
+    media = { mtype: 'documentMessage', mime: reply.document.mime_type || 'application/octet-stream', fileName: reply.document.file_name }
+  } else if (reply.audio || reply.voice) {
+    const audio = reply.audio || reply.voice
+    fileId = audio.file_id
+    media = { mtype: 'audioMessage', mime: audio.mime_type || 'audio/mpeg', seconds: audio.duration }
+  }
+  const message = {
+    conversation: text,
+    ...(media ? { [media.mtype]: { caption: text, mimetype: media.mime, fileLength: null, ...media } } : {}),
+  }
+  const quoted = {
+    key: { remoteJid: sender, fromMe: false, id: String(reply.message_id || '') },
+    id: String(reply.message_id || ''),
+    chat: sender,
+    sender: senderJid,
+    message,
+    mtype: media?.mtype || (text ? 'conversation' : 'unknown'),
+    mimetype: media?.mime || (text ? 'text/plain' : undefined),
+    fileName: media?.fileName,
+    text,
+    caption: text,
+    isMedia: Boolean(media),
+    isForwarded: Boolean(reply.forward_origin),
+    fakeObj: null,
+    vM: null,
+    msg: message,
+    download: async () => {
+      if (!fileId) throw new Error('Pesan yang dibalas tidak berisi media.')
+      const { buffer } = await ctx.downloadFile(fileId)
+      return buffer
+    },
+  }
+  return quoted
+}
+
 function makeConn(ctx, message, jid) {
   const send = (chat, content, options) => sendContent(ctx, content, options)
   const conn = {
@@ -147,22 +360,29 @@ function makeConn(ctx, message, jid) {
       return ctx.send('<i>(pesan ini tidak bisa ditampilkan di Telegram)</i>')
     },
     sendSticker: async (chat, content) => {
-      const url = content?.sticker?.url || content?.sticker
-      if (!url) throw new Error('Stiker tidak punya sumber yang bisa dikirim.')
-      return sendMedia(ctx, 'document', url, '', 'sticker.webp')
+      // Plugin di repo ini memanggil `conn.sendSticker(chat, buffer, m, opts)`
+      // dengan Buffer hasil API pembuat stiker (mis. /brat).
+      const buffer = Buffer.isBuffer(content) ? content : null
+      const url = buffer ? null : (content?.sticker?.url || content?.sticker || null)
+      if (!buffer && !url) throw new Error('Stiker tidak punya sumber yang bisa dikirim.')
+      if (buffer) return sendStickerBuffer(ctx, buffer)
+      return conn_sendStickerBuffer(ctx, await fetchMediaBuffer(url), url)
+    },
+    sendAlbum: async (chat, medias) => {
+      // Album (beberapa gambar sekaligus) dikirim berurutan — Telegram butuh
+      // upload terpisah, dan isi tetap sama.
+      const results = []
+      for (const item of Array.isArray(medias) ? medias : []) {
+        results.push(await sendContent(ctx, item))
+      }
+      return results
     },
     waUploadToServer: async () => ({ url: null }),
     getName: () => ctx.displayName || ctx.username || 'Pengguna',
-    profilePictureUrl: async () => { throw new Error('Foto profil WhatsApp tidak tersedia di Telegram.') },
-    groupMetadata: async (chat) => {
-      if (!String(ctx.chatId || '').startsWith('-')) throw new Error('Perintah ini khusus grup WhatsApp.')
-      // Metadata nyata grup Telegram tidak bisa dibaca lewat Bot API tanpa
-      // hak admin, jadi yang dikirim hanya identitas chat — daftar anggota dan
-      // status admin tetap kosong (bukan data karangan).
-      return { id: String(chat || ctx.chatId), subject: ctx.chatTitle || 'Grup Telegram', participants: [], announce: false, restrict: false }
-    },
-    groupParticipantsUpdate: async () => { throw new Error('Kelola anggota WhatsApp tidak tersedia di Telegram.') },
-    groupSettingUpdate: async () => { throw new Error('Pengaturan grup WhatsApp tidak tersedia di Telegram.') },
+    groupMetadata: async (chat) => groupMetadataFor(ctx, chat),
+    groupParticipantsUpdate: async (chat, jids, action) => participantsUpdate(ctx, jids, action),
+    groupSettingUpdate: async (chat, setting) => groupSettingUpdate(ctx, setting),
+    profilePictureUrl: async (jid, type = 'image') => profilePictureUrl(ctx, jid, type),
     presenceSubscribe: async () => {},
     readMessages: async () => {},
     chatRead: async () => {},
@@ -193,7 +413,7 @@ export function makeMessage(ctx, message, { jid = null } = {}) {
     pushName: ctx.displayName || ctx.username || 'Pengguna',
     name: ctx.displayName || ctx.username || 'Pengguna',
     mentionedJid: [],
-    quoted: null,
+    quoted: quotedFrom(ctx, sender, message),
     messageTimestamp: Math.floor(Date.now() / 1000),
     reply: (content, options) => sendContent(ctx, content, options),
     react: emoji => (ctx.client?.setMessageReaction?.(ctx.chatId, ctx.messageId, String(emoji || '')).catch(() => {})),

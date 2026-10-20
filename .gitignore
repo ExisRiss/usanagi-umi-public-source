@@ -61,3 +61,6 @@ bot/lib/trading-links.json
 # Private, irreversible RPG activation and runtime snapshots
 .rpg-unification.enabled
 unification-backups/
+
+# Data runtime bot (dibuat saat tes/deploy, bukan sumber)
+bot/data/

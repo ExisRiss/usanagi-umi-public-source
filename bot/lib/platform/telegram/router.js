@@ -118,7 +118,9 @@ export class CommandRouter {
     if (update.callback_query) return this.handleCallback(ctx, update.callback_query)
     const message = update.message || update.edited_message
     if (!message) return { ignored: true }
-    const parsed = this.parse(message.text)
+    // Foto/video yang dikirim dengan caption `/sticker` juga harus dianggap
+    // perintah (bukan sekadar media), supaya fitur berbasis "kirim gambar".
+    const parsed = this.parse(message.text || message.caption)
     if (!parsed) return this.handleFreeText(ctx, message)
     const command = this.commands.get(parsed.name)
     if (!command) {
@@ -202,7 +204,9 @@ export class CommandRouter {
   }
 
   async handleFreeText(ctx, message) {
-    // Media: foto/video/dokumen diproses sebagai upload to-URL.
+    // Media TANPA caption: diperlakukan sebagai upload to-URL. Media dengan
+    // caption sudah ditangani sebagai perintah di `handleUpdate`.
+    if (message.caption) return { ignored: true }
     const media = message.photo || message.video || message.document || message.audio
     if (media) {
       const handler = this.freeTextHandler

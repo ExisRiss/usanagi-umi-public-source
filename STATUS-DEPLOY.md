@@ -1666,3 +1666,40 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 **Catatan deploy (penting):** API key panel `ikyyxbeyy-panel` sekarang **ditolak 401** (dirotasi). Deploy batch ini memakai kanal owner-agent relay (HMAC ticket, aud `owner-agent`) dengan unggah gzip+hex per potongan dan verifikasi SHA-256 per berkas. Alat panel baru: `tools/panel-api.mjs` (dokumentasi: `files/write` panel ini menerima **raw body**, multipart menghasilkan berkas kosong). Beri `ptlc_…` yang baru bila ingin deploy lewat panel lagi.
 
 **Batas jujur:** fitur yang butuh socket WhatsApp (admin/anggota grup, stiker WA asli, button native, quoted) tetap tidak bisa dan dijawab sebagai error jelas; plugin `premium` ditolak karena belum ada langganan tercatat di platform; jumlah perintah mengikuti plugin yang termuat (bisa berubah bila plugin ditambah/dinonaktifkan).
+
+## Task70 batch 7 — fitur Telegram yang tadinya mati, brat jalan, ganti halaman mengedit pesan (2026-10-20)
+
+**Keluhan user:** "benerin fitur yang gabisa di telegram, buat brat berfungsi, dan setiap ganti halaman bot harus ganti halaman di pesan itu, bukan bikin pesan baru".
+
+**Akar masalah (dicek di kode, bukan tebakan):**
+1. `conn.sendSticker` di jembatan Telegram belum ada sama sekali → plugin `brat` (dan 33 plugin stiker/maker lain) gagal di Telegram. Setelah ditambahkan pun masih salah: API brat membalas **PNG** (`content-type: image/png`, 61 767 byte), sedangkan Telegram hanya menerima **WEBP** untuk `sendSticker`.
+2. `m.quoted` selalu kosong karena `reply_to_message` tidak pernah dibaca → plugin "reply gambar" (qc, sticker, tourl, dll.) menolak dengan "Reply gambar / sticker".
+3. `groupMetadata` hanya stub (daftar anggota kosong) → plugin grup yang memeriksa admin/anggota berhenti lebih awal.
+4. Tombol halaman memanggil `ctx.send` → tiap klik kirim pesan baru, pesan lama menumpuk.
+5. Foto/video dengan caption perintah (`/sticker`, `/tourl`, `/bratvid`) diabaikan router karena hanya `message.text` yang diparse.
+
+**Perbaikan:**
+- `client.js`: `sendStickerFile` (multipart `sendSticker`), `callMultipart`, `getChat`, `getChatAdministrators`, `getChatMemberCount`, `getChatMember`, `getUserProfilePhotos`, `banChatMember`, `unbanChatMember`, `promoteChatMember`, `restrictChatMember`.
+- `plugin-bridge.js`:
+  - `sendSticker` menerima Buffer: WEBP/GIF → stiker; PNG/JPEG → dikonversi **webp 512px** via `sharp` (dependensi bot) lalu dikirim sebagai stiker; bila konversi gagal → foto; selain itu dokumen. URL/`{url}` juga didukung.
+  - `sendAlbum` (kirim berurutan, isi tetap).
+  - `groupMetadata`: admin nyata dari `getChatAdministrators` + jumlah anggota `getChatMemberCount` (JID semu `999<id>@s.whatsapp.net`, `creator` → `superadmin`).
+  - `groupParticipantsUpdate`: remove (ban+unban), promote, demote; `add` ditolak jujur (Bot API tidak bisa menambahkan orang lain).
+  - `groupSettingUpdate`: dijawab jujur bahwa mode "hanya admin" tidak tersedia untuk bot Telegram.
+  - `profilePictureUrl`: `getUserProfilePhotos` → unduh → simpan media bertanda tangan → URL (cache 10 menit).
+  - `m.quoted` dibangun dari `reply_to_message` (teks/caption + foto/video/stiker/dokumen/audio) dan `quoted.download()` memakai `getFile` sungguhan.
+- `router.js`: caption diparse sebagai perintah; `handleFreeText` melewati media bercaption.
+- `poller.js`: context membawa `callbackMessageId`, `chatTitle`, `chatType`, `rawMessage`.
+- `commands.js`: `sendCategory` + `withEditInPlace` — semua navigasi menu (`cat:`, `status`, `profile`, `allmenu`, `help`, dll.) mengedit **pesan yang tombolnya ditekan**; kalau edit gagal (pesan dihapus/terlalu lama) barulah kirim pesan baru. Balasan tambahan (mis. hasil perintah) tetap pesan normal.
+
+**Verifikasi nyata (server produksi, grup BackUp, pesan uji dihapus lagi):**
+- `brat`: plugin dijalankan lewat jembatan → `{handled:true, plugin:'maker/brat.js'}` dan pesan yang terkirim **benar-benar stiker** (`sticker.file_id` ada). Jalur buffer langsung: 61 767 byte PNG → 200 OK, `sticker` terisi.
+- Ganti halaman: `/menu` (1 pesan) → tekan tombol **status** → `sends+0, edits+1`; tekan **allmenu** → `sends+0, edits+2`. Halaman kategori: kirim halaman 1 (id 41) lalu minta halaman 2 → `{edited:true, page:2, pesanBaru:0, idSama:true}`.
+- `m.quoted`: balasan ke stiker → `mtype=stickerMessage`, `isMedia=true`, `download()` = 61 767 byte (sama dengan berkas asli).
+- Metadata grup: `getChatAdministrators` 2 admin, `getChatMemberCount` 3 anggota.
+- Tes: **123 platform** (108 lama + 15 baru di `tests/platform/batch7.test.mjs`) — 123 pass / 0 fail. Dua bug ikut ketemu & dibetulkan oleh tes: `quoted.msg` getter-only yang bikin crash saat ada reply, dan `sendSticker` yang mengirim PNG sebagai foto.
+
+**Batas jujur:**
+- `sendSticker` butuh `sharp` untuk konversi PNG/JPEG; di server terpasang, kalau di mesin lain tidak ada maka hasilnya foto (fitur tetap jalan, hanya bukan stiker).
+- Menambahkan orang lain ke grup (`participantsUpdate: add`) dan mode "hanya admin" tetap tidak bisa lewat Bot API — dijawab jujur, bukan pura-pura berhasil.
+- Plugin yang memang khusus WhatsApp (socket, pairing, button native) tetap ditolak dengan pesan jelas.

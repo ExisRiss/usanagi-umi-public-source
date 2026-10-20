@@ -74,7 +74,7 @@ function menuKeyboard(ctx, router) {
 }
 
 /** Render satu halaman kategori + tombol navigasi. */
-async function sendCategory(ctx, categoryId, page = 1) {
+export async function sendCategory(ctx, categoryId, page = 1) {
   const view = catalog.pageOf(categoryId, page)
   if (!view.total) return ctx.send('Kategori itu belum punya perintah.')
   const buttons = []
@@ -86,7 +86,20 @@ async function sendCategory(ctx, categoryId, page = 1) {
     text: '📂 Kategori lain',
     callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view: 'allmenu' } })}`,
   }])
-  return ctx.send(view.text, { reply_markup: inline(buttons) })
+  const keyboard = inline(buttons)
+  // Ganti halaman = edit pesan yang sama, bukan mengirim pesan baru.
+  if (ctx.callbackMessageId && typeof ctx.edit === 'function') {
+    try {
+      await ctx.edit(ctx.callbackMessageId, view.text, { reply_markup: keyboard })
+      return { edited: true, page: view.page }
+    } catch (error) {
+      // Pesan lama tidak bisa diedit (mis. sudah dihapus / bukan pesan teks).
+      if (!/not modified|message to edit|no text/i.test(String(error.message))) {
+        audit({ actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'telegram.menu.edit', result: 'failed', meta: { error: String(error.message).slice(0, 120) } })
+      }
+    }
+  }
+  return ctx.send(view.text, { reply_markup: keyboard })
 }
 
 async function statusText() {
@@ -131,6 +144,33 @@ async function sendMenu(ctx, router, caption) {
     }
   }
   return ctx.send(caption, { reply_markup: keyboard })
+}
+
+/**
+ * Bungkus ctx untuk navigasi menu: balasan pertama mengedit pesan yang tombolnya
+ * ditekan, bukan mengirim pesan baru. Kalau edit gagal (pesan dihapus / terlalu
+ * lama / bukan teks), barulah pesan baru dikirim supaya pengguna tetap dapat
+ * jawaban.
+ */
+export function withEditInPlace(ctx) {
+  let edited = false
+  const wrapped = Object.create(ctx)
+  wrapped.send = async (text, options) => {
+    if (!edited && ctx.callbackMessageId && typeof ctx.edit === 'function' && String(text || '').length <= 4096) {
+      edited = true
+      try {
+        return await ctx.edit(ctx.callbackMessageId, text, options)
+      } catch (error) {
+        audit({
+          actorUserId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId,
+          action: 'telegram.menu.edit', result: 'failed',
+          meta: { error: String(error?.message || error).slice(0, 120) },
+        })
+      }
+    }
+    return ctx.send(text, options)
+  }
+  return wrapped
 }
 
 export function registerCommands(router, { publicBaseUrl = '', logger = console } = {}) {
@@ -1024,6 +1064,8 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
 
   /* ─────────────── Callback actions ─────────────── */
   router.registerCallback('menu.nav', async (ctx, payload) => {
+    // Semua perubahan tampilan menu memakai pesan yang sama.
+    ctx = withEditInPlace(ctx)
     const view = String(payload?.view || '')
     // Halaman kategori plugin: `cat:<kategori>:<halaman>`.
     const cat = view.match(/^cat:([a-z0-9_-]+)(?::(\d+))?$/)

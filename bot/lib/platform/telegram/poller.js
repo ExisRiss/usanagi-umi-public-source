@@ -107,6 +107,12 @@ export class TelegramAdapter {
       identity: identity.identity,
       botId: this.botRowId,
       messageId: message?.message_id || null,
+      // Pesan yang memuat tombol yang ditekan — dipakai untuk mengedit pesan
+      // di tempat (ganti halaman tanpa mengirim pesan baru).
+      callbackMessageId: update.callback_query?.message?.message_id || null,
+      chatTitle: message?.chat?.title || null,
+      chatType: message?.chat?.type || 'private',
+      rawMessage: update.message || update.edited_message || null,
       client,
       env: this.env,
       publicBaseUrl: this.baseUrl,
