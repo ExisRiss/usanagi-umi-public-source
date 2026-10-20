@@ -125,6 +125,8 @@ export function backupConfig(cwd = process.cwd()) {
     telegram: {
       token: String(process.env.TELEGRAM_BOT_TOKEN || '').trim(),
       adminIds: listValue(process.env.TELEGRAM_ADMIN_IDS).map(v => v.replace(/[^\d-]/g, '')).filter(Boolean),
+      // Task83: group tujuan arsip auto-backup (id supergroup, mis. -100...).
+      chatId: String(process.env.TELEGRAM_BACKUP_CHAT_ID || '').trim(),
       notifyOnSuccess: isEnabled(process.env.TELEGRAM_NOTIFY_SUCCESS, false),
       pollTimeoutSeconds: 30,
     },

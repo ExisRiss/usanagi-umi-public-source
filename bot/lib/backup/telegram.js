@@ -18,6 +18,7 @@ import { runBackup, verifyBackup } from './pipeline.js'
 import { createRestore, confirmRestore, cancelRestore, listRestores } from './restore.js'
 import { configureScheduler, schedulerSnapshot } from './scheduler.js'
 import { appendAudit } from './store.js'
+import { sendDocument as uploadDocument } from './telegram-send.js'
 
 const API = 'https://api.telegram.org'
 const runtime = {
@@ -87,6 +88,15 @@ export async function sendMessage(cfg, chatId, text, { keyboard, parseMode = 'HT
     disable_web_page_preview: true,
     ...(keyboard ? { reply_markup: keyboard } : {}),
   })
+}
+
+/**
+ * Kirim dokumen ke chat/group memakai token bot administrasi backup.
+ * Dipakai dashboard/console bila perlu mengirim arsip manual (Task83).
+ */
+export async function sendDocument(cfg, chatId, filePath, options = {}) {
+  if (!cfg.telegram.token) return null
+  return uploadDocument(cfg.telegram.token, chatId || cfg.telegram.chatId, filePath, options)
 }
 
 async function broadcast(cfg, text, keyboard) {

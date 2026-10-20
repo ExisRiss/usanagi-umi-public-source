@@ -288,6 +288,20 @@ async function routeOwnerConsole(req, res, pathname) {
     if (store) { const status = store.status(); return send(res, 200, { ...status, stage: 'live-unified', currencyConversionApplied: true, legacySpendAdapterEnabled: true, verifiedProgressUnified: true, progressUnificationComplete: status.heldRecords === 0 && status.pendingPetReviews === 0 }) }
     return send(res, 200, summarizeLegacyCurrency(getDb(), users))
   }
+  // Task83: status + jalankan manual auto-backup harian (tujuan group Telegram).
+  // POST langsung balas 202 karena mengunggah arsip bisa beberapa menit.
+  if (pathname === '/api/owner-console/auto-backup') {
+    const { autoBackupSnapshot, runFullBackup } = await import('./auto-backup.js')
+    if (req.method === 'GET') return send(res, 200, { ok: true, ...(await autoBackupSnapshot()) })
+    if (req.method === 'POST') {
+      if (limited('owner-auto-backup', 1, 5 * 60 * 1000)) throw Object.assign(new Error('Tunggu 5 menit sebelum menjalankan backup lagi.'), { status: 429 })
+      const snapshot = await autoBackupSnapshot()
+      if (snapshot.running) return send(res, 409, { ok: false, reason: 'already-running', snapshot })
+      runFullBackup({ force: true, reason: 'owner-console' })
+        .catch(error => console.error('[AUTO-BACKUP] gagal dijalankan dari console:', error.message))
+      return send(res, 202, { ok: true, started: true })
+    }
+  }
   if (pathname === '/api/owner-console/status' && req.method === 'GET') return send(res, 200, mainBotStatus())
   if (pathname === '/api/owner-console/logs' && req.method === 'GET') return send(res, 200, ownerConsoleOutput(url.searchParams.get('cursor')))
   // Log error terstruktur (data/errors/*.jsonl) — dipakai agen/owner untuk

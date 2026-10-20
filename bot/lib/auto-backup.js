@@ -5,6 +5,8 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import archiver from 'archiver'
+import { backupConfig } from './backup/config.js'
+import { sendDocument, sendMessage as sendTelegramMessage } from './backup/telegram-send.js'
 
 const ROOT = process.cwd()
 const state = {
@@ -12,7 +14,19 @@ const state = {
   running: false,
   nextRetryAt: 0,
   conn: null,
+  progress: null,
+  lastError: null,
 }
+
+/*
+ * Task83: arsip harian dikirim ke GROUP TELEGRAM BOT UTAMA, bukan lagi ke
+ * nomor WhatsApp owner. Token bot utama sudah tersedia di server (dipakai
+ * `lib/platform`), jadi tidak perlu menyalin rahasia ke berkas baru.
+ */
+const TELEGRAM_SECRET_FILES = [
+  path.join('.secrets', 'task70-platform.env'),
+  path.join('.secrets', 'telegram.env'),
+]
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms))
 const normalize = value => String(value || '').replace(/\\/g, '/').replace(/^\.\//, '').replace(/^\/+|\/+$/g, '')
@@ -59,9 +73,55 @@ function config() {
     retentionDays: Math.max(1, Number(value.retentionDays) || 3),
     // Jangan mulai backup kalau ruang disk tinggal sedikit.
     minFreeBytes: Math.max(0, Number(value.minFreeBytes) || 3 * 1024 * 1024 * 1024),
+    // Jeda antar bagian. Telegram membatasi ±20 pesan/menit per chat; 4 detik
+    // masih aman dan tetap cepat untuk 4–6 bagian.
+    sendDelayMs: Math.max(0, Number(value.sendDelayMs) || 4000),
+    telegram: {
+      token: String((value.telegram && value.telegram.token) || value.telegramToken || '').trim(),
+      chatId: String(value.telegramChatId || (value.telegram && value.telegram.chatId) || '').trim(),
+    },
     outputDirectory: path.resolve(ROOT, value.outputDirectory || 'data/auto-backups'),
     exclude: new Set([...DEFAULT_EXCLUDES, ...(value.exclude || [])].map(normalize).filter(Boolean)),
   }
+}
+
+function parseEnvFile(file) {
+  const out = {}
+  try {
+    for (const raw of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
+      const line = raw.trim()
+      if (!line || line.startsWith('#')) continue
+      const index = line.indexOf('=')
+      if (index < 1) continue
+      let value = line.slice(index + 1).trim()
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1)
+      }
+      out[line.slice(0, index).trim()] = value
+    }
+  } catch {}
+  return out
+}
+
+/**
+ * Tujuan pengiriman arsip: token bot utama + ID group.
+ *
+ * Urutan: config.js (global.autoBackup) → environment proses (termasuk
+ * `.backup-system.env` yang dimuat `backupConfig()`) → berkas rahasia server.
+ * Nilai secret tidak pernah dicetak ke log.
+ */
+function telegramTarget() {
+  const cfg = config()
+  const env = backupConfig(ROOT).telegram
+  let token = cfg.telegram.token || String(process.env.TELEGRAM_BOT_TOKEN || '').trim() || env.token
+  let chatId = cfg.telegram.chatId || String(process.env.TELEGRAM_BACKUP_CHAT_ID || '').trim() || env.chatId
+  for (const relative of TELEGRAM_SECRET_FILES) {
+    if (token && chatId) break
+    const values = parseEnvFile(path.join(ROOT, relative))
+    if (!token && values.TELEGRAM_BOT_TOKEN) token = values.TELEGRAM_BOT_TOKEN.trim()
+    if (!chatId && values.TELEGRAM_BACKUP_CHAT_ID) chatId = values.TELEGRAM_BACKUP_CHAT_ID.trim()
+  }
+  return { token: String(token || '').trim(), chatId: String(chatId || '').trim() }
 }
 
 function localDateParts(timezone) {
@@ -175,14 +235,6 @@ async function splitOversizeZip(file, maxBytes) {
   return outputs
 }
 
-function ownerJids() {
-  return [...new Set((global.owner || [])
-    .map(item => Array.isArray(item) ? item[0] : item)
-    .map(value => String(value || '').replace(/\D/g, ''))
-    .filter(value => value.length >= 8)
-    .map(value => `${value}@s.whatsapp.net`))]
-}
-
 function generationOf(name) {
   const match = /^(usanagi-full-backup-\d{8}-\d{4})-part-/.exec(name)
   return match ? match[1] : null
@@ -243,40 +295,39 @@ async function writeBackupState(cfg, value) {
   await fsp.rename(temp, target)
 }
 
-async function sendArchive(conn, owner, file, index, total, backupDate, digest) {
+async function sendArchive(target, file, index, total, backupDate, digest) {
   const name = path.basename(file)
   const multipart = /\.zip\.\d{3}$/.test(name)
   const caption = [
-    `📦 *AUTO BACKUP USANAGI UMI AI*`,
+    `📦 <b>AUTO BACKUP USANAGI UMI AI</b>`,
     `Tanggal: ${backupDate}`,
     `Bagian: ${index}/${total}`,
-    `SHA-256: ${digest}`,
+    `SHA-256: <code>${digest}</code>`,
     multipart ? 'File ini adalah pecahan ZIP. Gabungkan semua .001, .002, dst sebelum diekstrak.' : 'Arsip ZIP siap diekstrak.',
     '',
     'By AlzRiss - Usanagi Umi AI',
   ].join('\n')
-  await conn.sendMessage(owner, {
-    document: { url: file },
-    mimetype: multipart ? 'application/octet-stream' : 'application/zip',
-    fileName: name,
+  return sendDocument(target.token, target.chatId, file, {
     caption,
+    filename: name,
+    mime: multipart ? 'application/octet-stream' : 'application/zip',
   })
 }
 
-export async function runFullBackup({ conn = state.conn || global.conn, force = false, reason = 'daily' } = {}) {
+export async function runFullBackup({ force = false, reason = 'daily' } = {}) {
   const cfg = config()
   if (!cfg.enabled && !force) return { skipped: true, reason: 'disabled' }
   if (state.running) return { skipped: true, reason: 'already-running' }
-  if (!conn?.sendMessage || !conn?.user) return { skipped: true, reason: 'connection-not-ready' }
-  // Socket WhatsApp yang tertutup tidak bisa mengirim apa pun: percobaan hanya
-  // akan menulis ratusan MB lalu gagal. Lewati sampai koneksi benar-benar terbuka.
-  const socketOpen = typeof conn?.ws?.readyState === 'number' && conn.ws.readyState === 1
-  if (global.stopped !== 'open' && !socketOpen) {
-    return { skipped: true, reason: 'connection-not-open' }
+
+  /*
+   * Task83: pengiriman tidak lagi bergantung pada socket WhatsApp. Selama token
+   * bot utama + ID group tersedia, backup tetap jalan walau bot WA terputus.
+   */
+  const target = telegramTarget()
+  if (!target.token || !target.chatId) {
+    return { skipped: true, reason: 'telegram-not-configured' }
   }
 
-  const owners = ownerJids()
-  if (!owners.length) throw new Error('Nomor Owner backup tidak tersedia di config.js')
   const local = localDateParts(cfg.timezone)
   const previous = await readBackupState(cfg)
   if (!force && previous.lastSuccessDate === local.date) return { skipped: true, reason: 'already-backed-up' }
@@ -284,6 +335,7 @@ export async function runFullBackup({ conn = state.conn || global.conn, force = 
   state.running = true
   const startedAt = new Date().toISOString()
   const created = []
+  state.progress = { phase: 'zipping', startedAt, sent: 0, total: 0 }
   try {
     await pruneBackups(cfg)
     const free = await freeDiskBytes(cfg.outputDirectory)
@@ -322,18 +374,27 @@ export async function runFullBackup({ conn = state.conn || global.conn, force = 
     const records = []
     for (const file of archives) records.push({ file, digest: await checksum(file), size: (await fsp.stat(file)).size })
 
-    for (const owner of owners) {
-      await conn.sendMessage(owner, {
-        text: `⏳ Backup otomatis ${local.date} selesai dibungkus. Mengirim ${records.length} bagian ZIP...\n\nBy AlzRiss - Usanagi Umi AI`,
-      })
-      for (let index = 0; index < records.length; index += 1) {
-        await sendArchive(conn, owner, records[index].file, index + 1, records.length, local.date, records[index].digest)
-        if (index + 1 < records.length) await wait(2000)
-      }
-      await conn.sendMessage(owner, {
-        text: `✅ Backup otomatis terkirim lengkap.\nFile: ${files.length}\nBagian ZIP: ${records.length}\nUkuran: ${(records.reduce((sum, item) => sum + item.size, 0) / 1024 / 1024).toFixed(2)} MB\n\nBy AlzRiss - Usanagi Umi AI`,
-      })
+    state.progress = { phase: 'sending', startedAt, sent: 0, total: records.length, chatId: target.chatId }
+
+    await sendTelegramMessage(
+      target.token,
+      target.chatId,
+      `⏳ <b>Backup otomatis ${local.date}</b>\nSelesai dibungkus. Mengirim ${records.length} bagian ZIP...\n\nBy AlzRiss - Usanagi Umi AI`
+    ).catch(error => console.warn('[AUTO-BACKUP] pesan pembuka gagal:', error.message))
+
+    const messageIds = []
+    for (let index = 0; index < records.length; index += 1) {
+      const sent = await sendArchive(target, records[index].file, index + 1, records.length, local.date, records[index].digest)
+      if (sent && sent.messageId) messageIds.push(sent.messageId)
+      state.progress = { phase: 'sending', startedAt, sent: index + 1, total: records.length, chatId: target.chatId }
+      if (index + 1 < records.length && cfg.sendDelayMs) await wait(cfg.sendDelayMs)
     }
+
+    await sendTelegramMessage(
+      target.token,
+      target.chatId,
+      `✅ <b>Backup otomatis terkirim lengkap.</b>\nFile: ${files.length}\nBagian ZIP: ${records.length}\nUkuran: ${(records.reduce((sum, item) => sum + item.size, 0) / 1024 / 1024).toFixed(2)} MB\n\nBy AlzRiss - Usanagi Umi AI`
+    ).catch(error => console.warn('[AUTO-BACKUP] pesan penutup gagal:', error.message))
 
     const result = {
       lastSuccessDate: local.date,
@@ -342,21 +403,50 @@ export async function runFullBackup({ conn = state.conn || global.conn, force = 
       reason,
       fileCount: files.length,
       parts: records.map(item => ({ name: path.basename(item.file), size: item.size, sha256: item.digest })),
-      owners,
+      telegram: { chatId: target.chatId, messageIds },
     }
     await writeBackupState(cfg, result)
     state.nextRetryAt = 0
-    console.log(`[AUTO-BACKUP] ${files.length} file, ${records.length} bagian berhasil dikirim ke ${owners.length} Owner.`)
+    state.lastError = null
+    state.progress = { phase: 'done', startedAt, sent: records.length, total: records.length, chatId: target.chatId, completedAt: result.completedAt }
+    console.log(`[AUTO-BACKUP] ${files.length} file, ${records.length} bagian berhasil dikirim ke group Telegram ${target.chatId}.`)
     return result
   } catch (error) {
     // Percobaan gagal tidak boleh meninggalkan pecahan ZIP: dulu sisa ini
     // menumpuk tiap 15 menit dan menghabiskan disk.
     for (const file of created) await fsp.unlink(file).catch(() => {})
     state.nextRetryAt = Date.now() + cfg.retryDelayMs
+    state.lastError = error.message
+    state.progress = { phase: 'failed', startedAt, total: 0, error: error.message }
     console.error('[AUTO-BACKUP]', error)
     throw error
   } finally {
     state.running = false
+  }
+}
+
+/** Ringkasan untuk dashboard/console owner (tanpa membocorkan token). */
+export async function autoBackupSnapshot() {
+  const cfg = config()
+  const target = telegramTarget()
+  const previous = await readBackupState(cfg)
+  return {
+    enabled: cfg.enabled,
+    running: state.running,
+    schedule: `${String(cfg.hour).padStart(2, '0')}:${String(cfg.minute).padStart(2, '0')} ${cfg.timezone}`,
+    nextRetryAt: state.nextRetryAt ? new Date(state.nextRetryAt).toISOString() : null,
+    telegram: {
+      configured: Boolean(target.token && target.chatId),
+      tokenSet: Boolean(target.token),
+      chatId: target.chatId || null,
+    },
+    progress: state.progress,
+    lastError: state.lastError,
+    lastSuccessDate: previous.lastSuccessDate || null,
+    completedAt: previous.completedAt || null,
+    fileCount: previous.fileCount || 0,
+    partCount: (previous.parts || []).length,
+    messageIds: (previous.telegram && previous.telegram.messageIds) || [],
   }
 }
 
@@ -372,7 +462,7 @@ async function schedulerTick() {
 
 export function installAutoBackup(conn) {
   state.conn = conn
-  global.runFullBackup = options => runFullBackup({ conn: state.conn || global.conn, ...(options || {}) })
+  global.runFullBackup = options => runFullBackup({ ...(options || {}) })
   if (state.timer) clearInterval(state.timer)
   const cfg = config()
   if (!cfg.enabled) {
@@ -389,4 +479,4 @@ export function updateAutoBackupConnection(conn) {
   state.conn = conn
 }
 
-export default { installAutoBackup, updateAutoBackupConnection, runFullBackup }
+export default { installAutoBackup, updateAutoBackupConnection, runFullBackup, autoBackupSnapshot }

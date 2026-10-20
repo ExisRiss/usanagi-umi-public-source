@@ -5,7 +5,7 @@ const handler = async (m) => {
     throw new Error('Layanan backup otomatis belum siap.')
   }
 
-  await m.reply('⏳ Membungkus seluruh data penting bot ke ZIP dan mengirimkannya ke Owner...')
+  await m.reply('⏳ Membungkus seluruh data penting bot ke ZIP dan mengirimkannya ke group Telegram bot utama...')
   const result = await global.runFullBackup({ force: true, reason: 'manual-command' })
 
   if (result?.skipped) {
@@ -24,6 +24,6 @@ handler.help = ['backupfull']
 handler.tags = ['owner']
 handler.command = /^backupfull$/i
 handler.owner = true
-handler.description = 'Membuat dan mengirim backup penuh bot ke semua Owner'
+handler.description = 'Membuat dan mengirim backup penuh bot ke group Telegram bot utama'
 
 export default handler
