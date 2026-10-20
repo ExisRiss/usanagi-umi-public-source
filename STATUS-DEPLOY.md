@@ -1978,3 +1978,27 @@ Ringkas: tombol pairing di halaman **Bot Utama** kini benar-benar meminta kode k
 
 **Deploy:** backend lewat panel API (`f7811b23`, upload→delete→rename, ukuran & SHA-256 cocok, `power restart`), website `node tools/deploy-website.mjs` → `dpl_85j8ntajo-exisriss-projects.vercel.app` (production `https://alzriss-comunity.vercel.app`).
 **Commit:** `31190d8` (fase 1) + `988d5b6` (fase 2) + commit dokumentasi; rincian di `TASK78-REPORT.md`.
+
+## Task79 — Pisah halaman Bot Utama jadi Setting / Pairing / Console, khusus owner-partner-developer (2026-10-20)
+
+Ringkas: halaman **Bot Utama** dihapus dari navigasi dan diganti **3 halaman terpisah** — **Setting Bot Utama**, **Pairing Bot Utama**, **Console Bot Utama**. Ketiganya hanya terlihat dan hanya bisa dipanggil oleh akun ber-role **owner, partner, atau developer**. Halaman Owner lain (Owner panel, Upload ZIP, ACC Top Up, AI Owner) tetap **owner-only**.
+
+| # | Area | Perubahan | Bukti verifikasi |
+|---|---|---|---|
+| 1 | Website API (`website/api/platform.js`) | Helper baru `requireMainBot()` (`MAIN_BOT_ROLES = partner, owner, developer`). 10 route `main-console/*` (status, logs, input, pairing-number, pairing-request, main-session, main-config, autoread GET/POST, main-bot) pindah dari `requireOwner` ke `requireMainBot`; route owner lain tidak diubah | Live: role `user` → **403** `Hanya owner, partner, dan developer yang diizinkan.`; role `partner` → **200**; role `developer` → **200**; partner ke `agent/status` tetap **403** owner-only |
+| 2 | Website UI (`website/index.html`, `website/public/index.html`) | Nav `#main-console` "Bot Utama" diganti 3 item `data-mainbot`: **Setting Bot Utama**, **Pairing Bot Utama**, **Console Bot Utama** (urutan tetap sebelum Owner; **Keluar** tetap paling bawah). Section `main-settingsPage`, `main-pairingPage`, `main-consolePage`; ID lama dipertahankan agar fungsi JS tidak putus | Live nav owner/partner: `… Console → Setting Bot Utama → Pairing Bot Utama → Console Bot Utama → Owner → MMORPG → AI Agent → AI Owner → Keluar` |
+| 3 | Website JS (`website/public/assets/app.js`) | `hasMainBotAccess()` + `MAIN_BOT_ROLES`; route guard 3 halaman; judul halaman; `openMainSettings()`/`openMainPairing()`; `loadMainConsole()` menulis ke `#mainSettingsStatus` **dan** `#mainConsoleStatus`; `setPairingNote()` null-safe; `__UMI_JS_VER='20261020-botpages1'` | Playwright live: 3 halaman tampil untuk owner/partner/developer, user ditolak; 0 error konsol |
+| 4 | Bug sampingan yang ikut diperbaiki | (a) `setView()` dulu menampilkan ulang semua `[data-private]` (termasuk menu owner) setelah `applyIdentity()` menyembunyikannya → sekarang visibilitas owner/mainbot dihitung ulang tiap navigasi; (b) kode pairing tidak lagi kosong kalau respons POST tidak membawa `pairing_code` di level atas (fallback `data.status.pairing_code`); (c) cooldown `MINTA CODE LAGI` disimpan (`pairCooldownUntil`) sehingga tidak hilang saat pindah halaman | Partner: 4 menu owner **hidden**; user: 3 menu mainbot hidden + `#main-settings` dialihkan ke Dashboard. Kode `AB12-CD34` tetap tampil setelah submit di uji lokal |
+| 5 | Uji role live (akun uji sementara) | Akun `task79check.<ts>@alzriss.com` dibuat via Supabase Admin, profil di-set `user` → `partner` → `developer`, lalu **dihapus kembali** (profil + auth user; verifikasi `[]` dan `user_not_found`) | `user` 403, `partner` 200, `developer` 200; UI partner lihat 3 halaman, UI developer lihat 3 halaman |
+| 6 | Uji UI owner live (Playwright) | Login owner `AlzRiss`; halaman Setting menampilkan status asli (`Bot utama: AKTIF · Nomor: 6282******396 · Runtime … dtk`) dan toggle; Pairing menampilkan `pairing_error` asli dari server; Console memuat **192.981 karakter** log mentah; mobile 390px tidak overflow | Screenshot `shots/task79-live-*.png`, `shots/task79-local-*.png` |
+| 7 | Deploy | `dpl_BASZykBRBbqwLTmbEpuYH4AzhAMw` → `https://alzriss-comunity.vercel.app` (alias production), JS `v=20261020-botpages1` | Diambil dengan `vercel inspect`; HTML live memuat `main-settingsPage`, `main-pairingPage`, `main-consolePage` |
+
+**Catatan scope Vercel:** `--scope TeamTwCNMEAL8AoOA0whO30gFU4S` dari handoff Task78 sudah **tidak ada** (`scope not exist`). Tim yang aktif sekarang `exisriss-projects`; deploy memakai scope itu.
+
+**Batas jujur Task79:**
+- Bot utama saat verifikasi **belum tertaut**: `pairing_error` asli `Koneksi WhatsApp terputus saat pairing…`, `socket_ready` sempat `false` lalu `true`. Sengaja **tidak** meminta kode pairing baru agar tidak menambah rate-limit WhatsApp; halaman Pairing menampilkan error itu apa adanya.
+- Tidak ada akun partner-only/developer-only existing (semua partner juga owner), jadi uji gating partner/developer memakai akun sementara yang sudah dihapus. Server sendiri yang memutuskan role (bukan UI).
+- Console menampilkan log mentah yang sama dengan panel; buffer bisa besar (192 KB saat uji) dan dipotong 700 KB di browser.
+- Perbaikan `assert` cooldown tidak memicu request WhatsApp; hanya state UI.
+
+**Commit:** `7b8c95d` (pisah halaman + gate role) dan `f1c22fc` (cooldown lintas halaman); rincian di `TASK79-REPORT.md`.
