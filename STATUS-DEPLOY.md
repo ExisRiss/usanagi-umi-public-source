@@ -2045,3 +2045,32 @@ Ringkas: **scrim drawer menu tertinggal terbuka** → halaman tujuan tertutup ta
 Tool yang dipakai: `responsive-check.mjs`, `contrast-check.mjs`, `ui-rules-check.mjs`, `glass-audit.mjs`, `test-live-routes.mjs`, `test-live-click.mjs`, `check-release-safety.py`, `e2e-error-report.mjs --dry`, `dev-preview-server.mjs` (diperbaiki path-nya agar bisa jalan di clone bernama lain). Agar bisa jalan tanpa unduh Chromium, dibuat shim lokal `puppeteer` → `puppeteer-core` + Chromium Playwright (`/home/user/.local`, tidak masuk repo).
 
 **Deploy:** `alzriss-comunity-dpvqn68x8-exisriss-projects.vercel.app` → https://jadibot-alzriss.gwenna.my.id · aset `app.js?v=20261020-navfix1`, `app.css?v=20261020-navfix1`.
+
+## Task83 — Auto backup dipindah ke group Telegram bot utama (2026-10-21)
+
+Ringkas: arsip **auto backup harian** yang dulu dikirim ke nomor WhatsApp owner sekarang dikirim ke **group Telegram bot utama** (`BackUp`, id `-1004393450575`, `@AlzRiss_bot` sebagai administrator). Ini **mengganti** tujuan lama — tidak ada lagi kiriman ke WA, jadi tidak dobel. Pengiriman juga **tidak lagi bergantung pada socket WhatsApp**: walau bot WA terputus, backup tetap jalan asal token bot + id group tersedia.
+
+| # | Area | Perubahan | Bukti verifikasi |
+|---|---|---|---|
+| 1 | `bot/lib/auto-backup.js` | `ownerJids()` + loop `conn.sendMessage` **dihapus**. Tambah `telegramTarget()` (urutan: `global.autoBackup` → environment → `.secrets/task70-platform.env` / `.secrets/telegram.env`). `sendArchive()` memakai `sendDocument`. Skip `telegram-not-configured` **sebelum** membungkus arsip. State menyimpan `telegram.chatId` + `messageIds` (bukan lagi `owners`). Tambah `autoBackupSnapshot()` untuk console | Log server: `[AUTO-BACKUP] 19234 file, 4 bagian berhasil dikirim ke group Telegram -1004393450575.` |
+| 2 | `bot/lib/backup/telegram-send.js` (**baru**) | Pengirim Bot API tanpa dependensi: multipart **streaming** dari disk (bukan Buffer+Blob, RAM tetap kecil untuk bagian 40 MB), batas keras 50 MB/dokumen, retry otomatis untuk 429 (`retry_after`) & 5xx, timeout unggah 20 menit. Ekspor `sendMessage`, `sendDocument`, `deleteMessage`, `getMe` | Self-test: dokumen kecil terkirim (`message_id 85`, `file_id BQACAgUA…`), pesan 86, keduanya dihapus lagi |
+| 3 | `bot/lib/backup/config.js` | Field baru `telegram.chatId` ← `TELEGRAM_BACKUP_CHAT_ID` (id supergroup `-100…`) | `/api/owner-console/auto-backup` → `telegram.configured true`, `chatId -1004393450575` |
+| 4 | `bot/lib/backup/telegram.js` | Ekspor `sendDocument(cfg, chatId, filePath, opts)` (pakai modul baru) | `node --check` + eslint 0 error |
+| 5 | `bot/lib/jadibot-platform-api.js` | Endpoint owner-console baru: `GET /api/owner-console/auto-backup` (status, tanpa token) dan `POST` (jalankan manual, balas **202**, rate limit 1×/5 menit). Tiket HMAC sama seperti endpoint owner lain | GET **200** dengan `tokenSet:true`; POST **202** `{started:true}` |
+| 6 | `bot/plugins/owner/owner-backupfull.js` | Teks & deskripsi `.backupfull` → "kirim ke group Telegram bot utama" | `node --check` |
+| 7 | `bot/.backup-system.example.env` | Dokumentasi `TELEGRAM_BACKUP_CHAT_ID` (wajib agar backup tidak di-skip) | Tersalin ke server, sha256 sama |
+| 8 | Server `/.backup-system.env` (di luar repo) | `TELEGRAM_BACKUP_CHAT_ID=-1004393450575`. **Token tidak disalin** — dibaca dari `.secrets/task70-platform.env` yang sudah ada (token bot utama, sha256 cocok) | `getMe` → `@AlzRiss_bot`, `getChatMember` → **administrator** di group `BackUp` (3 anggota) |
+| 9 | Deploy backend | Panel API `f7811b23`: 6 berkas + 1 env diunggah (swap `*.task83new` → verifikasi sha256 → rename), lalu `power restart`; API sehat kembali (`/api/health` uptime naik) | sha256 lokal == server untuk semua berkas; `config.js` tidak diubah |
+| 10 | Uji nyata (bukan mock) | Backup dijalankan lewat endpoint console: 19.234 berkas → **4 bagian** 10,86 / 38,20 / 12,76 / 19,81 MB | `state.json`: `telegram.chatId -1004393450575`, `messageIds [91,92,93,94]` |
+| 11 | Verifikasi isi group | Tiap dokumen di-*forward* server-side (tanpa unggah ulang) untuk membaca metadata asli, lalu salinan forward dihapus | `usanagi-full-backup-20261021-0020-part-0{1..4}-of-04.zip`, `application/zip`, 11.386.293 / 40.060.300 / 13.378.644 / 20.775.681 byte — identik dengan `state.json` |
+| 12 | Tes | `node --test tests/auto-backup-telegram.test.mjs` **4/4** (resolusi tujuan, prioritas env/config, skip tanpa tujuan); `tests/platform/` **217/217**; `tests/backup/` **30 lulus / 28 gagal** — sama persis dengan baseline `git stash` (gagal karena disk sandbox 235 MB < batas 256 MB, bukan regresi) | — |
+
+**Batas jujur Task83:**
+- Belum ada pilihan group di website. Tujuan diatur lewat `TELEGRAM_BACKUP_CHAT_ID` (server: `/.backup-system.env`) atau `global.autoBackup.telegramChatId` di `config.js`. Bot utama **wajib admin** di group itu (saat ini sudah).
+- Kalau token/chat id hilang, backup **di-skip** dengan alasan `telegram-not-configured` dan tanggal sukses tidak ditandai — sengaja **tidak** diam-diam kembali ke WhatsApp.
+- Pesan pembuka/penutup hanya best-effort (gagal = warning); dokumen arsip tetap wajib sukses, kalau gagal seluruh pecahan ZIP lokal dihapus dan retry 6 jam.
+- Batas Bot API 50 MB per dokumen; `maxPartBytes` 45 MB tetap aman.
+- Panel Pterodactyl masih melaporkan status `starting` beberapa lama setelah restart walau proses benar-benar hidup (`/api/health` uptime naik, log WhatsApp mengalir). Tidak mempengaruhi backup, tapi status panel bisa menyesatkan.
+- Bukti di sisi Telegram = `message_id` + metadata hasil forward. Tidak ada klien Telegram di sandbox untuk screenshot group.
+
+**Commit:** `aba5eb7` (kode + tes) · dokumen ini di commit terpisah.
