@@ -24,7 +24,7 @@ function busy(button,on,label='MEMPROSES...'){if(!button)return;if(on){button.da
 function formatPairCode(value){const code=String(value||'').replace(/[^a-z0-9]/gi,'').toUpperCase();return{code,display:code?code.match(/.{1,4}/g).join('-'):'MENUNGGU'}}
 function addPairLog(message){const stamp=new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});state.pairLogs=[...state.pairLogs,`[${stamp}] ${String(message||'')}`].slice(-10);const box=$('pairLogs');if(box){box.textContent=state.pairLogs.join('\n');box.scrollTop=box.scrollHeight}}
 async function copyPairCode(){const code=$('pairCode')?.dataset.code||'';if(!code)return toast('Belum ada kode pairing untuk disalin.',true);try{if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(code);else{const area=document.createElement('textarea');area.value=code;area.style.position='fixed';area.style.opacity='0';document.body.append(area);area.select();if(!document.execCommand('copy'))throw new Error('copy failed');area.remove()}addPairLog('Kode pairing disalin ke clipboard.');toast('Kode pairing disalin.')}catch(error){addPairLog('Gagal menyalin kode pairing. Salin manual dari layar.');toast('Tidak dapat menyalin otomatis. Salin kode dari layar.',true)}}
-function stopTimers(){clearInterval(state.pairTimer);clearInterval(state.chatTimer);clearInterval(state.logTimer);clearInterval(state.mainConsoleTimer);clearInterval(state.walletTimer);state.pairTimer=state.chatTimer=state.logTimer=state.mainConsoleTimer=state.walletTimer=null}
+function stopTimers(){clearInterval(state.pairTimer);clearInterval(state.chatTimer);clearInterval(state.logTimer);clearInterval(state.mainConsoleTimer);clearInterval(state.walletTimer);clearInterval(state.ownerTimer);state.pairTimer=state.chatTimer=state.logTimer=state.mainConsoleTimer=state.walletTimer=state.ownerTimer=null}
 function saveSession(session){state.session=session;if(session)localStorage.setItem(STORAGE_KEY,JSON.stringify(session));else localStorage.removeItem(STORAGE_KEY)}
 async function refreshSession(){const token=state.session?.refresh_token;if(!token)return false;try{const response=await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`,{method:'POST',headers:{apikey:SUPABASE_KEY,'Content-Type':'application/json'},body:JSON.stringify({refresh_token:token})});if(!response.ok)throw new Error('refresh failed');const data=await response.json();saveSession({...data,user:data.user||state.session.user});return true}catch{saveSession(null);state.profile=null;return false}}
 async function api(path,options={},retry=true){const headers={Accept:'application/json',...(options.body?{'Content-Type':'application/json'}:{}),...(state.session?.access_token?{Authorization:`Bearer ${state.session.access_token}`}:{})};const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),65000);let response;try{response=await fetch('/api/'+String(path).replace(/^\/+/,''),{...options,headers:{...headers,...options.headers},signal:controller.signal})}catch(error){if(error.name==='AbortError')throw new Error('Server terlalu lama merespons.');throw new Error('Koneksi ke server gagal.')}finally{clearTimeout(timer)}if(response.status===401&&retry&&await refreshSession())return api(path,options,false);const text=await response.text();let data;try{data=JSON.parse(text)}catch{data={error:text||`HTTP ${response.status}`}}if(!response.ok)throw Object.assign(new Error(data.error||data.message||`HTTP ${response.status}`),{status:response.status,code:data.code});return data}
@@ -33,7 +33,7 @@ function applyIdentity(user){state.profile=normalizedUser(user);$('identity').in
 async function hydrateIdentity(){const data=await api('platform/me');applyIdentity(data.user||{})}
 function currentRoute(){return(location.hash.replace(/^#\/?/,'').split(/[?&]/)[0]||'home').toLowerCase()}
 function setView(route){const authenticated=Boolean(state.session);document.body.classList.toggle('app-mode',authenticated&&pages.includes(route));document.body.classList.toggle('auth-mode',route==='auth'||route==='login'||route==='register');$('landingView').classList.toggle('hidden',route!=='home');$('authView').classList.toggle('hidden',!['auth','login','register'].includes(route));$('tutorialView').classList.toggle('hidden',route!=='tutorial');$('appView').classList.toggle('hidden',!(authenticated&&pages.includes(route)));document.querySelectorAll('[data-private]').forEach(node=>node.classList.toggle('hidden',!authenticated));if(['auth','login','register'].includes(route))setAuthTab(route==='register'?'register':'login')}
-async function route(){stopTimers();let route=currentRoute();if(!state.session&&pages.includes(route)){rememberRoute(location.hash);location.hash='auth';return}if(state.session&&['home','auth','login','register'].includes(route)){const back=consumeRoute('');if(back){location.hash=back;route=currentRoute()}else{route='dashboard';if(location.hash!=='#dashboard')history.replaceState(null,'','#dashboard')}}if(['owner','main-console','agent-owner','files','acctopup'].includes(route)&&!hasRole('owner'))route='dashboard';if(!['home','auth','login','register','tutorial',...pages].includes(route))route=state.session?'dashboard':'home';setView(route);if(!pages.includes(route))return;pages.forEach(name=>{const node=$(name+'Page');if(node)node.classList.toggle('hidden',name!==route)});$('pageTitle').textContent=route==='owner'?'OWNER PANEL':route==='panel'?'PANEL SAYA':route==='wallet'?'SALDO UMI':route==='topup'?'TOP UP SALDO':route==='shop'?'TOKO PANEL':route==='acctopup'?'ACC TOP UP':route==='files'?'UPLOAD FILE ZIP':route==='main-console'?'CONSOLE BOT UTAMA':route==='chat'?'CHAT GLOBAL':route==='feedback'?'FEEDBACK':route==='profile'?'PROFIL SAYA':route.toUpperCase();$('newSessionButton').classList.toggle('hidden',!['dashboard','connect'].includes(route));$('mainNav').classList.remove('open');$('menuToggle').setAttribute('aria-expanded','false');try{if(route==='dashboard')await loadSessions();if(route==='wallet')await openWallet();if(route==='topup')await openTopupPage();if(route==='shop')await openShopPage();if(route==='acctopup')await loadManualTopups();if(route==='panel')await openPanelPage();if(route==='files')await loadFiles();if(route==='settings')await openSettings();if(route==='feedback')await openFeedback();if(route==='chat')await openChat();if(route==='plugins')await openPlugins();if(route==='console')await openConsole();if(route==='main-console')await openMainConsole();if(route==='owner')await loadOwner();if(route==='agent')await loadAgent();if(route==='agent-owner')await loadOwnerAgent();if(route==='profile')await loadProfile()}catch(error){toast(error.message,true)}}
+async function route(){stopTimers();let route=currentRoute();if(!state.session&&pages.includes(route)){rememberRoute(location.hash);location.hash='auth';return}if(state.session&&['home','auth','login','register'].includes(route)){const back=consumeRoute('');if(back){location.hash=back;route=currentRoute()}else{route='dashboard';if(location.hash!=='#dashboard')history.replaceState(null,'','#dashboard')}}if(['owner','main-console','agent-owner','files','acctopup'].includes(route)&&!hasRole('owner'))route='dashboard';if(!['home','auth','login','register','tutorial',...pages].includes(route))route=state.session?'dashboard':'home';setView(route);if(!pages.includes(route))return;pages.forEach(name=>{const node=$(name+'Page');if(node)node.classList.toggle('hidden',name!==route)});$('pageTitle').textContent=route==='owner'?'OWNER PANEL':route==='panel'?'PANEL SAYA':route==='wallet'?'SALDO UMI':route==='topup'?'TOP UP SALDO':route==='shop'?'TOKO PANEL':route==='acctopup'?'ACC TOP UP':route==='files'?'UPLOAD FILE ZIP':route==='main-console'?'CONSOLE BOT UTAMA':route==='chat'?'CHAT GLOBAL':route==='feedback'?'FEEDBACK':route==='profile'?'PROFIL SAYA':route.toUpperCase();$('newSessionButton').classList.toggle('hidden',!['dashboard','connect'].includes(route));toggleNav(false);try{if(route==='dashboard')await loadSessions();if(route==='wallet')await openWallet();if(route==='topup')await openTopupPage();if(route==='shop')await openShopPage();if(route==='acctopup')await loadManualTopups();if(route==='panel')await openPanelPage();if(route==='files')await loadFiles();if(route==='settings')await openSettings();if(route==='feedback')await openFeedback();if(route==='chat')await openChat();if(route==='plugins')await openPlugins();if(route==='console')await openConsole();if(route==='main-console')await openMainConsole();if(route==='owner')await loadOwner();if(route==='agent')await loadAgent();if(route==='agent-owner')await loadOwnerAgent();if(route==='profile')await loadProfile()}catch(error){toast(error.message,true)}}
 function setAuthTab(tab){document.querySelectorAll('[data-auth-tab]').forEach(button=>button.classList.toggle('active',button.dataset.authTab===tab));$('loginForm').classList.toggle('hidden',tab!=='login');$('registerForm').classList.toggle('hidden',tab!=='register')}
 function sessionOptions(select,placeholder='Pilih session'){const selected=select.value||state.selected;select.innerHTML=`<option value="">${placeholder}</option>`+state.sessions.map(item=>`<option value="${escapeHtml(item.sessionId)}">+${escapeHtml(item.sessionId)} · ${escapeHtml(item.status||'unknown')}</option>`).join('');if([...select.options].some(option=>option.value===String(selected)))select.value=String(selected)}
 async function loadSessions(){const data=await api('sessions');state.sessions=Array.isArray(data.sessions)?data.sessions:[];$('statTotal').textContent=state.sessions.length;$('statOnline').textContent=state.sessions.filter(item=>item.status==='connected').length;$('statOffline').textContent=state.sessions.filter(item=>item.status!=='connected').length;renderSessions();return state.sessions}
@@ -115,7 +115,81 @@ async function submitMainBotPairing(event){event.preventDefault();const form=eve
 async function copyMainBotPairCode(){const code=$('mainBotPairCode')?.dataset.code||'';if(!code)return toast('Belum ada pairing code untuk disalin.',true);try{if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(code);else{const area=document.createElement('textarea');area.value=code;area.style.position='fixed';area.style.opacity='0';document.body.append(area);area.select();if(!document.execCommand('copy'))throw new Error('copy failed');area.remove()}$('mainBotPairingStatus').textContent='Pairing code disalin ke clipboard.';toast('Pairing code disalin.')}catch{toast('Tidak dapat menyalin otomatis. Salin dari layar.',true)}}
 function clearMainConsole(){state.mainConsoleOutput='';state.mainPairingSearchOffset=0;renderMainConsole()}
 function roleSelect(user){return`<select multiple size="5" data-role-id="${escapeHtml(user.id)}" ${user.locked?'disabled':''}>${['user','admin','partner','owner','developer'].map(role=>`<option value="${role}" ${(user.roles||[]).includes(role)?'selected':''}>${role}</option>`).join('')}</select>`}
-async function loadOwner(){if(!hasRole('owner'))return;const[data,audit]=await Promise.all([api('platform/admin/users'),api('platform/audit')]);$('ownerUsers').textContent=data.totals?.users??0;$('ownerOnline').textContent=data.totals?.online??0;$('ownerSessions').textContent=data.totals?.sessions??0;$('ownerTable').innerHTML=(data.users||[]).map(user=>`<tr data-search="${escapeHtml(`${user.username||''} ${user.email||''}`.toLowerCase())}"><td><b>${escapeHtml(user.username||'Tanpa username')}</b><br><span>${escapeHtml(user.email||'')}</span>${user.locked?'<br><span class="chip owner">LOCKED</span>':''}</td><td>${roleSelect(user)}</td><td>${(user.sessions||[]).map(session=>`<div>+${escapeHtml(session.sessionId)} ${escapeHtml(session.status)}</div>`).join('')||'—'}</td><td>${user.banned?'<span class="chip owner">BANNED</span>':'<span class="chip user">ACTIVE</span>'}</td><td>${user.locked?'—':`<div class="actions"><button class="mini" data-user-save="${escapeHtml(user.id)}">SAVE</button><button class="mini" data-user-ban="${escapeHtml(user.id)}" data-banned="${Boolean(user.banned)}">${user.banned?'UNBAN':'BAN'}</button><button class="mini danger" data-user-delete="${escapeHtml(user.id)}">HAPUS</button></div>`}</td></tr>`).join('');renderAudit(audit.logs||[]);filterOwner();await loadPanelAutoOrder()}
+function ownerNumberStat(id,value,error){
+  const node=$(id);if(!node)return;
+  const missing = value===null || value===undefined || (typeof value==='number' && !Number.isFinite(value));
+  node.textContent = missing ? '—' : String(value);
+  node.classList.toggle('is-unknown',missing);
+  node.title = error ? ('Tidak tersedia: '+error) : '';
+}
+function ownerLiveStatus(problems,stamp){
+  const box=$('ownerLive'),status=$('ownerLiveStatus'),detail=$('ownerLiveErrors');
+  if(!box||!status)return;
+  const bad=problems.length>0;
+  box.classList.toggle('bad',bad);
+  const dot=box.querySelector('.dot');if(dot)dot.classList.toggle('bad',bad);
+  status.textContent = bad ? ('Sebagian data tidak tersedia · '+stamp) : ('Live · diperbarui '+stamp);
+  if(detail)detail.textContent = problems.join(' · ');
+}
+function ownerStamp(value){
+  try{return new Date(value||Date.now()).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'})}
+  catch{return '—'}
+}
+async function refreshOwnerStats(quiet){
+  if(!hasRole('owner'))return null;
+  try{
+    const live=await api('platform/admin/live');
+    ownerNumberStat('ownerUsers',live.users?live.users.value:null,live.users?live.users.error:null);
+    ownerNumberStat('ownerOnline',live.sessions?live.sessions.online:null,live.sessions?live.sessions.error:null);
+    ownerNumberStat('ownerSessions',live.sessions?live.sessions.total:null,live.sessions?live.sessions.error:null);
+    const problems=[];
+    if(live.users&&live.users.error&&(live.users.value===null||live.users.value===undefined))problems.push('akun: '+live.users.error);
+    if(live.sessions&&live.sessions.error){
+      const adaAngka=live.sessions.total!==null&&live.sessions.total!==undefined;
+      problems.push('status bot: '+live.sessions.error+(adaAngka?' — angka diambil dari agregat /api/stats':''));
+    }
+    if(live.sessions&&live.sessions.source==='stats'&&!live.sessions.error)problems.push('sesi memakai agregat /api/stats');
+    ownerLiveStatus(problems,ownerStamp(live.generatedAt));
+    return live;
+  }catch(error){
+    ownerNumberStat('ownerUsers',null,error.message);
+    ownerNumberStat('ownerOnline',null,error.message);
+    ownerNumberStat('ownerSessions',null,error.message);
+    ownerLiveStatus(['statistik: '+error.message],ownerStamp());
+    if(!quiet)toast(error.message,true);
+    return null;
+  }
+}
+async function loadOwner(){
+  if(!hasRole('owner'))return;
+  /* Setiap sumber dimuat terpisah: kegagalan audit tidak boleh mengosongkan
+     daftar akun, dan kegagalan daftar akun tidak boleh menyembunyikan audit. */
+  const results=await Promise.allSettled([api('platform/admin/users'),api('platform/audit')]);
+  const data=results[0].status==='fulfilled'?results[0].value:null;
+  if(data){
+    $('ownerTable').innerHTML=(data.users||[]).map(user=>`<tr data-search="${escapeHtml(`${user.username||''} ${user.email||''}`.toLowerCase())}"><td><b>${escapeHtml(user.username||'Tanpa username')}</b><br><span>${escapeHtml(user.email||'')}</span>${user.locked?'<br><span class="chip owner">LOCKED</span>':''}</td><td>${roleSelect(user)}</td><td>${(user.sessions||[]).map(session=>`<div>+${escapeHtml(session.sessionId)} ${escapeHtml(session.status)}</div>`).join('')||'—'}</td><td>${user.banned?'<span class="chip owner">BANNED</span>':'<span class="chip user">ACTIVE</span>'}</td><td>${user.locked?'—':`<div class="actions"><button class="mini" data-user-save="${escapeHtml(user.id)}">SAVE</button><button class="mini" data-user-ban="${escapeHtml(user.id)}" data-banned="${Boolean(user.banned)}">${user.banned?'UNBAN':'BAN'}</button><button class="mini danger" data-user-delete="${escapeHtml(user.id)}">HAPUS</button></div>`}</td></tr>`).join('');
+    if(data.totals){
+      const botError = data.errors ? data.errors.sessions : null;
+      ownerNumberStat('ownerUsers',data.totals.users===undefined?null:data.totals.users,null);
+      ownerNumberStat('ownerOnline',data.totals.online===undefined?null:data.totals.online,botError);
+      ownerNumberStat('ownerSessions',data.totals.sessions===undefined?null:data.totals.sessions,botError);
+    }
+    filterOwner();
+  }else{
+    const message=results[0].reason&&results[0].reason.message?results[0].reason.message:'Kesalahan tidak diketahui.';
+    $('ownerTable').innerHTML=`<tr><td colspan="5"><b>Daftar akun tidak dapat dimuat.</b><br><small>${escapeHtml(message)}</small></td></tr>`;
+  }
+  if(results[1].status==='fulfilled'){
+    renderAudit(results[1].value.logs||[]);
+  }else{
+    const message=results[1].reason&&results[1].reason.message?results[1].reason.message:'Kesalahan tidak diketahui.';
+    $('auditList').innerHTML=`<div class="list-item"><span><b>Audit log tidak dapat dimuat.</b><br><small>${escapeHtml(message)}</small></span></div>`;
+  }
+  await refreshOwnerStats(true);
+  clearInterval(state.ownerTimer);
+  state.ownerTimer=setInterval(()=>{if(currentRoute()==='owner')refreshOwnerStats(true)},10000);
+  try{await loadPanelAutoOrder()}catch{/* panel auto order punya statusnya sendiri di kartu */}
+}
 function defaultPanelPackages(){return[{id:'starter-1',name:'Starter 1 GB',description:'Paket awal',price:0,memoryMb:1024,cpuPercent:40,diskMb:1024,enabled:false},{id:'starter-2',name:'Starter 2 GB',description:'Paket awal',price:0,memoryMb:2048,cpuPercent:70,diskMb:2048,enabled:false},{id:'starter-4',name:'Starter 4 GB',description:'Paket awal',price:0,memoryMb:4096,cpuPercent:120,diskMb:4096,enabled:false}]}
 function panelPackageCard(item={}){const value=(key,fallback='')=>escapeHtml(item[key]??fallback);return`<article class="panel" data-panel-package><div class="section-head"><h4>PAKET</h4><button class="mini danger" type="button" data-panel-package-remove>HAPUS</button></div><div class="form-grid"><label>ID Paket<input data-panel-field="id" maxlength="40" required pattern="[a-z0-9-]+" value="${value('id')}"></label><label>Nama Paket<input data-panel-field="name" maxlength="80" required value="${value('name')}"></label><label>Harga (Rp)<input data-panel-field="price" type="number" min="0" max="100000000" step="1" required value="${value('price',0)}"></label><label>RAM (MB)<input data-panel-field="memoryMb" type="number" min="128" max="1048576" step="1" required value="${value('memoryMb',1024)}"></label><label>CPU (%)<input data-panel-field="cpuPercent" type="number" min="1" max="100000" step="1" required value="${value('cpuPercent',40)}"></label><label>Disk (MB)<input data-panel-field="diskMb" type="number" min="128" max="10485760" step="1" required value="${value('diskMb',1024)}"></label></div><label>Deskripsi<textarea data-panel-field="description" maxlength="240">${value('description')}</textarea></label><label><input data-panel-field="enabled" type="checkbox" ${item.enabled?'checked':''}> Aktifkan paket ini untuk checkout</label></article>`}
 function renderPanelPackages(packages){const editor=$('panelPackageEditor');const values=Array.isArray(packages)&&packages.length?packages:defaultPanelPackages();editor.innerHTML=values.map(panelPackageCard).join('')}
@@ -201,6 +275,48 @@ async function searchPremiumFeatures(query){
 }
 function premiumSearchInput(){clearTimeout(premiumSearchTimer);const input=$('premiumFeatureQuery');if(!input)return;premiumSearchTimer=setTimeout(()=>searchPremiumFeatures(input.value).catch(error=>toast(error.message,true)),350)}
 function premiumSearchClick(event){const button=event.target.closest('[data-premium-add]');if(!button)return;const form=$('settingsForm');const area=form&&form.elements.premium_plugins;if(!area)return;const value=button.dataset.premiumAdd;const lines=area.value.split(/\n/).map(x=>x.trim()).filter(Boolean);if(!lines.includes(value))lines.push(value);area.value=lines.join('\n');toast(value+' ditambahkan ke daftar. Jangan lupa SIMPAN.')}
-async function init(){bind();if(window.supabase?.createClient)state.storage=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:true}});try{await captureSupabaseSession();if(state.storage?.auth?.onAuthStateChange)state.storage.auth.onAuthStateChange((_event,session)=>{if(session?.access_token){saveSession({access_token:session.access_token,refresh_token:session.refresh_token,expires_in:session.expires_in||3600,user:session.user||null});if(session.user)applyIdentity(session.user)}})}catch{}try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');if(saved?.access_token&&saved?.refresh_token){state.session=saved;try{await hydrateIdentity()}catch(error){if(!(await refreshSession()))throw error;await hydrateIdentity()}}}catch{saveSession(null);state.profile=null}await route()}
+function currentTheme(){return document.documentElement.getAttribute('data-theme')==='light'?'light':'dark'}
+function applyTheme(theme,persist){
+  const next=theme==='light'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',next);
+  document.documentElement.style.colorScheme=next;
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta)meta.setAttribute('content',next==='light'?'#eef3fb':'#050d1f');
+  const button=$('themeToggle');
+  if(button){
+    button.setAttribute('aria-pressed',String(next==='light'));
+    button.title=next==='light'?'Tema terang aktif — klik untuk gelap':'Tema gelap aktif — klik untuk terang';
+  }
+  if(persist){try{localStorage.setItem('umi-theme',next)}catch{}}
+}
+function toggleNav(open){
+  const nav=$('mainNav'),scrim=$('navScrim'),button=$('menuToggle');
+  if(!nav)return;
+  const next=typeof open==='boolean'?open:!nav.classList.contains('open');
+  nav.classList.toggle('open',next);
+  if(scrim){scrim.classList.toggle('open',next);scrim.hidden=!next}
+  if(button)button.setAttribute('aria-expanded',String(next));
+  document.body.classList.toggle('nav-open',next);
+  if(next){const first=nav.querySelector('a,button');if(first)first.focus({preventScroll:true})}
+}
+function bindShell(){
+  applyTheme(currentTheme(),false);
+  const themeButton=$('themeToggle');
+  if(themeButton)themeButton.onclick=()=>applyTheme(currentTheme()==='light'?'dark':'light',true);
+  const menu=$('menuToggle');
+  if(menu)menu.onclick=()=>toggleNav();
+  const scrim=$('navScrim');
+  if(scrim)scrim.onclick=()=>toggleNav(false);
+  const closeNav=$('navClose');
+  if(closeNav)closeNav.onclick=()=>toggleNav(false);
+  const refreshLive=$('ownerLiveRefresh');
+  if(refreshLive)refreshLive.onclick=()=>refreshOwnerStats(false);
+  const refreshOwnerButton=$('refreshOwner');
+  if(refreshOwnerButton)refreshOwnerButton.onclick=()=>loadOwner().catch(error=>toast(error.message,true));
+  const refreshAuditButton=$('refreshAudit');
+  if(refreshAuditButton)refreshAuditButton.onclick=()=>api('platform/audit').then(data=>renderAudit(data.logs||[])).catch(error=>toast(error.message,true));
+  document.addEventListener('keydown',event=>{if(event.key==='Escape')toggleNav(false)});
+}
+async function init(){bind();bindShell();if(window.supabase?.createClient)state.storage=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY,{auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:true}});try{await captureSupabaseSession();if(state.storage?.auth?.onAuthStateChange)state.storage.auth.onAuthStateChange((_event,session)=>{if(session?.access_token){saveSession({access_token:session.access_token,refresh_token:session.refresh_token,expires_in:session.expires_in||3600,user:session.user||null});if(session.user)applyIdentity(session.user)}})}catch{}try{const saved=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');if(saved?.access_token&&saved?.refresh_token){state.session=saved;try{await hydrateIdentity()}catch(error){if(!(await refreshSession()))throw error;await hydrateIdentity()}}}catch{saveSession(null);state.profile=null}await route()}
 init().catch(error=>{console.error(error);toast('Aplikasi gagal dimulai: '+error.message,true)})
 })()

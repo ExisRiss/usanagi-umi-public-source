@@ -196,6 +196,70 @@ async function botRequest(path, user, { method = 'GET', body, headers = {} } = {
   return data
 }
 
+/*
+ * Ringkasan sesi bot untuk panel owner.
+ *
+ * `/api/sessions?all=1` hanya mengembalikan SEMUA sesi bila email pemanggil
+ * terdaftar di `ownerEmails` milik backend bot. Kalau tidak, backend hanya
+ * mengembalikan sesi milik pemanggil — bisa 0 padahal puluhan bot hidup.
+ * Karena itu hasil yang kosong diverifikasi ke `/api/stats` (agregat resmi
+ * bot). Yang dilaporkan selalu angka dari backend, bukan tebakan, dan
+ * `source` menjelaskan asal angkanya.
+ */
+async function botSessionTotals(user) {
+  const result = { sessions: [], total: null, online: null, offline: null, source: 'sessions', error: null, checkedAt: null }
+  let statsProbe = null
+  const readStats = async () => {
+    if (statsProbe) return statsProbe
+    try {
+      const botConfig = await getBotApiConfig()
+      const secret = String(process.env.BOT_BACKUP_EXPORT_SECRET || process.env.UMI_ERROR_REPORT_SECRET || '').trim()
+      const response = await fetch(`${botConfig.origin}/api/stats`, {
+        headers: secret ? { Authorization: `Bearer ${secret}` } : {},
+        signal: AbortSignal.timeout(8000),
+      })
+      if (!response.ok) { statsProbe = null; return null }
+      const stats = await response.json()
+      const total = Number(stats.sessions)
+      statsProbe = Number.isFinite(total)
+        ? { total, online: Number(stats.online) || 0 }
+        : null
+    } catch { statsProbe = null }
+    return statsProbe
+  }
+
+  try {
+    const sessions = (await botRequest('sessions?all=1', user)).sessions || []
+    result.total = sessions.length
+    result.online = sessions.filter(item => item.status === 'connected').length
+    result.offline = sessions.length - result.online
+    result.checkedAt = new Date().toISOString()
+    if (!sessions.length) {
+      const stats = await readStats()
+      if (stats && stats.total > 0) {
+        result.total = stats.total
+        result.online = stats.online
+        result.offline = Math.max(0, stats.total - stats.online)
+        result.source = 'stats'
+        result.sessions = []
+      }
+    }
+    return result
+  } catch (error) {
+    result.error = error.message || 'Backend bot tidak dapat dihubungi.'
+  }
+
+  const stats = await readStats()
+  if (stats) {
+    result.total = stats.total
+    result.online = stats.online
+    result.offline = Math.max(0, stats.total - stats.online)
+    result.source = 'stats'
+    result.checkedAt = new Date().toISOString()
+  }
+  return result
+}
+
 function normalizedRoles(input, targetEmail) {
   if (targetEmail === FIXED_OWNER) return ['owner', 'developer']
   const roles = [...new Set((Array.isArray(input) ? input : []).map(x => text(x, 20).toLowerCase()).filter(x => VALID_ROLES.has(x)))]
@@ -810,17 +874,78 @@ export default async function handler(req, res) {
         profiles = [...(profiles || []), ...(added || [])]
         pmap = new Map(profiles.map(x => [x.auth_id, x]))
       }
-      let sessions = []
-      try { sessions = (await botRequest('sessions?all=1', user)).sessions || [] } catch {}
+      /*
+       * Status bot TIDAK boleh disamarkan menjadi 0.
+       *
+       * Sebelumnya kegagalan backend bot ditelan `catch {}` sehingga panel owner
+       * menampilkan "0 bot connect" padahal bot hidup. Sekarang kegagalannya
+       * dilaporkan lewat `errors.sessions` + `bot.reachable` supaya UI bisa
+       * membedakan "memang tidak ada sesi" dari "backend tidak terjangkau".
+       */
+      const sessionTotals = await botSessionTotals(user)
+      const sessions = sessionTotals.sessions
+      const sessionsError = sessionTotals.error
       return send(res, 200, {
         users: (auth.users || []).map(item => {
           const p = pmap.get(item.id)
           const itemEmail = email(item.email)
           return { id: item.id, email: itemEmail, username: p?.username || text(item.user_metadata?.username || item.user_metadata?.name || '', 40), roles: fixedRoles(itemEmail) || p?.roles || ['user'], locked: itemEmail === FIXED_OWNER || Boolean(p?.locked), banned: Boolean(p?.banned), created_at: item.created_at, last_sign_in_at: item.last_sign_in_at, sessions: sessions.filter(s => s.userId === item.id) }
         }),
-        totals: { users: (auth.users || []).length, sessions: sessions.length, online: sessions.filter(s => s.status === 'connected').length, offline: sessions.filter(s => s.status !== 'connected').length },
+        totals: { users: (auth.users || []).length, sessions: sessionTotals.total, online: sessionTotals.online, offline: sessionTotals.offline },
+        generatedAt: new Date().toISOString(),
+        sessionSource: sessionTotals.source,
+        errors: { sessions: sessionsError },
+        bot: { reachable: !sessionsError },
       })
     }
+
+    /*
+     * Ringkasan real-time panel owner (polling ringan 10 detik).
+     *
+     * `admin/users` menarik sampai 1000 akun + audit tiap kali dipanggil, jadi
+     * tidak layak dipakai untuk auto-refresh. Rute ini hanya menghitung angka
+     * kunci dan MENGEMBALIKAN ERROR PER SUMBER, bukan 0 palsu:
+     *   · users    → Supabase Auth (fallback: tabel platform_profiles)
+     *   · sessions → API bot (fallback: /api/stats dengan rahasia bersama)
+     */
+    if (path === 'admin/live' && req.method === 'GET') {
+      requireOwner(profile)
+      rateLimit(req, `platform:admin-live:${user.id}`, 240, 60 * 1000)
+      const generatedAt = new Date().toISOString()
+      const live = {
+        ok: true,
+        generatedAt,
+        users: { value: null, source: 'auth', error: null },
+        sessions: { total: null, online: null, offline: null, source: 'bot', error: null, checkedAt: null },
+        bot: { reachable: false },
+      }
+
+      try {
+        const auth = await authAdmin('users?page=1&per_page=1000')
+        live.users.value = Array.isArray(auth.users) ? auth.users.length : 0
+      } catch (error) {
+        live.users.error = error.message || 'Daftar akun tidak dapat dibaca.'
+        try {
+          const rows = await dataRequest('platform_profiles?select=auth_id&limit=10000')
+          live.users.value = Array.isArray(rows) ? rows.length : null
+          live.users.source = 'profiles'
+        } catch { live.users.value = null }
+      }
+
+      const totals = await botSessionTotals(user)
+      if (totals.error) live.sessions.error = totals.error
+      if (totals.total !== null) {
+        live.sessions.total = totals.total
+        live.sessions.online = totals.online
+        live.sessions.offline = totals.offline
+        live.sessions.source = totals.source
+        live.sessions.checkedAt = totals.checkedAt
+        live.bot.reachable = true
+      }
+
+      return send(res, 200, live)
+    }
+
     if (path === 'admin/users' && req.method === 'POST') {
       requireOwner(profile)
       const targetEmail = email(req.body?.email)
