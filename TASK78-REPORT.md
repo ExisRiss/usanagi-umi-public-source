@@ -52,7 +52,12 @@ pairing_code:"ZA58-F82A" (231 dtk, sudah mati), session_saved:true
 
 # SESI LAIN pada pengujian berikutnya (semua terbit <20 dtk setelah HAPUS SESI)
 28TZ-7G8X · 3NR6-9DBP · V8GL-VW5J · FDPK-FMNF · 5KMH-85NY
+
+# KONDISI AKHIR (14:16 UTC) — WhatsApp membatasi permintaan kode
+status=unpaired socket_ready=true session_saved=true
+pairing_error="WhatsApp membatasi permintaan kode (rate-overlimit). Tunggu ±10 menit …"
 ```
+Artinya: alur pairing **terbukti menghasilkan kode berkali-kali** pada sesi ini, lalu WA menolak permintaan berikutnya karena frekuensi pengujian (lihat §5.2). Halaman menampilkan alasan itu apa adanya (`shots/task78-06-pairing-ratelimit.png`).
 
 ### 4.2 Status AI Agent/Owner (`GET /api/owner-agent/status`)
 
@@ -74,7 +79,7 @@ pairing_code:"ZA58-F82A" (231 dtk, sudah mati), session_saved:true
 | TES KONEKSI AI (AI Owner) | `GAGAL — Key Gemini ditolak Google (tidak valid/kedaluwarsa)…` | route `agent/test` 200, pesan 401 diteruskan |
 | Chat AI Agent "halo" | balasan berisi error yang sama (tidak mengarang jawaban) | `agentChat` → Gemini 401 |
 
-Screenshot: `shots/task78-02-pairing-code.png` (kode tampil besar `FDPK-FMNF`), `shots/task78-03-sidebar-order.png`, `shots/task78-03b-sidebar-bottom.png` ("Keluar" paling bawah), `shots/task78-04-ai-owner.png`, `shots/task78-05-ai-agent.png`, `shots/task78-01-main-console-before.png`.
+Screenshot: `shots/task78-02-pairing-code.png` (kode tampil besar `FDPK-FMNF`), `shots/task78-06-pairing-ratelimit.png` (pesan rate-limit jujur), `shots/task78-03-sidebar-order.png`, `shots/task78-03b-sidebar-bottom.png` ("Keluar" paling bawah), `shots/task78-04-ai-owner.png`, `shots/task78-05-ai-agent.png`, `shots/task78-01-main-console-before.png`.
 
 ### 4.4 Deploy
 
@@ -93,7 +98,7 @@ Screenshot: `shots/task78-02-pairing-code.png` (kode tampil besar `FDPK-FMNF`), 
    - `oauth2.googleapis.com/tokeninfo` → `invalid_token`
    - Model lain (`gemini-2.5-flash`, `gemini-2.0-flash`, `gemini-1.5-flash`) → hasil sama; key **palsu** (kontrol) justru dijawab `400 API_KEY_INVALID`, jadi perilaku server normal.
    → AI Agent/AI Owner **sudah** dikonfigurasi ke Gemini + key owner, tetapi belum bisa membalas sampai owner memasang key Gemini baru (AI Studio). Setelah itu tidak perlu deploy: isi lewat **AI Owner → Provider Gemini → API Key → SIMPAN KONFIGURASI** (ditulis ke `.env.gemini` mode 600) atau edit `.env.gemini` di server.
-2. **WhatsApp membatasi permintaan kode (`rate-overlimit`).** Setelah ±8–10 permintaan kode dalam satu jam (semua untuk pengujian), WhatsApp menolak permintaan berikutnya. UI sekarang menampilkan pesan Indonesia + cooldown 60 detik, dan pesan menyarankan jeda ±10 menit. Ini batas di sisi WhatsApp, bukan bug aplikasi — pairing tetap berhasil bila sesi dihapus lalu diminta sekali dengan jeda.
+2. **WhatsApp membatasi permintaan kode (`rate-overlimit`).** Pada sesi ini kode diminta 6× (`E2GQ-GMD6`, `28TZ-7G8X`, `3NR6-9DBP`, `V8GL-VW5J`, `FDPK-FMNF`, `5KMH-85NY`) plus beberapa percobaan gagal; setelah itu WhatsApp menolak permintaan berikutnya dengan `rate-overlimit`. UI sekarang menampilkan pesan Indonesia + cooldown 60 detik dan menyarankan jeda ±10 menit. Ini batas di sisi WhatsApp, bukan bug aplikasi: pairing terbukti terbit tiap kali diminta dengan jeda + sesi bersih.
 3. **Sesi bot utama belum tertaut.** Sampai owner memasukkan kode di WhatsApp, status tetap `unpaired` (`session_saved:true`, siap pairing). Bot utama tidak bisa menerima pesan sebelum tertaut.
 4. **`.main-bot.env` di server adalah sumber otoritatif** (`MAIN_BOT_ENABLED=true`, nomor `6282******396`). File `.main-bot.env` di workspace masih usang (`false`) — jangan dipakai.
 5. Panel API berubah perilaku: `POST /api/client/servers/:id/files/upload` kini **405**; harus `GET` dulu untuk signed URL lalu `POST` multipart ke URL Wings. Helper `tools/ptero.py` sudah disesuaikan.
