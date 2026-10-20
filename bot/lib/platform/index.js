@@ -16,10 +16,14 @@ import { storeStatus } from './rpg.js'
 import { stockReady } from './stock.js'
 import { mainBotState, listSessions } from './wa.js'
 import { secretKey } from './secrets.js'
+import * as catalog from './telegram/catalog.js'
 
 const adapters = new Map()
 let timer = null
 let started = false
+
+// Dipakai `/health` dan `/fitur` untuk melaporkan katalog plugin yang termuat.
+globalThis.__umiCatalog = catalog
 
 export function platformState() {
   return {

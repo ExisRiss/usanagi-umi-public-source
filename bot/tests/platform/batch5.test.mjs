@@ -8,7 +8,8 @@ import * as panel from '../../lib/platform/panel-config.js'
 import * as servers from '../../lib/platform/servers.js'
 import * as rpg from '../../lib/platform/rpg.js'
 import { sendBanner, bannerInfo, clearBannerCache, ensureBannerFile } from '../../lib/platform/telegram/banner.js'
-import { waToHtml, pluginCatalog, findPlugin, runPluginOnTelegram, featureReport } from '../../lib/platform/telegram/plugin-bridge.js'
+import { waToHtml, runPluginOnTelegram } from '../../lib/platform/telegram/plugin-bridge.js'
+import { buildCatalog, findItem, categories, pageOf, search, resolveCategory } from '../../lib/platform/telegram/catalog.js'
 import { CommandRouter } from '../../lib/platform/telegram/router.js'
 import { setPlatformDbForTests, platformDb } from '../../lib/platform/db.js'
 import { createUnifiedStore, UNIFIED_RPG } from '../../lib/rpg/unified-store.js'
@@ -175,19 +176,56 @@ test('bridge: format WhatsApp diubah ke HTML Telegram dengan aman', () => {
   assert.equal(waToHtml('kode `npm i`'), 'kode <code>npm i</code>')
 })
 
-test('bridge: katalog membaca perintah plugin (string, array, regex)', async () => {
+test('katalog: perintah plugin dikenali (string, array, regex)', async () => {
   const plugins = {
     a: { command: 'halo', handler: async () => {}, tags: ['fun'] },
     b: { command: ['x', 'y'], handler: async () => {}, tags: ['tools'] },
     c: { command: /^tebak$/i, handler: async () => {} },
   }
-  const catalog = pluginCatalog(plugins)
-  assert.equal(catalog.total, 3)
-  assert.equal(catalog.commands.get('halo'), 'a')
-  assert.equal(catalog.commands.get('x'), 'b')
-  assert.equal(catalog.commands.get('tebak'), 'c')
-  assert.equal(findPlugin('y', plugins).key, 'b')
-  assert.equal(findPlugin('tidakada', plugins), null)
+  const built = buildCatalog(plugins)
+  assert.equal(built.total, 3)
+  assert.equal(built.byCommand.get('halo').key, 'a')
+  assert.equal(built.byCommand.get('x').key, 'b')
+  assert.equal(built.byCommand.get('tebak').key, 'c')
+  assert.equal(findItem('y', plugins).key, 'b')
+  assert.equal(findItem('tidakada', plugins), null)
+})
+
+test('katalog: kategori, halaman, dan pencarian memakai plugin nyata', async () => {
+  const plugins = {
+    'rpg/rpg-kerja': { command: 'kerja', help: ['kerja'], tags: ['rpg'], handler: async () => {} },
+    'rpg/usanagi-fishing': { command: 'mancing', help: ['mancing'], tags: ['rpg'], handler: async () => {} },
+    'game/game-slot': { command: 'slot', help: ['slot <taruhan>'], tags: ['game'], handler: async () => {} },
+    'sticker/stickerly': { command: ['sticker', 'stiker'], help: ['sticker'], tags: ['sticker'], handler: async () => {} },
+    'owner/set': { command: 'set', help: ['set <key> <value>'], tags: ['owner'], owner: true, handler: async () => {} },
+  }
+  const cats = categories(plugins)
+  assert.deepEqual(cats.map(entry => entry.id), ['game', 'rpg', 'sticker', 'owner'])
+  assert.equal(cats.find(entry => entry.id === 'rpg').count, 2)
+  assert.equal(resolveCategory('stiker', plugins), 'sticker')
+  assert.equal(resolveCategory('grup', plugins), 'group')
+  assert.equal(resolveCategory('tidakada', plugins), null)
+  const page = pageOf('rpg', 1, { plugins, size: 1 })
+  assert.equal(page.pages, 2)
+  assert.equal(page.total, 2)
+  assert.match(page.text, /MENU RPG/)
+  assert.equal(pageOf('rpg', 2, { plugins, size: 1 }).page, 2)
+  assert.equal(search('manc', { plugins })[0].command, 'mancing')
+})
+
+test('bridge: plugin gagal dijelaskan, bukan mengarang hasil', async () => {
+  await freshDb()
+  applyTestEnv()
+  const sent = []
+  const ctx = {
+    userId: 'telegram:999', platformUserId: '8932455242', chatId: 9, role: 'user', messageId: 13,
+    send: async text => { sent.push(text) },
+  }
+  globalThis.plugins = { rusak: { command: 'rusak', handler: async () => { throw new Error('Gagal ambil data upstream') } } }
+  const result = await runPluginOnTelegram(ctx, { name: 'rusak', args: [] })
+  assert.equal(result.handled, true)
+  assert.match(sent.at(-1), /gagal/i)
+  delete globalThis.plugins
 })
 
 test('bridge: plugin dijalankan di Telegram lewat conn/m yang sama', async () => {
@@ -229,13 +267,7 @@ test('bridge: plugin owner ditolak untuk pengguna biasa, perintah platform tidak
   delete globalThis.plugins
 })
 
-test('bridge: laporan fitur berisi jumlah plugin nyata', async () => {
-  globalThis.plugins = { a: { command: 'a', handler: async () => {} }, b: { command: 'b', handler: async () => {} } }
-  const report = featureReport()
-  assert.equal(report.plugins, 2)
-  assert.deepEqual(report.names, ['a', 'b'])
-  delete globalThis.plugins
-})
+
 
 test('router: perintah gaya WhatsApp (.menu) juga diterima', () => {
   const router = new CommandRouter({ logger: { error() {}, warn() {} } })
@@ -335,4 +367,25 @@ test('rpg: hadiah tebak angka sekali per ronde', async () => {
   assert.equal(second.ok, false)
   assert.equal(second.reason, 'duplicate')
   assert.equal(rpg.profile(identity.jid).koin, first.koin)
+})
+
+test('katalog: plugin berupa fungsi langsung (pola main.js) ikut terhitung', async () => {
+  const fn = async () => {}
+  fn.command = 'keren'
+  fn.help = ['keren <teks>']
+  fn.tags = ['fun']
+  const plugins = { keren: fn, objek: { command: 'biasa', help: ['biasa'], tags: ['fun'], handler: async () => {} } }
+  const built = buildCatalog(plugins)
+  assert.equal(built.total, 2)
+  assert.equal(built.byCommand.get('keren').key, 'keren')
+  assert.equal(findItem('keren', plugins).command, 'keren')
+})
+
+test('katalog: plugin nonaktif (disabled) tidak muncul di menu', async () => {
+  const plugins = {
+    aktif: { command: 'aktif', handler: async () => {}, tags: ['fun'] },
+    mati: { command: 'mati', handler: async () => {}, tags: ['fun'], disabled: true },
+  }
+  assert.equal(buildCatalog(plugins).total, 1)
+  assert.equal(findItem('mati', plugins), null)
 })

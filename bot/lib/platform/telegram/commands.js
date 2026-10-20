@@ -13,7 +13,8 @@ import * as media from '../media.js'
 import * as wa from '../wa.js'
 import * as chats from '../chats.js'
 import * as panel from '../panel-config.js'
-import { featureReport } from './plugin-bridge.js'
+import * as catalog from './catalog.js'
+import { runPluginOnTelegram } from './plugin-bridge.js'
 import { consumeLinkCode, whatsappJidFor, getUser } from '../identity.js'
 
 const rupiah = value => Number(value || 0).toLocaleString('id-ID', { maximumFractionDigits: 2 })
@@ -38,27 +39,54 @@ function inline(rows) {
   return { inline_keyboard: rows }
 }
 
+/**
+ * Tombol menu utama: fitur platform + kategori plugin WhatsApp (Game, RPG, Fun,
+ * Maker, Stiker, Grup, Owner, ...). Satu aksi `menu.nav`, payload `view`.
+ */
 function menuKeyboard(ctx, router) {
+  const row = (label, view) => ({ text: label, callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view } })}` })
   const rows = []
-  // Semua tombol menu memakai satu aksi 'menu.nav' + payload view; handler
-  // inilah yang terdaftar di router (sebelumnya tiap tombol memakai nama aksi
-  // sendiri sehingga router membalas "Aksi tidak tersedia").
-  const add = (label, view) => rows.push([{ text: label, callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view } })}` }])
-  add('📊 Status', 'status')
-  add('👤 Profil', 'profile')
-  if (router.allowed(ctx, 'jadibot')) add('📱 Jadibot', 'jadibot')
-  if (router.allowed(ctx, 'saham')) add('💹 Saham', 'saham')
-  if (router.allowed(ctx, 'rpg')) add('🎮 RPG', 'rpg')
-  if (router.allowed(ctx, 'tourl')) add('🔗 To URL', 'tourl')
-  if (router.allowed(ctx, 'server')) add('🖥 Server', 'server')
-  if (router.allowed(ctx, 'panel')) add('🛠 Panel', 'panel')
-  if (router.allowed(ctx, 'admin')) add('⚙️ Admin', 'admin')
-  if (router.allowed(ctx, 'reseller')) add('🤝 Reseller', 'reseller')
-  add('❓ Bantuan', 'help')
-  // Susun dua tombol per baris agar nyaman di layar HP.
-  const packed = []
-  for (let index = 0; index < rows.length; index += 2) packed.push(rows.slice(index, index + 2).flat())
-  return inline(packed)
+  const platform = [
+    ['📊 Status', 'status'],
+    ['👤 Profil', 'profile'],
+  ]
+  if (router.allowed(ctx, 'saham')) platform.push(['💹 Saham', 'saham'])
+  if (router.allowed(ctx, 'rpg')) platform.push(['🐉 RPG', 'rpg'])
+  for (let index = 0; index < platform.length; index += 2) rows.push(platform.slice(index, index + 2).map(([label, view]) => row(label, view)))
+
+  // Kategori plugin (yang punya isi). Enam yang paling sering dipakai di depan.
+  const priority = ['game', 'fun', 'maker', 'sticker', 'tools', 'group', 'owner', 'ai', 'downloader', 'economy']
+  const all = catalog.categories()
+  const shown = [...all].sort((a, b) => {
+    const ai = priority.indexOf(a.id); const bi = priority.indexOf(b.id)
+    return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi) || b.count - a.count
+  }).slice(0, 10)
+  const catButtons = shown.map(entry => row(`${entry.icon} ${entry.label}`, `cat:${entry.id}`))
+  for (let index = 0; index < catButtons.length; index += 2) rows.push(catButtons.slice(index, index + 2))
+
+  const extra = [row('📂 Semua Menu', 'allmenu'), row('❓ Bantuan', 'help')]
+  if (router.allowed(ctx, 'jadibot')) extra.unshift(row('📱 Jadibot', 'jadibot'))
+  if (router.allowed(ctx, 'tourl')) extra.unshift(row('🔗 To URL', 'tourl'))
+  for (let index = 0; index < extra.length; index += 2) rows.push(extra.slice(index, index + 2))
+  if (router.allowed(ctx, 'panel')) rows.push([row('🛠 Panel', 'panel'), row('🖥 Server', 'server')])
+  if (router.allowed(ctx, 'admin')) rows.push([row('⚙️ Admin', 'admin'), row('🤝 Reseller', 'reseller')])
+  return inline(rows)
+}
+
+/** Render satu halaman kategori + tombol navigasi. */
+async function sendCategory(ctx, categoryId, page = 1) {
+  const view = catalog.pageOf(categoryId, page)
+  if (!view.total) return ctx.send('Kategori itu belum punya perintah.')
+  const buttons = []
+  if (view.pages > 1) {
+    const nav = (label, target) => ({ text: label, callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view: `cat:${categoryId}:${target}` } })}` })
+    buttons.push([...(view.page > 1 ? [nav('⬅️', view.page - 1)] : []), ...(view.page < view.pages ? [nav('➡️', view.page + 1)] : [])])
+  }
+  buttons.push([{
+    text: '📂 Kategori lain',
+    callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view: 'allmenu' } })}`,
+  }])
+  return ctx.send(view.text, { reply_markup: inline(buttons) })
 }
 
 async function statusText() {
@@ -123,20 +151,63 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
   })
 
   define('menu', {
-    description: 'Menu utama',
-    handler: async (ctx) => {
+    description: 'Menu utama & menu kategori (game, fun, maker, stiker, grup, owner, …)',
+    handler: async (ctx, parsed = { args: [] }) => {
+      const wanted = parsed.args?.[0]
+      if (wanted) {
+        const page = Number(parsed.args?.[1]) || 1
+        const categoryId = catalog.resolveCategory(wanted)
+        if (categoryId) return sendCategory(ctx, categoryId, page)
+        // Bukan kategori? coba jalankan sebagai perintah plugin.
+        const direct = await runPluginOnTelegram(ctx, { name: String(wanted).toLowerCase().replace(/^\//, ''), args: parsed.args.slice(1) })
+        if (direct.handled) return direct
+        return ctx.send(`Kategori <b>${escapeHtml(wanted)}</b> tidak ada. Lihat <code>/allmenu</code>.`)
+      }
+
+      const cats = catalog.categories()
+      const totalPlugins = catalog.catalog().total
       const counts = { public: 0, privileged: 0 }
       for (const item of router.list()) counts[router.allowed(ctx, item.name) ? 'public' : 'privileged'] += 1
       return sendMenu(ctx, router, [
         '🌙 <b>MENU UTAMA</b>',
         '',
-        `Peran kamu: ${roleBadge(ctx.role)}`,
-        `Perintah tersedia: <b>${counts.public}</b>`,
+        `Peran : ${roleBadge(ctx.role)}`,
+        `Fitur platform : <b>${counts.public}</b> perintah`,
+        `Fitur WhatsApp : <b>${totalPlugins}</b> perintah dalam ${cats.length} kategori`,
         '',
-        'Pilih menu di bawah, atau ketik perintah langsung:',
-        '<code>/status /profile /jadibot /saham /rpg /tourl</code>',
-        can(ctx.role, 'server.control') ? '<code>/server</code> · <code>/admin</code>' : '',
-      ].filter(Boolean).join('\n'))
+        '<b>Kategori</b>',
+        ...cats.slice(0, 12).map(entry => `${entry.icon} ${entry.label} <i>(${entry.count})</i>`),
+        '',
+        'Tekan tombol di bawah, atau <code>/menu game</code>, <code>/menu stiker</code>, …',
+      ].join('\n'))
+    },
+  })
+
+  define('allmenu', {
+    description: 'Semua perintah, dikelompokkan per kategori',
+    handler: async (ctx) => {
+      const cats = catalog.categories()
+      if (!cats.length) return ctx.send('⚠️ Katalog plugin belum dimuat. Coba lagi sebentar lagi.')
+      const lines = ['📂 <b>SEMUA MENU</b>', '', `<i>${catalog.catalog().total} perintah dari plugin WhatsApp</i>`, '']
+      for (const entry of cats) lines.push(`${entry.icon} <b>${entry.label}</b> (${entry.count}) → <code>/menu ${entry.id}</code>`)
+      lines.push('', 'Cari cepat: <code>/cari kata</code> · Contoh: <code>/cari sticker</code>')
+      return ctx.send(lines.join('\n'))
+    },
+  })
+
+  define('cari', {
+    description: 'Cari perintah berdasarkan nama atau kegunaan',
+    handler: async (ctx, parsed) => {
+      const term = (parsed.args || []).join(' ').trim()
+      if (!term) return ctx.send('Format: <code>/cari sticker</code>')
+      const found = catalog.search(term, { limit: 20 })
+      if (!found.length) return ctx.send(`Tidak ada perintah yang cocok dengan <b>${escapeHtml(term)}</b>.`)
+      return ctx.send([
+        `🔍 <b>HASIL: ${escapeHtml(term)}</b>`,
+        `<i>${found.length} perintah</i>`, '',
+        ...found.map(item => catalog.formatItem(item)),
+        '', 'Jalankan dengan mengetik perintahnya (awalan <code>/</code>).',
+      ].join('\n'))
     },
   })
 
@@ -148,7 +219,10 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
         '',
         '<b>Umum</b>',
         '/start — sambutan',
-        '/menu — menu tombol',
+        '/menu — menu tombol (semua kategori)',
+        '/menu game | stiker | maker | fun | grup | owner | ai | alat — daftar perintah',
+        '/allmenu — semua kategori sekaligus',
+        '/cari <kata> — cari perintah',
         '/profile — identitas & tautan akun',
         '/status — status nyata layanan',
         '/link KODE — tautkan akun web ke Telegram',
@@ -159,7 +233,8 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
         '<b>Layanan</b>',
         '/jadibot — sesi WhatsApp milikmu',
         '/saham — pasar, portofolio, beli/jual',
-        '/rpg — profil, inventori, kerja, tebak angka, hadiah harian, peringkat',
+        '/rpg — hub RPG (profil, inventori, kerja, harian, tebak, peringkat)',
+        '/rpg <game> — main game RPG, contoh /rpg mancing, /rpg mining, /rpg dungeon',
         '',
         '<b>Pengelola</b>',
         '/server — status & kontrol server (allowlist)',
@@ -336,63 +411,117 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
 
   /* ─────────────── SAHAM ─────────────── */
   define('saham', {
-    description: 'Pasar saham & portofolio',
+    description: 'Pasar saham & portofolio (data UMI TRADE yang sama dengan website)',
     permission: 'stock.read',
     handler: async (ctx, parsed) => {
-      const sub = String(parsed.args[0] || 'pasar').toLowerCase()
+      const args = parsed.args || []
+      const sub = String(args[0] || 'pasar').toLowerCase()
       // Nomor trading: WhatsApp tertaut bila ada, kalau tidak nomor platform
       // Telegram (auto-register lewat /api/trading/bot/register di backend).
       const identity = rpg.rpgJidFor(ctx.userId, ctx.platformUserId)
       const number = String(identity.jid || '').replace(/\D/g, '')
+      const nav = (label, view) => ({ text: label, callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view } })}` })
+      const navRow = [
+        nav('💼 Portofolio', 'cmd:saham:me'),
+        nav('🏆 Top trader', 'cmd:saham:top'),
+      ]
 
+      /* Pasar: daftar harga nyata dari API */
       if (sub === 'pasar' || sub === 'market') {
-        const data = await stock.market()
-        const lines = ['💹 <b>PASAR UMI TRADE</b>', '', `Sumber: <code>${escapeHtml(data.source)}</code>`, data.session ? `Sesi: ${data.session.open ? '🟢 buka' : '🔴 tutup'}${data.session.timezone ? ` · ${data.session.timezone}` : ''}` : null, '']
-        if (!data.stocks.length) lines.push('<i>Belum ada emiten dari API.</i>')
-        for (const item of data.stocks.slice(0, 15)) {
-          const arrow = item.change > 0 ? '🟢▲' : item.change < 0 ? '🔴▼' : '⚪️'
+        let data
+        try {
+          data = await stock.market()
+        } catch (error) {
+          return ctx.send(`🔴 <b>Pasar saham tidak bisa diambil</b>\n\n<code>${escapeHtml(String(error.message || error).slice(0, 200))}</code>\n\n<i>Data tidak dikarang. Coba lagi nanti.</i>`, { reply_markup: inline([navRow]) })
+        }
+        if (!data.stocks.length) {
+          return ctx.send('🟡 API saham membalas, tetapi daftar emiten kosong. Coba lagi nanti.', { reply_markup: inline([navRow]) })
+        }
+        const movers = [...data.stocks].sort((a, b) => Math.abs(b.changePercent) - Math.abs(a.changePercent)).slice(0, 12)
+        const lines = [
+          '💹 <b>PASAR UMI TRADE</b>',
+          data.session ? `Sesi: ${data.session.open ? '🟢 buka' : '🔴 tutup'} · ${escapeHtml(data.session.label || '')} (${escapeHtml(data.session.timezone || '-')})` : null,
+          `<i>${data.stocks.length} emiten · diambil ${new Date(data.fetchedAt).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta' })} WIB</i>`,
+          '',
+        ].filter(Boolean)
+        for (const item of movers) {
+          const arrow = item.changePercent > 0 ? '🟢▲' : item.changePercent < 0 ? '🔴▼' : '⚪️'
           lines.push(`${arrow} <b>${escapeHtml(item.symbol)}</b> · ${as(item.price)} · ${item.changePercent >= 0 ? '+' : ''}${item.changePercent.toFixed(2)}%`)
         }
-        lines.push('', `Diambil ${new Date(data.fetchedAt).toLocaleTimeString('id-ID')}${data.dataAt ? ` · data ${new Date(data.dataAt).toLocaleTimeString('id-ID')}` : ''}`)
-        return ctx.send(lines.filter(line => line !== null).join('\n'))
+        lines.push('', 'Detail satu emiten: <code>/saham BBCA</code>')
+        lines.push('Beli/jual: <code>/saham beli BBCA 1</code>')
+        return ctx.send(lines.join('\n'), { reply_markup: inline([navRow]) })
       }
 
-      if (sub === 'me' || sub === 'portofolio') {
-        if (!number) return ctx.send('🔴 Identitas trading tidak tersedia untuk akun ini. Coba kirim ulang dari akun Telegram kamu.')
-        const me = await stock.portfolio(number)
-        const summary = me.summary || me
+      /* Detail satu emiten */
+      if (/^[a-z]{2,6}$/i.test(sub) && !['me', 'top', 'beli', 'jual', 'help', 'bantuan', 'sahamku'].includes(sub)) {
+        const data = await stock.market()
+        const item = data.stocks.find(row => row.symbol === sub.toUpperCase())
+        if (!item) return ctx.send(`Emiten <b>${escapeHtml(sub.toUpperCase())}</b> tidak ada di daftar.`, { reply_markup: inline([navRow]) })
+        return ctx.send([
+          `💹 <b>${escapeHtml(item.symbol)}</b> — ${escapeHtml(item.name || '-')}`,
+          item.sector ? `<i>${escapeHtml(item.sector)}</i>` : '',
+          '',
+          `Harga    : <b>${as(item.price)}</b>`,
+          `Perubahan: ${item.changePercent >= 0 ? '🟢 +' : '🔴 '}${item.changePercent.toFixed(2)}% (${as(item.change)})`,
+          item.high !== null ? `Tertinggi: ${as(item.high)}` : '',
+          item.low !== null ? `Terendah : ${as(item.low)}` : '',
+          `Volume   : ${rupiah(item.volume)}`,
+          '',
+          `<code>/saham beli ${item.symbol} 1</code> · <code>/saham jual ${item.symbol} 1</code>`,
+        ].filter(Boolean).join('\n'), { reply_markup: inline([navRow]) })
+      }
+
+      if (sub === 'me' || sub === 'portofolio' || sub === 'sahamku') {
+        if (!number) return ctx.send('🔴 Identitas trading tidak tersedia untuk akun ini.')
+        let me
+        try {
+          me = await stock.portfolio(number)
+        } catch (error) {
+          return ctx.send(`🔴 Portofolio tidak bisa dibuka.\n<code>${escapeHtml(String(error.message || error).slice(0, 200))}</code>`)
+        }
+        const summary = me.summary || me.user || me
+        const positions = Array.isArray(summary.positions) ? summary.positions : (Array.isArray(me.positions) ? me.positions : [])
         const lines = [
           '💼 <b>PORTOFOLIO</b>', '',
-          `Kas      : ${as(summary.balance)}`,
-          `Saham    : ${as(summary.equity)}`,
-          `Total    : ${as(summary.netWorth)}`,
-          `Peringkat: #${summary.rank || '-'} / ${summary.total || '-'}`,
-        ]
-        const positions = Array.isArray(summary.positions) ? summary.positions : []
+          `Kas      : ${as(summary.balance ?? summary.cash)}`,
+          `Saham    : ${as(summary.equity ?? summary.stockValue)}`,
+          `Total    : <b>${as(summary.netWorth ?? summary.total)}</b>`,
+          `P/L      : ${Number(summary.pl ?? summary.profit ?? 0) >= 0 ? '🟢 +' : '🔴 '}${as(summary.pl ?? summary.profit ?? 0)}`,
+          summary.rank ? `Peringkat: #${summary.rank}${summary.total ? ` / ${summary.total}` : ''}` : '',
+        ].filter(Boolean)
         if (positions.length) {
           lines.push('', '<b>Posisi</b>')
-          for (const pos of positions.slice(0, 10)) lines.push(`• ${escapeHtml(pos.symbol)} ${Number(pos.qty).toFixed(2)} lot @ ${as(pos.avgPrice)} · ${as(pos.value)}`)
-        }
-        return ctx.send(lines.join('\n'))
+          for (const pos of positions.slice(0, 10)) {
+            const qty = Number(pos.lots ?? pos.qty ?? pos.amount ?? 0)
+            lines.push(`• <b>${escapeHtml(String(pos.symbol || pos.sym || '').toUpperCase())}</b> ${rupiah(qty)} lot @ ${as(pos.avgPrice ?? pos.avg ?? 0)} · ${as(pos.value ?? pos.marketValue ?? 0)}`)
+          }
+        } else lines.push('', '<i>Belum punya saham. Mulai dengan /saham beli KODE LOT.</i>')
+        return ctx.send(lines.join('\n'), { reply_markup: inline([[nav('💹 Pasar', 'cmd:saham:pasar'), nav('🏆 Top trader', 'cmd:saham:top')]]) })
       }
 
       if (sub === 'top' || sub === 'peringkat') {
         const rows = await stock.leaderboard(10)
-        const lines = ['🏆 <b>TRADER TERATAS</b>', '']
-        rows.forEach((row, index) => lines.push(`${index + 1}. ${escapeHtml(row.username || row.name || '-')} · ${as(row.netWorth ?? row.balance ?? 0)}`))
-        return ctx.send(lines.join('\n'))
+        const lines = ['🏆 <b>TRADER TERATAS</b>', '', '<i>Sumber: API UMI TRADE (sama dengan website)</i>', '']
+        if (!rows.length) lines.push('<i>Belum ada data trader.</i>')
+        rows.forEach((row, index) => lines.push(`${row.rank || index + 1}. ${escapeHtml(String(row.username))} · ${as(row.netWorth)}${row.pl ? ` · ${row.pl >= 0 ? '+' : ''}${as(row.pl)}` : ''}`))
+        return ctx.send(lines.join('\n'), { reply_markup: inline([navRow]) })
       }
 
-      if (sub === 'beli' || sub === 'jual') return tradePrompt(ctx, { side: sub === 'beli' ? 'buy' : 'sell', args: parsed.args.slice(1), number })
+      if (sub === 'beli' || sub === 'jual' || sub === 'buy' || sub === 'sell') {
+        const side = ['beli', 'buy'].includes(sub) ? 'buy' : 'sell'
+        return tradePrompt(ctx, { side, args: args.slice(1), number })
+      }
 
       return ctx.send([
-        '<b>Perintah saham</b>',
-        '/saham — daftar harga pasar',
-        '/saham me — portofolio akun tertaut',
+        '💹 <b>SAHAM</b>', '',
+        '/saham — harga pasar',
+        '/saham BBCA — detail emiten',
+        '/saham me — portofolio',
         '/saham top — peringkat trader',
         '/saham beli &lt;KODE&gt; &lt;lot&gt;',
         '/saham jual &lt;KODE&gt; &lt;lot&gt;',
-      ].join('\n'))
+      ].join('\n'), { reply_markup: inline([navRow]) })
     },
   })
 
@@ -421,7 +550,8 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
     description: 'Profil, inventori, game & hadiah harian',
     permission: 'rpg.read',
     handler: async (ctx, parsed) => {
-      const sub = String(parsed.args[0] || 'profil').toLowerCase()
+      const rawSub = String(parsed.args[0] || '').toLowerCase()
+      const sub = rawSub || 'hub'
       const identity = rpg.rpgJidFor(ctx.userId, ctx.platformUserId)
       const jid = identity.jid
       if (!jid) return ctx.send('🎮 Identitas RPG tidak tersedia. Coba lagi dari akun Telegram ini.')
@@ -429,6 +559,60 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
       const identityNote = identity.source === 'whatsapp'
         ? '<i>Terhubung ke nomor WhatsApp kamu — progres sama dengan bot WhatsApp.</i>'
         : `<i>Profil Telegram (nomor platform <code>${jid.replace('@s.whatsapp.net', '')}</code>). Tautkan WhatsApp di /panel untuk menyatukan progres.</i>`
+
+      /* HUB: profil ringkas + tombol + daftar game RPG dari plugin WhatsApp */
+      if (sub === 'hub') {
+        const profile = rpg.profile(jid)
+        const rpgItems = catalog.itemsOf('rpg')
+        const picked = ['kerja', 'mancing', 'mining', 'berburu', 'dungeon', 'berkebon', 'nambalban', 'ngojek', 'ngamen', 'curi', 'maling', 'berdagang']
+        const playable = picked
+          .filter(name => catalog.findItem(name))
+          .filter((name, index, list) => list.indexOf(name) === index)
+          .slice(0, 10)
+        return ctx.send([
+          '🐉 <b>RPG · HUB</b>',
+          '',
+          profile.hasProfile
+            ? `Level <b>${Number(profile.level) || 1}</b> · ${rupiah(profile.exp)} EXP · <b>${rupiah(profile.koin)}</b> koin · ${Number(profile.inventoryCount) || 0} jenis item`
+            : '<i>Belum ada profil — otomatis dibuat saat kamu mulai bermain.</i>',
+          '',
+          '<b>Perintah inti</b>',
+          '/rpg profil · /rpg inv · /rpg top',
+          '/rpg kerja — cari koin (30 menit)',
+          '/rpg harian — hadiah harian',
+          '/rpg tebak — mini game angka',
+          '',
+          '<b>Game RPG (pakai engine yang sama)</b>',
+          playable.length
+            ? playable.map(name => `/${name}`).join(' · ')
+            : '<i>Plugin RPG belum termuat di proses ini.</i>',
+          `Total perintah RPG: <b>${rpgItems.length}</b> → <code>/menu rpg</code>`,
+          '',
+          '<i>Ketik /rpg &lt;nama game&gt;, contoh: /rpg mancing</i>',
+          identityNote,
+        ].join('\n'), {
+          reply_markup: inline([
+            [
+              { text: '👤 Profil', callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view: 'cmd:rpg:profil' } })}` },
+              { text: '🎒 Inventori', callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view: 'cmd:rpg:inv' } })}` },
+            ],
+            [
+              { text: '🎁 Harian', callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view: 'cmd:rpg:harian' } })}` },
+              { text: '🏆 Peringkat', callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view: 'cmd:rpg:top' } })}` },
+            ],
+            [
+              { text: '🎮 Semua game RPG', callback_data: `cb:${createCallback({ userId: ctx.userId, platform: 'telegram', platformUserId: ctx.platformUserId, action: 'menu.nav', payload: { view: 'cat:rpg' } })}` },
+            ],
+          ]),
+        })
+      }
+
+      /* /rpg <nama plugin> → jalankan plugin RPG WhatsApp (data sama) */
+      if (!['profil', 'profile', 'inv', 'inventory', 'top', 'peringkat', 'daily', 'harian', 'kerja', 'work', 'tebak', 'guess', 'mulai', 'daftar', 'start'].includes(sub)) {
+        const direct = await runPluginOnTelegram(ctx, { name: rawSub, args: (parsed.args || []).slice(1) })
+        if (direct.handled) return direct
+        return ctx.send(`Game <b>${escapeHtml(rawSub)}</b> tidak ditemukan. Lihat <code>/menu rpg</code> untuk daftar lengkap.`)
+      }
 
       /* mulai / daftar — buat profil di engine yang sama */
       if (sub === 'mulai' || sub === 'daftar' || sub === 'start') {
@@ -620,36 +804,23 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
 
   /* ─────────────── ADMIN ─────────────── */
   define('fitur', {
-    description: 'Daftar fitur bot (paritas WhatsApp)',
+    description: 'Katalog fitur bot: kategori + daftar perintah WhatsApp',
     handler: async (ctx, parsed) => {
-      const report = featureReport()
-      if (!report.plugins) {
+      const cats = catalog.categories()
+      if (!cats.length) {
         return ctx.send('⚠️ Katalog plugin WhatsApp belum dimuat di proses ini.\nCoba lagi setelah bot selesai start, atau cek log server.')
       }
-      const tag = String(parsed.args[0] || '').toLowerCase()
-      const tags = Object.entries(report.tags)
-      if (tag) {
-        const names = report.names.filter(name => {
-          const entry = globalThis.plugins && Object.values(globalThis.plugins).find(plugin => {
-            const pattern = plugin?.command
-            if (pattern instanceof RegExp) return pattern.test(name)
-            return Array.isArray(pattern) ? pattern.map(String).includes(name) : pattern === name
-          })
-          return Array.isArray(entry?.tags) && entry.tags.map(String).includes(tag)
-        })
-        return ctx.send([`📦 <b>FITUR · ${escapeHtml(tag)}</b> (${names.length})`, '', names.length ? names.slice(0, 120).map(name => `/${name}`).join(' · ') : '<i>Tidak ada.</i>'].join('\n'))
-      }
+      const tag = catalog.resolveCategory((parsed.args || [])[0])
+      if (tag) return sendCategory(ctx, tag, Number(parsed.args?.[1]) || 1)
+      const built = catalog.catalog()
       return ctx.send([
         '📦 <b>FITUR BOT</b>', '',
-        `Plugin WhatsApp aktif : <b>${report.plugins}</b>`,
-        `Perintah bisa dipakai: <b>${report.commands}</b>`,
+        `Perintah plugin WhatsApp aktif : <b>${built.total}</b>`,
+        `Kategori                       : <b>${cats.length}</b>`,
         '',
-        'Semua perintah plugin WhatsApp bisa dikirim di sini dengan awalan <code>/</code>,',
-        'contoh: <code>/ai halo</code> · <code>/sticker</code> (kirim foto) · <code>/tebakangka</code>.',
+        ...cats.map(entry => `${entry.icon} <b>${entry.label}</b> — ${entry.count} · <code>/menu ${entry.id}</code>`),
         '',
-        '<b>Kategori</b>',
-        ...tags.slice(0, 14).map(([name, count]) => `• ${escapeHtml(name)} — ${count} plugin`),
-        '', 'Detail: <code>/fitur &lt;kategori&gt;</code>',
+        'Cari: <code>/cari sticker</code> · Semua: <code>/allmenu</code>',
       ].join('\n'))
     },
   })
@@ -853,9 +1024,29 @@ export function registerCommands(router, { publicBaseUrl = '', logger = console 
 
   /* ─────────────── Callback actions ─────────────── */
   router.registerCallback('menu.nav', async (ctx, payload) => {
-    const map = { status: 'status', profile: 'profile', jadibot: 'jadibot', saham: 'saham', rpg: 'rpg', tourl: 'tourl', server: 'server', panel: 'panel', admin: 'admin', reseller: 'reseller', help: 'help' }
-    const name = map[payload?.view]
-    if (!name || !router.allowed(ctx, name)) return ctx.send('Menu tidak tersedia untuk peran kamu.')
+    const view = String(payload?.view || '')
+    // Halaman kategori plugin: `cat:<kategori>:<halaman>`.
+    const cat = view.match(/^cat:([a-z0-9_-]+)(?::(\d+))?$/)
+    if (cat) return sendCategory(ctx, cat[1], Number(cat[2]) || 1)
+
+    // Aksi perintah dengan argumen: `cmd:rpg:kerja`, `cmd:saham:beli`.
+    const cmd = view.match(/^cmd:([a-z0-9_-]+)(?::(.+))?$/)
+    if (cmd) {
+      const command = router.commands.get(cmd[1])
+      if (!command) return ctx.send('Perintah tidak tersedia.')
+      if (command.permission && !router.allowed(ctx, cmd[1])) return ctx.send('Menu ini tidak tersedia untuk peran kamu.')
+      const args = (cmd[2] || '').split(':').filter(Boolean)
+      return command.handler(ctx, { name: cmd[1], args, text: args.join(' ') }, null)
+    }
+
+    const map = {
+      status: 'status', profile: 'profile', jadibot: 'jadibot', saham: 'saham', rpg: 'rpg',
+      tourl: 'tourl', server: 'server', panel: 'panel', admin: 'admin', reseller: 'reseller',
+      help: 'help', allmenu: 'allmenu', menu: 'menu', fitur: 'fitur',
+    }
+    const name = map[view]
+    if (!name) return ctx.send('Menu tidak tersedia.')
+    if (!router.allowed(ctx, name)) return ctx.send('Menu ini tidak tersedia untuk peran kamu.')
     const command = router.commands.get(name)
     return command.handler(ctx, { name, args: [], text: '' }, null)
   })

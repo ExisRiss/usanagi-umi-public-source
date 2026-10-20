@@ -115,6 +115,17 @@ function requirePerm(actorUserId, permission) {
 
 const PUBLIC_BASE = () => process.env.PLATFORM_PUBLIC_BASE_URL || ''
 
+function catalogHealth() {
+  try {
+    // Impor dinamis: api.js juga dipakai tes yang tidak memuat plugin.
+    const catalog = globalThis.__umiCatalog
+    if (!catalog) return { plugins: 0, categories: 0 }
+    return { plugins: catalog.catalog().total, categories: catalog.categories().length }
+  } catch {
+    return { plugins: 0, categories: 0 }
+  }
+}
+
 export async function handlePlatformApi(req, res, pathname, search, env = process.env) {
   const route = pathname.replace(/^\/api\/platform-system/, '') || '/'
   const method = req.method || 'GET'
@@ -126,6 +137,9 @@ export async function handlePlatformApi(req, res, pathname, search, env = proces
       schema: schemaInfo().version,
       secretKey: hasSecretKey(env),
       telegramTokenConfigured: Boolean(env.TELEGRAM_BOT_TOKEN),
+      // Jumlah plugin WhatsApp yang benar-benar termuat di proses bot. Dipakai
+      // untuk memastikan menu Telegram membaca katalog yang sama.
+      catalog: catalogHealth(),
       time: new Date().toISOString(),
     })
   }

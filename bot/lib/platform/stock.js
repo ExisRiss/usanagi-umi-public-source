@@ -79,7 +79,13 @@ export async function market() {
       call('/api/trading/session').catch(() => null),
     ])
     setHealth('stock-api', 'ok', `latency ${Date.now() - started}ms`)
-    const stocks = Array.isArray(marketData?.stocks) ? marketData.stocks : (Array.isArray(marketData) ? marketData : [])
+    // API UMI TRADE membalas `{ ok, symbols: [{ sym, name, price, prevClose, change, changePct, high, low, volume }] }`.
+    // Bentuk lama (`{ stocks: [...] }`) tetap diterima supaya tidak ada
+    // ketergantungan pada satu versi API saja.
+    const raw = Array.isArray(marketData?.stocks) ? marketData.stocks
+      : Array.isArray(marketData?.symbols) ? marketData.symbols
+      : Array.isArray(marketData) ? marketData
+      : []
     return {
       ok: true,
       source: stockConfig().baseUrl,
@@ -92,14 +98,23 @@ export async function market() {
         timezone: session.timezone || null,
         nextOpen: session.nextOpen || null,
       } : null,
-      stocks: stocks.slice(0, 60).map(item => ({
-        symbol: String(item.symbol || item.code || item.ticker || ''),
-        name: item.name || null,
-        price: Number(item.price ?? item.last ?? 0),
-        change: Number(item.change ?? 0),
-        changePercent: Number(item.changePercent ?? item.changePct ?? 0),
-        volume: Number(item.volume ?? 0),
-      })).filter(item => item.symbol),
+      stocks: raw.map(item => {
+        const price = Number(item.price ?? item.last ?? 0)
+        const prev = Number(item.prevClose ?? item.previousClose ?? 0)
+        const change = Number(item.change ?? (prev ? price - prev : 0))
+        const changePercent = Number(item.changePct ?? item.changePercent ?? (prev ? (change / prev) * 100 : 0))
+        return {
+          symbol: String(item.sym || item.symbol || item.code || item.ticker || '').toUpperCase(),
+          name: item.name || null,
+          sector: item.sector || null,
+          price,
+          change,
+          changePercent,
+          high: item.high === undefined ? null : Number(item.high),
+          low: item.low === undefined ? null : Number(item.low),
+          volume: Number(item.volume ?? 0),
+        }
+      }).filter(item => item.symbol).slice(0, 60),
     }
   } catch (error) {
     setHealth('stock-api', 'error', error.message)
@@ -109,8 +124,19 @@ export async function market() {
 
 export async function leaderboard(limit = 10) {
   const data = await call('/api/trading/leaderboard')
-  const rows = Array.isArray(data) ? data : (data?.leaderboard || data?.traders || [])
-  return rows.slice(0, Math.min(Math.max(Number(limit) || 10, 1), 25))
+  // Bentuk API: `{ ok, total, richest: [{ rank, username, netWorth, balance, equity, pl, positions }] }`.
+  const rows = Array.isArray(data) ? data
+    : (data?.richest || data?.leaderboard || data?.traders || [])
+  return rows.slice(0, Math.min(Math.max(Number(limit) || 10, 1), 25)).map(row => ({
+    rank: Number(row.rank) || null,
+    username: row.username || row.name || '-',
+    source: row.source || null,
+    netWorth: Number(row.netWorth ?? row.net_worth ?? 0),
+    balance: Number(row.balance ?? 0),
+    equity: Number(row.equity ?? 0),
+    pl: Number(row.pl ?? row.profit ?? 0),
+    positions: Number(row.positions ?? row.positionCount ?? 0),
+  }))
 }
 
 /** Sesi trading untuk nomor WA tertaut (alur bot resmi). */

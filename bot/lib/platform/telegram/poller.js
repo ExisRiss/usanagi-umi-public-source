@@ -19,7 +19,7 @@ import { CommandRouter } from './router.js'
 import { registerCommands, handleMediaMessage } from './commands.js'
 import { recordChat } from '../chats.js'
 import { sendBanner } from './banner.js'
-import { runPluginOnTelegram, featureReport } from './plugin-bridge.js'
+import { runPluginOnTelegram } from './plugin-bridge.js'
 
 const MAX_BACKOFF_MS = 60000
 const BASE_BACKOFF_MS = 1000
@@ -65,7 +65,6 @@ export class TelegramAdapter {
       this.router.onFreeText((ctx, message) => handleMediaMessage(ctx, message, { baseUrl: this.baseUrl }))
       // Perintah di luar router platform dijalankan plugin WhatsApp yang sama.
       this.router.onUnknownCommand((ctx, parsed) => runPluginOnTelegram(ctx, parsed))
-      globalThis.__umiTelegramFeatureReport = featureReport
     }
     globalThis.__umiTelegramBots = bots
     return this

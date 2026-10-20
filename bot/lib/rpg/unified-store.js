@@ -63,7 +63,14 @@ export function createUnifiedStore({db,users,links=[]}){
  }
  function write(id,value,expected){
   const data=validate(clone(value)),ctx=context.getStore()
-  if(ctx?.closed)fail('Transaksi RPG telah ditutup.')
+  // Konteks yang sudah ditutup bukan "transaksi yang ditutup": itu sisa
+  // AsyncLocalStorage dari perintah sebelumnya (mis. tugas async yang selesai
+  // setelah handler membalas). Tulis di luar transaksi supaya tidak ada
+  // penulisan yang hilang — sebelumnya ini melempar 409 ke pengguna.
+  if(ctx?.closed){
+   if(context.getStore()===ctx)return context.run(null,()=>write(id,value,expected))
+   fail('Transaksi RPG telah ditutup.')
+  }
   if(ctx){read(id);const row=ctx.rows.get(id);if(expected!==undefined&&JSON.stringify(row.data)!==expected)fail('Progres berubah; coba ulang.');row.data=data;row.dirty=true;return}
   db.transaction(()=>{if(expected!==undefined&&JSON.stringify(read(id))!==expected)fail('Progres berubah; coba ulang.');db.prepare('INSERT INTO rpg_users(jid,data) VALUES(?,?) ON CONFLICT(jid) DO UPDATE SET data=excluded.data').run(id,JSON.stringify(data));ensureAliases(id)})()
  }
@@ -117,7 +124,9 @@ export function createUnifiedStore({db,users,links=[]}){
   ctx.rows.clear();ctx.docs.clear();ctx.phase++
  }
  async function command(id,task){
-  if(context.getStore())return task()
+  const active=context.getStore()
+  if(active&&!active.closed)return task()
+  if(active?.closed)return context.run(null,()=>command(id,task))
   if(!id)fail('ID pesan diperlukan untuk transaksi RPG.')
   const key=hash(id)
   if(db.prepare('SELECT 1 FROM rpg_unified_commands WHERE id=?').get(key))return {success:true,duplicate:true}

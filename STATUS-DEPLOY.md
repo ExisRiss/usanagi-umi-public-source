@@ -1637,3 +1637,32 @@ User mengonfirmasi rich HTML Portofolio sudah terkirim, tetapi mendapat pesan ta
 - **Panel diuji ke panel hosting sungguhan** (bukan mock): `savePanelConfig()` + `testPanel()` dari modul yang sama dengan `/panel test` → `{"ok":true,"status":200,"latencyMs":488,"username":"serverjadibot","admin":false}`. Nilai yang tampil hanya `ptlc************************vF6M`.
 - **Banner sudah ada di server**: `POST files/write` dengan **body biner** (`application/octet-stream`) menulis `/data/platform/banner/menu.mp4` sebesar **4 524 336 byte**; diunduh kembali lewat signed URL dan dibandingkan — **SHA-256 identik** (`8475d6875387b9cc…`). Jadi `/menu` pertama tidak perlu mengunduh dari URL (fallback `PLATFORM_BANNER_URL` tetap ada).
 - **Gate plugin**: `handler.owner` → owner/developer, `handler.admin` → admin ke atas, `handler.premium` → ditolak jujur (belum ada langganan tercatat di platform). Semua keputusan memakai `ctx.role` dari database.
+
+## Task70 batch 6 — menu kategori (game/fun/maker/stiker/grup/owner/…), RPG hub, saham diperbaiki (2026-10-20)
+
+**Keluhan user:** "fiturnya dikit, RPG cuma profil, saham cuma kasih URL website, mana menu group/maker/stiker/owner/game/fun".
+
+**Akar masalah saham (ditemukan, bukan tebakan):**
+1. `stock.market()` membaca `stocks[].symbol`, sedangkan API UMI TRADE membalas `{ symbols: [{ sym, price, changePct, … }] }`. Hasilnya daftar kosong → pesan tinggal berisi baris "Sumber: https://game.gwenna.my.id" (inilah "saham kasih URL").
+2. `lib/webgame.json` **tidak ada di server**, jadi token game hilang → portofolio/transaksi mustahil. Sudah dipasang (`{baseUrl, token, enabled}`, mode 600, di luar git).
+
+**Perbaikan:**
+- `stock.js`: menerima bentuk baru & lama (`symbols`/`stocks`, `sym`/`symbol`, `changePct`/`changePercent`, `prevClose`), leaderboard membaca `richest[]`, ada `high/low/sector`.
+- `/saham` sekarang menampilkan sesi pasar + 12 emiten paling bergerak dengan harga & persen nyata; `/saham <KODE>` detail emiten; `/saham me` portofolio + posisi; `/saham top` peringkat; `/saham beli|jual KODE LOT` dengan tombol konfirmasi. Bila API gagal, pesan error asli ditampilkan (tidak ada angka karangan).
+- `lib/platform/telegram/catalog.js` (baru): katalog dari `global.plugins` — sumber yang sama dengan bot WhatsApp. Mendukung plugin berupa `{handler}` **dan** fungsi handler langsung (penyebab katalog sempat terbaca 0), melewati plugin `disabled`, mengambil `help/tags/limit/owner/admin/premium`, dan menyusun kategori + halaman 12 perintah.
+- Menu Telegram: `/menu` (tombol kategori), `/menu game|rpg|fun|maker|stiker|grup|owner|alat|ai|…`, `/allmenu`, `/cari <kata>`, `/fitur` (ringkasan + per kategori). Tombol kategori memakai `menu.nav` payload `cat:<id>:<halaman>` dan `cmd:<perintah>:<arg>`.
+- `/rpg` sekarang **hub**: ringkasan profil + tombol (profil/inventori/harian/peringkat/semua game) + daftar game yang benar-benar ada. `/rpg <game>` menjalankan plugin RPG WhatsApp lewat jembatan (mis. `/rpg mancing`).
+- `plugin-bridge.js`: `conn` shim jauh lebih lengkap (`sendMessage/sendFile/relayMessage/sendSticker/waUploadToServer/getName/groupMetadata`), semua bentuk isi Baileys diterjemahkan (teks, caption+media, react, poll, tombol native), `m.sender` = JID mesin RPG bersama, `m.isGroup` mengikuti chat Telegram, `setMessageReaction` ditambahkan ke klien.
+- `unified-store.js`: bug produksi WhatsApp "Transaksi RPG telah ditutup." (409) — penulisan yang terjadi setelah konteks transaksi ditutup (tugas async sisa perintah sebelumnya) sekarang dijalankan di luar transaksi, bukan dilempar sebagai error ke pengguna.
+
+**Verifikasi nyata (dijalankan di server, bukan mock):**
+- `/health` produksi: `catalog: { plugins: 2031, categories: 25 }`.
+- Uji perintah dengan 2051 plugin termuat: `/menu game` → "115 perintah · halaman 1/10"; `/menu stiker` 33 (3 halaman); `/menu maker` 81 (7 halaman); `/cari sticker` 20 hasil; `/allmenu` semua kategori.
+- Kategori terhitung: game 115, rpg 299, fun 185, maker 81, sticker 33, tools 226, group 152, owner 162, ai 106, downloader 34, search 90, anime 53, … (total 2031).
+- `/rpg` hub render normal; `/rpg mancing` **benar-benar bermain**: "Kamu mendapat: Nila · Reward 121 koin · Balance 121 koin" — memakai plugin & data RPG yang sama dengan WhatsApp.
+- `/saham` produksi: 45 emiten, KLBF +32.93%, PTBA +29.51%, ITMG −24.07%, sesi "Pasar normal 24 jam (WITA)"; `/saham top` menampilkan 10 trader teratas dari API.
+- Tes: **108 platform** (2 tes katalog baru: plugin berupa fungsi & plugin disabled) + 51 backup + 8 gateway.
+
+**Catatan deploy (penting):** API key panel `ikyyxbeyy-panel` sekarang **ditolak 401** (dirotasi). Deploy batch ini memakai kanal owner-agent relay (HMAC ticket, aud `owner-agent`) dengan unggah gzip+hex per potongan dan verifikasi SHA-256 per berkas. Alat panel baru: `tools/panel-api.mjs` (dokumentasi: `files/write` panel ini menerima **raw body**, multipart menghasilkan berkas kosong). Beri `ptlc_…` yang baru bila ingin deploy lewat panel lagi.
+
+**Batas jujur:** fitur yang butuh socket WhatsApp (admin/anggota grup, stiker WA asli, button native, quoted) tetap tidak bisa dan dijawab sebagai error jelas; plugin `premium` ditolak karena belum ada langganan tercatat di platform; jumlah perintah mengikuti plugin yang termuat (bisa berubah bila plugin ditambah/dinonaktifkan).

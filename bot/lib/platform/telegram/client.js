@@ -91,6 +91,15 @@ export class TelegramClient {
   deleteMessage(chatId, messageId) { return this.call('deleteMessage', { chat_id: chatId, message_id: messageId }) }
   answerCallbackQuery(id, options = {}) { return this.call('answerCallbackQuery', { callback_query_id: id, ...options }) }
   sendChatAction(chatId, action = 'typing') { return this.call('sendChatAction', { chat_id: chatId, action }) }
+  /** Reaksi emoji (dipakai plugin WA yang memanggil `m.react`). */
+  setMessageReaction(chatId, messageId, emoji) {
+    return this.call('setMessageReaction', {
+      chat_id: chatId,
+      message_id: messageId,
+      reaction: [{ type: 'emoji', emoji: String(emoji).slice(0, 2) }],
+      is_big: false,
+    })
+  }
   getFile(fileId) { return this.call('getFile', { file_id: fileId }) }
   setMyCommands(commands) { return this.call('setMyCommands', { commands }) }
 
