@@ -68,6 +68,10 @@ const excludes = [
   `--exclude=./${repoName}/website/.vercel`,
   '--exclude=./backup-umi',
   '--exclude=./node_modules',
+  // Cache instalasi (npm/npx) bukan isi workspace; bisa puluhan MB.
+  '--exclude=./.npm',
+  '--exclude=./.cache',
+  `--exclude=./${repoName}/bot/data`,
 ]
 if (!withSecrets) excludes.push('--exclude=./.secrets')
 
