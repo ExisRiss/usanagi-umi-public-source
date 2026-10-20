@@ -373,6 +373,19 @@ export function persistGeminiRuntimeConfig({ apiKey, model } = {}) {
   return { configured: true, model: chosen }
 }
 
+/** Hapus kunci Gemini dari `.env.gemini` (model & saklar tetap tersimpan). */
+export function clearGeminiRuntimeConfig() {
+  const current = getGeminiSettings()
+  const model = /^[A-Za-z0-9._-]{1,120}$/.test(String(current.model || '')) ? current.model : DEFAULT_GEMINI_MODEL
+  const file = envFile()
+  const temp = `${file}.tmp`
+  fs.writeFileSync(temp, `GEMINI_API_KEY=\nGEMINI_MODEL=${model}\nUMI_AUTO_AI_ENABLED=${current.enabled}\n`, { mode: 0o600 })
+  fs.renameSync(temp, file)
+  try { fs.chmodSync(file, 0o600) } catch {}
+  resetGeminiConfigCache()
+  return { configured: false, model, enabled: current.enabled }
+}
+
 export default {
   DEFAULT_GEMINI_MODEL,
   isValidGeminiKey,
@@ -382,4 +395,5 @@ export default {
   geminiEnvFile,
   chatGemini,
   persistGeminiRuntimeConfig,
+  clearGeminiRuntimeConfig,
 }

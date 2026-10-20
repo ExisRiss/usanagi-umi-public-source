@@ -197,3 +197,16 @@ export function persistGroqRuntimeConfig({apiKey,model}) {
   fs.renameSync(temp,file);try{fs.chmodSync(file,0o600)}catch{}
   resetGroqConfigCache()
 }
+
+/** Hapus kunci Groq dari `.env.groq` (model & saklar tetap tersimpan). */
+export function clearGroqRuntimeConfig() {
+  const current = getGroqSettings()
+  const model = /^[A-Za-z0-9._:\/-]{1,160}$/.test(String(current.model || '')) ? current.model : DEFAULT_GROQ_MODEL
+  const file = path.join(process.cwd(), '.env.groq')
+  const temp = `${file}.tmp`
+  fs.writeFileSync(temp, `GROQ_API_KEY=\nGROQ_MODEL=${model}\nUMI_AUTO_AI_ENABLED=${current.enabled}\n`, { mode: 0o600 })
+  fs.renameSync(temp, file)
+  try { fs.chmodSync(file, 0o600) } catch {}
+  resetGroqConfigCache()
+  return { configured: false, model, enabled: current.enabled }
+}

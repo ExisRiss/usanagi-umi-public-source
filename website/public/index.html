@@ -9,7 +9,7 @@
   <title>Usanagi Umi · Jadibot Studio</title>
   <link rel="icon" href="/assets/umi-logo.jpg">
   <link rel="preload" href="/assets/fonts/space-mono-regular.ttf" as="font" type="font/ttf" crossorigin>
-  <link rel="stylesheet" href="/assets/app.css?v=20261016-pages4">
+  <link rel="stylesheet" href="/assets/app.css?v=20261020-flow1">
 
   <link rel="stylesheet" href="/assets/layout-compat.css?v=20261018-session60">
   <link rel="stylesheet" href="/assets/shell.css?v=20261020-revert1">
@@ -225,10 +225,10 @@
 
         <section id="main-settingsPage" class="page hidden">
           <article class="panel main-console-panel">
-            <div class="section-head"><h3>SETTING BOT UTAMA</h3><span class="chip owner">OWNER &middot; PARTNER &middot; DEVELOPER</span></div>
-            <p>Halaman khusus pengaturan bot utama: status koneksi, saklar aktif/nonaktif, auto read, dan reset konfigurasi. Nomor &amp; kode pairing dikelola di <a href="#main-pairing"><b>Pairing Bot Utama</b></a>, log mentah ada di <a href="#main-console"><b>Console Bot Utama</b></a>.</p>
+            <div class="section-head"><h3>STATUS &amp; SAKLAR BOT UTAMA</h3><span class="chip owner">OWNER &middot; PARTNER &middot; DEVELOPER</span></div>
+            <p>Pusat pengaturan <b>bot utama</b>: status, saklar on/off, auto read, identitas, menu, AutoAI, link, premium, dan API key. Nomor &amp; kode pairing ada di <a href="#main-pairing"><b>Pairing Bot Utama</b></a>; log mentah ada di <a href="#main-console"><b>Console Bot Utama</b></a>.</p>
             <div id="mainSettingsStatus" class="notice" aria-live="polite">Memeriksa status bot utama&hellip;</div>
-            <div class="actions"><button id="refreshMainSettings" class="mini" type="button">&#8635; REFRESH STATUS</button></div>
+            <div class="actions"><button id="refreshMainSettings" class="mini" type="button">&#8635; REFRESH STATUS &amp; SETTING</button></div>
             <section class="main-pairing-settings">
               <div class="section-head"><h4>SAKLAR BOT UTAMA</h4><span class="chip partner">LANGSUNG BERLAKU</span></div>
               <p>Perubahan saklar langsung berlaku tanpa restart bot. Kalau bot utama dimatikan, API dan jadibot tetap jalan, tetapi bot utama berhenti menerima pesan sampai diaktifkan lagi.</p>
@@ -236,20 +236,100 @@
               <div class="actions main-bot-mode"><button id="toggleAutoread" class="mini" type="button">MEMUAT&hellip;</button><span id="autoreadState" class="chip">MEMERIKSA</span></div>
               <p class="notice"><b>Auto read</b> membuat bot menandai pesan masuk sebagai sudah dibaca (centang biru) di semua sesi WhatsApp-nya. Matikan kalau nomor bot dipakai untuk hal lain, atau biarkan aktif kalau ingin balasan terasa lebih hidup. Perubahan langsung berlaku tanpa restart bot.</p>
             </section>
-            <section>
-              <div class="section-head"><h4>NOMOR PAIRING</h4><span class="chip owner">FILE 600 &middot; DI SERVER</span></div>
-              <p>Nomor bot utama disimpan di server bot dengan izin file 600, di luar repo dan tidak ikut backup. Untuk memasang atau mengganti nomor, buka halaman <a href="#main-pairing"><b>Pairing Bot Utama</b></a>.</p>
-              <div class="actions"><a class="btn btn-yellow" href="#main-pairing">BUKA PAIRING BOT UTAMA &rarr;</a></div>
-            </section>
-            <section>
-              <div class="section-head"><h4>RESET CONFIG BOT UTAMA</h4><span class="chip owner">TINDAKAN PENTING</span></div>
-              <p class="notice"><b>RESET CONFIG</b> menghapus <code>.main-bot.env</code>: nomor pairing dikosongkan dan bot utama diaktifkan kembali. Setelah reset, masukkan nomor baru lewat halaman Pairing Bot Utama. Sesi WhatsApp tidak dihapus &mdash; kalau sesi rusak atau logout, pakai <b>HAPUS SESI BOT UTAMA</b> di halaman Pairing.</p>
-              <div class="actions pair-actions"><button id="resetMainBotConfig" class="mini danger" type="button">RESET CONFIG BOT UTAMA</button></div>
-            </section>
           </article>
-          <article class="panel yellow-panel"><span class="step">SET</span><h3>URUTAN PAKAI</h3><ol><li><b>Setting Bot Utama</b> &mdash; nyalakan bot, atur auto read, reset config.</li><li><b>Pairing Bot Utama</b> &mdash; simpan nomor, minta kode pairing, hapus sesi.</li><li><b>Console Bot Utama</b> &mdash; pantau log mentah dan kirim input prompt.</li></ol><p class="notice">Ketiga halaman ini hanya untuk role <b>owner</b>, <b>partner</b>, dan <b>developer</b>. Akun role lain tidak melihat menunya dan tetap ditolak server.</p></article>
+
+          <form id="mainSettingsForm" class="panel block">
+            <div class="section-head"><h3>KONFIGURASI BOT UTAMA</h3><span class="chip partner">TANPA RESTART</span></div>
+            <div class="notice">Disimpan di server bot: <code>data/main-bot-settings.json</code> (mode 600, folder <code>data/</code> tidak masuk repo). Semua perubahan berlaku pada pesan berikutnya.</div>
+            <h4>UMUM</h4>
+            <div class="form-grid">
+              <label>Nama Bot<input name="bot_name" maxlength="80" required></label>
+              <label>Nomor Owner<input name="owner_number" inputmode="numeric" maxlength="20" placeholder="628xxxxxxxxxx"><small>8&ndash;15 digit, tanpa <code>+</code> atau spasi. Kosongkan untuk memakai owner dari <code>config.js</code>.</small></label>
+              <label>Prefix<input name="prefix" maxlength="3" required><small>1&ndash;3 karakter tanpa spasi, misal <code>.</code>, <code>/</code>, <code>#</code>.</small></label>
+              <label>Mode Akses<select name="mode"><option value="public">Public &mdash; semua pengguna</option><option value="self">Self &mdash; hanya owner dan bot</option></select><small>Sama dengan perintah <code>/self</code> dan <code>/public</code>.</small></label>
+              <label>Limit Awal<input name="default_limit" type="number" min="-1" max="100000" step="1"><small>-1 = unlimited.</small></label>
+            </div>
+            <div class="toggle-grid">
+              <label><input name="limit_enabled" type="checkbox"> Limit ON &mdash; OFF: semua fitur berlimit gratis</label>
+              <label><input name="only_group" type="checkbox"> Only Group &mdash; blokir chat pribadi</label>
+              <label><input name="registration_required" type="checkbox"> Wajib daftar sebelum memakai bot</label>
+              <label><input name="auto_ai" type="checkbox"> AutoAI &mdash; balas otomatis dengan Gemini/Groq</label>
+              <label><input name="auto_typing" type="checkbox"> Auto Typing &mdash; indikator mengetik</label>
+              <label><input name="auto_translate" type="checkbox"> Auto Translate &mdash; menu/teks diterjemahkan</label>
+            </div>
+            <div class="form-grid">
+              <label>Typing min (ms)<input name="typing_min" type="number" min="0" max="5000"></label>
+              <label>Typing maks (ms)<input name="typing_max" type="number" min="0" max="10000"></label>
+              <label>Karakter/detik<input name="typing_cps" type="number" min="1" max="10000"></label>
+              <label>Bahasa default<input name="translate_language" maxlength="10" placeholder="id"></label>
+            </div>
+
+            <h4>MENU &amp; TAMPILAN</h4>
+            <div class="form-grid">
+              <label>Gaya Menu<select name="menu_style"><option value="modern">Modern &mdash; Native Flow</option><option value="default">Klasik &mdash; tombol interaktif</option></select><small>Berlaku untuk perintah <code>/menu</code> di bot utama.</small></label>
+            </div>
+            <div class="toggle-grid">
+              <label><input name="menu_audio_enabled" type="checkbox"> Audio menu saat <code>/menu</code></label>
+            </div>
+            <p class="notice">Thumbnail dan banner menu diganti lewat WhatsApp: reply gambar dengan <code>/setthumbnail</code>. Media sesi jadibot diatur di halaman Settings masing-masing sesi.</p>
+
+            <h4>LINK</h4>
+            <div class="form-grid">
+              <label>Website<input name="website_url" type="url" placeholder="https://..."></label>
+              <label>Channel Publik / Menu<input name="channel_url" type="url" placeholder="https://whatsapp.com/channel/..."></label>
+              <label>Grup<input name="group_url" type="url" placeholder="https://chat.whatsapp.com/..."></label>
+              <label>Channel ID (UPCH)<input name="channel_id" maxlength="120" placeholder="1203630&hellip;@newsletter"><small>Dipakai perintah <code>/upch</code> bot utama. Kosongkan kalau belum ada channel.</small></label>
+            </div>
+            <p class="notice">Link dipakai menu, info runtime, dan pesan tombol. Kosongkan untuk menghapus link yang lama.</p>
+
+            <h4>PLUGIN</h4>
+            <label>Plugin yang dimatikan<textarea name="disabled_plugins" rows="4" spellcheck="false" placeholder="sticker/sticker.js&#10;command:brat&#10;plugin:tools/tts.js"></textarea><small>Satu per baris: <code>folder/file.js</code>, <code>plugin:folder/file.js</code>, atau <code>command:nama</code>. Kosongkan untuk mengaktifkan semua plugin.</small></label>
+
+            <h4>PESAN &amp; EKONOMI</h4>
+            <div class="form-grid">
+              <label>Multiplier XP<input name="multiplier" type="number" min="1" max="1000"><small>Pengali XP level pengguna.</small></label>
+            </div>
+            <label>Pesan tunggu<textarea name="wait_text" maxlength="500"></textarea></label>
+            <label>Pesan error<textarea name="error_text" maxlength="500"></textarea></label>
+
+            <h4>MODE PREMIUM BOT UTAMA</h4>
+            <div class="notice" id="mainPremiumSystemNotice">Memeriksa mode premium&hellip;</div>
+            <div class="toggle-grid"><label><input name="premium_enabled" type="checkbox"> Mode Premium &mdash; ON: fitur di daftar dikunci &middot; OFF: semua gratis</label></div>
+            <label>Fitur yang dijadikan premium<textarea name="premium_plugins" rows="5" spellcheck="false" placeholder="sticker&#10;brat&#10;toimg"></textarea><small>Satu per baris: nama command, nama plugin, <b>command:nama</b>, <b>plugin:folder/file.js</b>, atau <b>tag:ai</b>.</small></label>
+
+            <div class="actions"><button class="btn btn-primary" type="submit">SIMPAN SETTING BOT UTAMA</button><button id="resetMainSettings" class="mini danger" type="button">RESET SETTING (KECUALI KEY)</button></div>
+          </form>
+
+          <article class="panel block">
+            <div class="section-head"><h3>API KEY</h3><span class="chip owner">MASK &middot; FILE 600</span></div>
+            <p>Simpan key dari website. Server hanya mengembalikan versi mask; key utuh tidak pernah dikirim balik ke browser, tidak masuk log, dan tidak ditulis ke database website.</p>
+            <div id="mainApiKeyStatus" class="list">Memeriksa key&hellip;</div>
+            <form id="mainApiKeyForm" class="block">
+              <div class="form-grid">
+                <label>Penyedia<select name="provider"><option value="gemini">Gemini &mdash; Auto-AI utama</option><option value="groq">Groq &mdash; cadangan Auto-AI</option><option value="openrouter">OpenRouter &mdash; AI Agent</option></select></label>
+                <label>API Key<input name="api_key" type="password" autocomplete="new-password" minlength="16" maxlength="400" placeholder="Tempel key baru di sini"></label>
+              </div>
+              <div class="actions"><button class="btn btn-primary" type="submit">SIMPAN KEY</button><button id="deleteMainApiKey" class="mini danger" type="button">HAPUS KEY</button></div>
+            </form>
+            <p class="notice">Gemini &amp; Groq disimpan di <code>.env.gemini</code> / <code>.env.groq</code> mode 600 pada server bot, di luar repo. Key OpenRouter disimpan terenkripsi oleh AI Agent; menyimpannya di sini juga menjadikan OpenRouter provider aktif AI Agent.</p>
+          </article>
+
+          <article class="panel block">
+            <div class="section-head"><h3>NOMOR PAIRING</h3><span class="chip owner">FILE 600 &middot; DI SERVER</span></div>
+            <p>Nomor bot utama disimpan di server bot dengan izin file 600, di luar repo dan tidak ikut backup. Untuk memasang atau mengganti nomor, buka halaman <a href="#main-pairing"><b>Pairing Bot Utama</b></a>.</p>
+            <div class="actions"><a class="btn btn-yellow" href="#main-pairing">BUKA PAIRING BOT UTAMA &rarr;</a></div>
+          </article>
+
+          <article class="panel block">
+            <div class="section-head"><h3>RESET CONFIG BOT UTAMA</h3><span class="chip owner">TINDAKAN PENTING</span></div>
+            <p class="notice"><b>RESET CONFIG</b> menghapus <code>.main-bot.env</code>: nomor pairing dikosongkan dan bot utama diaktifkan kembali. Setelah reset, masukkan nomor baru lewat halaman Pairing Bot Utama. Sesi WhatsApp tidak dihapus &mdash; kalau sesi rusak atau logout, pakai <b>HAPUS SESI BOT UTAMA</b> di halaman Pairing.</p>
+            <div class="actions pair-actions"><button id="resetMainBotConfig" class="mini danger" type="button">RESET CONFIG BOT UTAMA</button></div>
+          </article>
+
+          <article class="panel yellow-panel block"><span class="step">SET</span><h3>URUTAN PAKAI</h3><ol><li><b>Setting Bot Utama</b> &mdash; nyalakan bot, atur identitas/menu/AutoAI, simpan API key.</li><li><b>Pairing Bot Utama</b> &mdash; simpan nomor, minta kode pairing, hapus sesi.</li><li><b>Console Bot Utama</b> &mdash; pantau log mentah dan kirim input prompt.</li></ol><p class="notice">Ketiga halaman ini hanya untuk role <b>owner</b>, <b>partner</b>, dan <b>developer</b>. Akun role lain tidak melihat menunya dan tetap ditolak server.</p></article>
         </section>
-        <section id="main-pairingPage" class="page hidden">
+        
+<section id="main-pairingPage" class="page hidden">
           <article class="panel main-console-panel">
             <div class="section-head"><h3>PAIRING BOT UTAMA</h3><span class="chip owner">OWNER &middot; PARTNER &middot; DEVELOPER</span></div>
             <p>Pasang nomor WhatsApp bot utama di sini. Nomor disimpan di server bot dengan izin file 600, di luar repo dan tidak ikut backup. Kode pairing dibaca langsung dari status server, jadi tetap tampil walau buffer log console sudah berputar.</p>
@@ -298,7 +378,7 @@
   </main>
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
   <script src="/assets/supabase.min.js?v=2.76.1"></script>
-  <script src="/assets/app.js?v=20261020-botpages1" defer></script>
+  <script src="/assets/app.js?v=20261020-botsettings3" defer></script>
 
   <script src="/assets/auth-controls.js?v=20261018-session60" defer></script>
 </body>

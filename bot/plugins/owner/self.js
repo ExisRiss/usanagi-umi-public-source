@@ -24,11 +24,21 @@ let handler = async (m, { command, conn }) => {
   if (command === 'self') {
     if (!settings.public) return m.reply('Bot sudah mode SELF')
     settings.public = false
+    // Simpan juga ke setting bot utama supaya halaman Setting Bot Utama
+    // menampilkan mode yang sama dengan perintah WhatsApp ini.
+    try {
+      const { applyMainBotSettingsInput } = await import('../../lib/main-bot-settings.js')
+      await applyMainBotSettingsInput({ mode: 'self' }, { actor: 'whatsapp-self' })
+    } catch {}
     return m.reply('✅ Bot masuk mode SELF')
   }
 
   if (settings.public) return m.reply('Bot sudah mode PUBLIC')
   settings.public = true
+  try {
+    const { applyMainBotSettingsInput } = await import('../../lib/main-bot-settings.js')
+    await applyMainBotSettingsInput({ mode: 'public' }, { actor: 'whatsapp-self' })
+  } catch {}
   return m.reply('✅ Bot masuk mode PUBLIC')
 }
 

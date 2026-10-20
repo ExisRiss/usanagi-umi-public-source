@@ -234,3 +234,55 @@ th,td { border:1px solid rgba(142,169,225,.18); }
 }
 #walletTopupNotice { overflow:hidden; }
 #walletTopupNotice img { max-width:100%; height:auto; }
+
+/* Task80b — halaman Setting/Pairing/Console Bot Utama memakai scroll dokumen.
+   Sebelumnya konten panjang terkunci di kotak scroll setinggi sisa viewport
+   sehingga di layar pendek/HP terlihat "kepotong" (tidak ada scrollbar dan
+   bagian bawah tertutup address bar). */
+body.flow-mode {
+  height: auto;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: block;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+body.flow-mode #root {
+  height: auto !important;
+  overflow: visible;
+}
+body.flow-mode .app-view {
+  height: auto;
+  min-height: calc(100vh - 78px);
+  min-height: calc(100dvh - 78px);
+  display: block;
+  padding-bottom: max(48px, env(safe-area-inset-bottom));
+}
+body.flow-mode .workspace {
+  display: block;
+  min-height: 0;
+}
+body.flow-mode .topbar {
+  position: sticky;
+  top: 0;
+}
+body.flow-mode .page {
+  height: auto;
+  overflow: visible;
+  padding: 3px 0 10px;
+}
+@media (max-width: 900px) {
+  body.flow-mode .app-view {
+    min-height: calc(100vh - 68px);
+    min-height: calc(100dvh - 68px);
+  }
+}
+
+/* Task80b — label kecil di kepala halaman tidak lagi nyaris tak terbaca
+   (dulu #9aaaca di atas latar biru transparan). */
+.workspace-head .eyebrow {
+  color: #eef4ff;
+  border-color: rgba(120, 160, 255, .55);
+  background: linear-gradient(180deg, rgba(61, 157, 255, .34), rgba(61, 157, 255, .14));
+}

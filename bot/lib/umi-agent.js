@@ -356,6 +356,22 @@ export async function agentTest(actor) {
   return { ok: true, provider: settings.provider, model: settings.model, reply, ms: Date.now() - started }
 }
 
+/**
+ * Mask satu key provider yang tersimpan terenkripsi. Dipakai halaman Setting
+ * Bot Utama supaya OpenRouter bisa ditampilkan sebagai `AQ…1234` tanpa pernah
+ * mengirim key utuh ke browser.
+ */
+export function agentProviderKeyMask(provider = 'openrouter') {
+  const name = ['gemini', 'groq', 'openrouter'].includes(String(provider)) ? String(provider) : ''
+  if (!name) return ''
+  try {
+    const data = JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8'))
+    const key = decryptSecret(data ? data[name] : null)
+    if (!key || key.length < 12) return ''
+    return `${key.slice(0, 6)}…${key.slice(-4)}`
+  } catch { return '' }
+}
+
 export function agentStatus() {
   const settings = readSettings()
   return { configured: Boolean(settings.apiKey), provider:settings.provider, model: settings.model || (settings.provider==='groq'?DEFAULT_GROQ_MODEL:settings.provider==='gemini'?DEFAULT_GEMINI_MODEL:DEFAULT_MODEL), updatedAt: settings.updatedAt || null, workerActive: Boolean(workerTimer), health: healthSnapshot() }
@@ -392,4 +408,4 @@ export function startUmiAgentWorker(secretProvider) {
   workerTimer.unref?.()
 }
 
-export default { agentChat, agentStatus, agentTest, updateAgentSettings, ownerAgentShell, startUmiAgentWorker }
+export default { agentChat, agentStatus, agentTest, updateAgentSettings, ownerAgentShell, startUmiAgentWorker, agentProviderKeyMask }

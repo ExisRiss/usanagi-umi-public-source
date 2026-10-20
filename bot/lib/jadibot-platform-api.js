@@ -7,7 +7,10 @@ import { getDb } from '../core/awang-sqlite.js'
 import { summarizeLegacyCurrency } from './rpg/legacy-migration-plan.js'
 import { unifiedRpg } from './rpg/unified-store.js'
 import { backupUnifiedRpg } from './rpg/unified-runtime.js'
-import { getGroqSettings } from './groq-client.js'
+import { getGroqSettings, persistGroqRuntimeConfig, clearGroqRuntimeConfig } from './groq-client.js'
+import { getGeminiSettings, isValidGeminiKey, persistGeminiRuntimeConfig, clearGeminiRuntimeConfig } from './gemini-client.js'
+import { applyMainBotSettingsInput, mainBotSettingsView, resetMainBotSettings } from './main-bot-settings.js'
+import { getMenuStyle, setMenuStyle } from '../core/awang-menu-config.js'
 const realmHttp = createRealmHttp(realmService)
 /* By AlzRiss - Usanagi Umi AI */
 
@@ -39,14 +42,16 @@ import { clearScopedPrefixes } from '../core/awang-prefix.js'
 import { koinStatus, convertKoin, numberForToken } from './game-koin-topup.js'
 import { parseNewsletterInput } from './awang-id.js'
 import {
+  getMainPremiumConfig,
   getPremiumSystem,
   normalizePremiumEntries,
   premiumConfigFor,
   resolvePremiumEntry,
+  saveMainPremiumConfig,
   searchFeatures,
 } from './premium-mode.js'
 import { cleanupBackupExport, getBackupExportFile, prepareBackupExport } from './vercel-backup-export.js'
-import { agentChat, agentStatus, agentTest, ownerAgentShell, startUmiAgentWorker, updateAgentSettings } from './umi-agent.js'
+import { agentChat, agentProviderKeyMask, agentStatus, agentTest, ownerAgentShell, startUmiAgentWorker, updateAgentSettings } from './umi-agent.js'
 import { buyPanelPackage, buyProduct, createWalletTopup, handleTripayCallback, manualTopupRequests, panelAutoOrderStatus, reviewManualTopup, shopCatalog, startPanelAutoOrder, testPanelConnection, updatePanelPackages, updatePanelSettings, adjustWallet, creditWalletForGame, debitWalletForGame, walletOrders, walletStatus } from './panel-autoorder.js'
 
 
@@ -190,6 +195,81 @@ function startBackgroundPairing() {
   return backgroundPairingPromise
 }
 
+/* ── Setting lengkap bot utama (Task80) ─────────────────────────────────
+ * Semua nilai divalidasi di `lib/main-bot-settings.js`. API key tidak pernah
+ * ikut dikirim utuh: respons hanya berisi `configured`, model, dan versi mask.
+ */
+
+function maskApiKey(value) {
+  const key = String(value || '')
+  if (key.length < 12) return ''
+  return `${key.slice(0, 6)}…${key.slice(-4)}`
+}
+
+function apiKeyState() {
+  const gemini = getGeminiSettings()
+  const groq = getGroqSettings()
+  let agent = {}
+  try { agent = agentStatus() } catch {}
+  let openrouterMasked = ''
+  try { openrouterMasked = agentProviderKeyMask('openrouter') } catch {}
+  return {
+    gemini: {
+      provider: 'gemini',
+      configured: Boolean(gemini.configured),
+      model: gemini.model,
+      masked: maskApiKey(gemini.apiKey),
+      file: '.env.gemini',
+      role: 'Auto-AI utama + AI Agent',
+    },
+    groq: {
+      provider: 'groq',
+      configured: Boolean(groq.configured),
+      model: groq.model,
+      masked: maskApiKey(groq.apiKey),
+      file: '.env.groq',
+      role: 'Cadangan Auto-AI',
+    },
+    openrouter: {
+      provider: 'openrouter',
+      configured: Boolean(openrouterMasked),
+      model: agent.provider === 'openrouter' ? String(agent.model || '') : '',
+      masked: openrouterMasked,
+      file: 'AI Agent (terenkripsi)',
+      role: 'AI Agent / AI Owner bila provider OpenRouter dipilih',
+    },
+  }
+}
+
+function mainBotSettingsResponse() {
+  const settings = mainBotSettingsView()
+  settings.menu_style = getMenuStyle()
+  settings.premium = getMainPremiumConfig()
+  settings.premium_system = getPremiumSystem()
+  return { ok: true, settings, api_keys: apiKeyState(), status: mainBotStatus() }
+}
+
+function validatePremiumPluginList(input) {
+  if (!Array.isArray(input)) throw Object.assign(new Error('Daftar fitur premium harus berupa array.'), { status: 400 })
+  if (input.length > 300) throw Object.assign(new Error('Maksimum 300 fitur premium.'), { status: 400 })
+  const plugins = normalizePremiumEntries(input.map(item => safeText(item, 120)))
+  const unknown = []
+  for (const entry of plugins) {
+    const resolved = resolvePremiumEntry(entry)
+    if (!resolved.ok) unknown.push(resolved)
+  }
+  if (unknown.length) {
+    const hints = unknown.slice(0, 5).map(item => {
+      const suggestions = (item.suggestions || []).slice(0, 2)
+        .map(feature => `${feature.commands[0] || feature.basename.replace(/\.js$/, '')}`)
+        .join(', ')
+      return suggestions ? `${item.entry} (mungkin: ${suggestions})` : item.entry
+    })
+    throw Object.assign(new Error(`Fitur premium tidak dikenal: ${hints.join('; ')}`), { status: 400 })
+  }
+  return plugins
+}
+
 async function routeOwnerConsole(req, res, pathname) {
   verifyOwnerConsoleTicket(req, pathname)
   const url = new URL(req.url, 'http://localhost')
@@ -299,6 +379,83 @@ async function routeOwnerConsole(req, res, pathname) {
     if (typeof global.setMainBotEnabled !== 'function') throw Object.assign(new Error('Runtime bot belum siap.'), { status: 503 })
     const result = await global.setMainBotEnabled(input.enabled)
     return send(res, 200, { ok: true, enabled: result.enabled, status: mainBotStatus() })
+  }
+
+  /* Setting lengkap bot utama — semua role yang lolos tiket owner-console
+   * (owner, partner, developer) boleh membaca dan menyimpan. */
+  if (pathname === '/api/owner-console/settings' && req.method === 'GET') {
+    return send(res, 200, mainBotSettingsResponse())
+  }
+
+  if (pathname === '/api/owner-console/settings' && req.method === 'POST') {
+    const input = await bodyJson(req)
+    let menuStyle = ''
+    if (input.menu_style !== undefined) {
+      menuStyle = String(input.menu_style || '').toLowerCase()
+      if (!['default', 'modern'].includes(menuStyle)) {
+        throw Object.assign(new Error('Gaya menu harus default atau modern.'), { status: 400 })
+      }
+    }
+    let premiumPlugins = null
+    if (input.premium_plugins !== undefined) premiumPlugins = validatePremiumPluginList(input.premium_plugins)
+    if (input.premium_enabled !== undefined && typeof input.premium_enabled !== 'boolean') {
+      throw Object.assign(new Error('Mode Premium ON/OFF harus true atau false.'), { status: 400 })
+    }
+    await applyMainBotSettingsInput(input, { actor: 'website-console' })
+    if (menuStyle) setMenuStyle(menuStyle)
+    if (input.premium_enabled !== undefined || premiumPlugins) {
+      saveMainPremiumConfig({
+        ...(input.premium_enabled !== undefined ? { enabled: input.premium_enabled } : {}),
+        ...(premiumPlugins ? { plugins: premiumPlugins } : {}),
+        updatedBy: 'website-console',
+      })
+    }
+    return send(res, 200, mainBotSettingsResponse())
+  }
+
+  if (pathname === '/api/owner-console/settings/reset' && req.method === 'POST') {
+    await resetMainBotSettings({ actor: 'website-console' })
+    return send(res, 200, mainBotSettingsResponse())
+  }
+
+  /* API key: hanya status + mask yang pernah keluar dari server. */
+  if (pathname === '/api/owner-console/apikey' && req.method === 'POST') {
+    const input = await bodyJson(req)
+    const provider = String(input.provider || '').toLowerCase()
+    if (!['gemini', 'groq', 'openrouter'].includes(provider)) {
+      throw Object.assign(new Error('Provider API key tidak dikenal.'), { status: 400 })
+    }
+    const remove = input.delete === true
+    if (provider === 'gemini') {
+      if (remove) {
+        clearGeminiRuntimeConfig()
+      } else {
+        const key = String(input.api_key || '').trim()
+        if (!isValidGeminiKey(key)) {
+          throw Object.assign(new Error('Format key Gemini tidak valid. Contoh: AIza… atau AQ.…'), { status: 400 })
+        }
+        persistGeminiRuntimeConfig({ apiKey: key })
+      }
+    } else if (provider === 'groq') {
+      if (remove) {
+        clearGroqRuntimeConfig()
+      } else {
+        const key = String(input.api_key || '').trim()
+        if (!/^gsk_[A-Za-z0-9_-]{20,200}$/.test(key)) {
+          throw Object.assign(new Error('Format key Groq tidak valid (diawali gsk_).'), { status: 400 })
+        }
+        persistGroqRuntimeConfig({ apiKey: key, model: getGroqSettings().model })
+      }
+    } else if (remove) {
+      throw Object.assign(new Error('Key OpenRouter belum bisa dihapus dari sini. Isi key baru untuk menggantinya, atau kelola lewat AI Owner.'), { status: 400 })
+    } else {
+      const key = String(input.api_key || '').trim()
+      if (!/^sk-or-v1-[A-Za-z0-9_-]{16,200}$/.test(key)) {
+        throw Object.assign(new Error('Format key OpenRouter tidak valid (diawali sk-or-v1-).'), { status: 400 })
+      }
+      updateAgentSettings({ apiKey: key, provider: 'openrouter', model: '' }, 'website-mainbot')
+    }
+    return send(res, 200, { ok: true, provider, deleted: remove, api_keys: apiKeyState() })
   }
 
   return send(res, 404, { error: 'Endpoint console owner tidak ditemukan.' })

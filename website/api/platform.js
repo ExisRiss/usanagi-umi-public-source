@@ -910,6 +910,40 @@ export default async function handler(req, res) {
       return send(res, 200, result)
     }
 
+    /* Task80: setting lengkap bot utama (umum, menu, AutoAI, link, premium)
+     * dan API key. Nilai key tidak pernah diaudit maupun dikembalikan utuh. */
+    if (path === 'main-console/settings' && req.method === 'GET') {
+      requireMainBot(profile)
+      return send(res, 200, await botConsoleRequest('settings', user))
+    }
+    if (path === 'main-console/settings' && req.method === 'POST') {
+      requireMainBot(profile)
+      rateLimit(req, `platform:main-settings:${user.id}`, 20, 5 * 60 * 1000)
+      const body = req.body && typeof req.body === 'object' ? req.body : {}
+      const result = await botConsoleRequest('settings', user, { method: 'POST', body })
+      await audit(user, 'main_bot.settings_updated', null, { fields: Object.keys(body).slice(0, 40) })
+      return send(res, 200, result)
+    }
+    if (path === 'main-console/settings/reset' && req.method === 'POST') {
+      requireMainBot(profile)
+      rateLimit(req, `platform:main-settings-reset:${user.id}`, 3, 30 * 60 * 1000)
+      const result = await botConsoleRequest('settings/reset', user, { method: 'POST', body: {} })
+      await audit(user, 'main_bot.settings_reset', null, {})
+      return send(res, 200, result)
+    }
+    if (path === 'main-console/apikey' && req.method === 'POST') {
+      requireMainBot(profile)
+      rateLimit(req, `platform:main-apikey:${user.id}`, 10, 60 * 60 * 1000)
+      const body = req.body && typeof req.body === 'object' ? req.body : {}
+      const provider = ['gemini', 'groq', 'openrouter'].includes(String(body.provider)) ? String(body.provider) : 'unknown'
+      const payload = { provider, delete: body.delete === true }
+      if (!payload.delete && typeof body.api_key === 'string') payload.api_key = body.api_key.slice(0, 400)
+      const result = await botConsoleRequest('apikey', user, { method: 'POST', body: payload })
+      // Jangan pernah menyimpan nilai key di audit log.
+      await audit(user, `main_bot.apikey_${payload.delete ? 'deleted' : 'saved'}`, provider, {})
+      return send(res, 200, result)
+    }
+
     if (path === 'admin/users' && req.method === 'GET') {
       requireOwner(profile)
       const auth = await authAdmin('users?page=1&per_page=1000')

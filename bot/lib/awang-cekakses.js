@@ -143,7 +143,11 @@ export function getAllOwnerEntries(conn = null) {
     return [...entries.values()]
   }
 
-  const primary = Array.isArray(settings.ownerNumbers) ? settings.ownerNumbers : []
+  // Bot utama: nomor owner dari setting web (kalau diisi) menang atas config.js.
+  const configuredMain = Array.isArray(botConfig?.ownerNumbers) ? botConfig.ownerNumbers.filter(Boolean) : []
+  const primary = configuredMain.length
+    ? configuredMain
+    : (Array.isArray(settings.ownerNumbers) ? settings.ownerNumbers : [])
   const dynamic = getDynamicOwners()
   for (const owner of primary) {
     const number = normalizeNumber(owner)

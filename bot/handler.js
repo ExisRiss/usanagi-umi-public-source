@@ -353,8 +353,9 @@ m.limit = false;
 	// Mode akses per-session Jadibot:
 	// - onlyGroup: seluruh command ditolak di private chat.
 	// - self: hanya owner session, developer terkunci, atau bot sendiri.
-	if (botConfig.type === 'jadibot' && botConfig.onlyGroup === true && !m.isGroup && !realmAccessCommand) return;
-	const instancePublic = botConfig.type === 'jadibot'
+	// Bot utama juga menghormati Only Group bila owner mengaktifkannya dari web.
+	if (botConfig.onlyGroup === true && !m.isGroup && !realmAccessCommand) return;
+	const instancePublic = botConfig.type === 'jadibot' || botConfig.managedSettings === true
 		? botConfig.public !== false
 		: global.db.data.settings[this.user.jid].public
 	if (!instancePublic && !m.fromMe && !isOwner) return;

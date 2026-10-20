@@ -30,6 +30,7 @@ import { startVercelBackupScheduler } from './lib/vercel-backup-scheduler.js';
 import { startBackupSystem } from './lib/backup/service.js';
 import { startPlatform, stopPlatform } from './lib/platform/index.js';
 import { readMainBotState, writeMainBotState, normalizeMainBotNumber } from './lib/main-bot-config.js';
+import { applyMainBotSettingsAtBoot, syncMainBotSettingsProfile } from './lib/main-bot-settings.js';
 import { installErrorHooks } from './lib/error-hub.js';
 import {
     useMultiFileAuthState,
@@ -155,6 +156,19 @@ global.loadDatabase = async function loadDatabase() {
 };
 
 await global.loadDatabase();
+
+/* Setting bot utama (kalau owner sudah menyimpannya dari website) dimuat
+ * setelah database siap supaya prefix, mode public/self, limit, AutoAI, dan
+ * Only Group langsung konsisten sebelum socket WhatsApp dibuat. */
+try {
+    const bootMainBotSettings = await applyMainBotSettingsAtBoot();
+    if (bootMainBotSettings) {
+        console.log(chalk.gray(`[MAIN-BOT] Setting utama dimuat: ${bootMainBotSettings.botName} · prefix ${bootMainBotSettings.prefix}`));
+    }
+} catch (error) {
+    console.log(chalk.yellow('[MAIN-BOT] Setting utama gagal dimuat:'), error?.message || error);
+}
+
 const unifiedRpgStore = initializeUnifiedRpg();
 
 // /welcome on is stored in SQLite, whereas the long-running participant
@@ -319,6 +333,7 @@ global.setMainBotEnabled = async function (enabled) {
  * ============================================================ */
 global.conn = installAutoTyping(makeWASocket(connectionOptions));
 global.conn.botConfig = getMainBotConfig();
+syncMainBotSettingsProfile(global.conn.botConfig);
 global.conn.isJadibot = false;
 startJadibotPlatformApi();
 startGameRoomNotifier();

@@ -3,6 +3,7 @@
 import fs from 'fs'
 import path from 'node:path'
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { isMainBotSettingsManaged, loadMainBotSettings } from './main-bot-settings.js'
 
 const context = globalThis.__usanagiBotConfigContext || new AsyncLocalStorage()
 globalThis.__usanagiBotConfigContext = context
@@ -124,16 +125,24 @@ export function installBotConfigAccessors() {
 
 export function getMainBotConfig() {
   installBotConfigAccessors()
+  // Setting bot utama (data/main-bot-settings.json) menang atas nilai bawaan.
+  // Kalau owner belum pernah menyimpan setting dari website, perilaku lama
+  // tetap dipakai supaya bot yang sudah jalan tidak berubah diam-diam.
+  const managed = isMainBotSettingsManaged()
+  const settings = managed ? loadMainBotSettings() : null
   return {
     type: 'main',
     scope: MAIN_SCOPE,
     number: '',
-    defaultPrefix: String(global.mainBot?.defaultPrefix || '.'),
-    defaultLimit: 50,
-    limitEnabled: global.mainBot?.limitEnabled !== false,
-    public: true,
-    registrationRequired: global.mainBot?.registrationRequired !== false,
-    disabledPlugins: [],
+    defaultPrefix: String(settings ? settings.prefix : (global.mainBot?.defaultPrefix || '.')),
+    defaultLimit: settings ? settings.defaultLimit : 50,
+    limitEnabled: settings ? settings.limitEnabled !== false : global.mainBot?.limitEnabled !== false,
+    public: settings ? settings.mode !== 'self' : true,
+    managedSettings: Boolean(settings),
+    onlyGroup: settings ? settings.onlyGroup === true : false,
+    registrationRequired: settings ? settings.registrationRequired !== false : global.mainBot?.registrationRequired !== false,
+    ownerNumbers: settings && settings.ownerNumber ? [settings.ownerNumber] : [],
+    disabledPlugins: settings ? [...settings.disabledPlugins] : [],
     values: mainValues,
   }
 }
@@ -317,7 +326,8 @@ export function prefixStorageKey(conn, chatId) {
 }
 
 export function isPluginDisabled(profile, pluginName, command = '') {
-  if (!profile || profile.type !== 'jadibot') return false
+  // Bot utama ikut aturan plugin nonaktif kalau owner menyimpan setting dari web.
+  if (!profile || (profile.type !== 'jadibot' && profile.managedSettings !== true)) return false
   const entries = profile.disabledPlugins || []
   const name = String(pluginName || '').toLowerCase()
   const cmd = String(command || '').toLowerCase()
