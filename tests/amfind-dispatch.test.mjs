@@ -7,6 +7,8 @@ import {createUnifiedStore,UNIFIED_RPG} from '../lib/rpg/unified-store.js'
 import {getDb,cleanup} from './fixtures/realms-sqlite.mjs'
 import preview from '../plugins/_system/_allfake.js'
 import amfind from '../plugins/tools/amfind.js'
+const androidId = () => crypto.randomUUID().replace(/-/g, '')
+
 global.__filename=url=>fileURLToPath(url)
 const {handler}=await import('../handler.js')
 process.env.GROQ_API_KEY='fixture-no-real-credential'
@@ -17,10 +19,10 @@ function fixture(text,prefix,self=true){
  const store=createUnifiedStore({db:getDb(),users:{[sender]:{registered:true,limit:50,premiumTime:0,money:0,exp:0}},links:[]});store.migrate();globalThis[UNIFIED_RPG]=store
  global.db={data:{users:store.users,chats:{},stats:{},settings:{[bot]:{public:true}},blacklistUser:{}},write:async()=>{}};global.loadDatabase=async()=>{};global.dfail=(reason,m)=>m.reply('Denied: '+reason)
  global.conn={sendMessage:()=>{throw Error('main must remain OFF')}}
- const conn={user:{id:bot,jid:bot},botConfig:{type:'jadibot',scope:'preview-dispatch-'+id,public:true,defaultPrefix:prefix,defaultLimit:50,registrationRequired:true},pushMessage:async()=>{},groupMetadata:async()=>({participants:[]}),onWhatsApp:async()=>[],readMessages:async()=>{},sendMessage:async(jid,content)=>{sent.push({jid,content});return {key:{id:crypto.randomUUID()}}}}
+ const conn={user:{id:bot,jid:bot},botConfig:{type:'jadibot',scope:'preview-dispatch-'+id,public:true,defaultPrefix:prefix,defaultLimit:50,registrationRequired:true},pushMessage:async()=>{},groupMetadata:async()=>({participants:[]}),onWhatsApp:async()=>[],readMessages:async()=>{},sendMessage:async(jid,content)=>{sent.push({jid,content});return {key:{id:androidId()}}}}
  Object.defineProperty(conn,'reply',{value:function(jid,text){return this.sendMessage(jid,{text})}})
  const proto=Object.defineProperty({},'reply',{value:function(text){return this.conn.reply(this.chat,text)}})
- const m=Object.assign(Object.create(proto),{conn,chat,sender,fromMe:self,key:{id:crypto.randomUUID(),remoteJid:chat,fromMe:self},message:{conversation:text},text,mentionedJid:[],isGroup:true,pushName:'Fixture'})
+ const m=Object.assign(Object.create(proto),{conn,chat,sender,fromMe:self,key:{id:androidId(),remoteJid:chat,fromMe:self},message:{conversation:text},text,mentionedJid:[],isGroup:true,pushName:'Fixture'})
  global.plugins={'_system/_allfake.js':preview,'tools/amfind.js':amfind}
  return {conn,m,sent,finish(){delete globalThis[UNIFIED_RPG];delete global.db}}
 }

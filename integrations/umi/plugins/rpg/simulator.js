@@ -327,7 +327,7 @@ if (data[id].login == undefined || '') throw 'Kamu belum login jadi kamu ga bisa
 if (_db[id].pasangan == undefined || '') return conn.reply(m.chat, 'kamu tidak mempunyai pasangan yang mau diajak nikah😢\ncoba ge cari pacar dulu dengan mengetik */jadian @tag*', fakes('jomblo ya?'))
 const psgn = _db[id].pasangan
 if (data[id].status_nikah == 'nikah') return m.reply(`Kamu kan sudah nikah 🙄..\n\napakah kamu mau cerai?\njika mau ketik */simulator cerai*`)
-if (data[id].emas_mu = 0) return m.reply('kamu tidak mempunyai emas😅\nbeli dengan cara */pabrik beli emas*')
+if (!(data[id].emas_mu > 0)) return m.reply('kamu tidak mempunyai emas😅\nbeli dengan cara */pabrik beli emas*')
 
 data[id].emas_mu -= 1
 if (data[id].gender == 'cowo') {

@@ -2,9 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
 import {shouldAutoAITrigger,isSelfAIRequest,planAutoAI,humanizeReply} from '../lib/auto-ai.js'
+const androidId = () => crypto.randomUUID().replace(/-/g, '')
+
 process.env.GROQ_API_KEY='fixture-key-not-a-real-credential'
 const conn={user:{id:'999999999@s.whatsapp.net'}},botConfig={type:'jadibot',scope:'self-ai-test',registrationRequired:true}
-function message(text='!!buka menu',extra={}){return {text,chat:'fixture@g.us',sender:conn.user.id,fromMe:true,key:{id:crypto.randomUUID(),fromMe:true},isGroup:true,mentionedJid:[],...extra}}
+function message(text='!!buka menu',extra={}){return {text,chat:'fixture@g.us',sender:conn.user.id,fromMe:true,key:{id:androidId(),fromMe:true},isGroup:true,mentionedJid:[],...extra}}
 const menu=Object.assign(async()=>{}, {command:'menu',help:['menu'],tags:['info']})
 function context(m,extra={}){return {m,conn,botConfig,activePrefix:'!',isOwner:true,isPrems:true,userData:{registered:true,limit:50},plugins:{'main/menu.js':menu},...extra}}
 test('own Jadibot input requires literal !! at the beginning and nonempty text',()=>{for(const text of ['!!buka menu','!! siapa developer lu'])assert(shouldAutoAITrigger(message(text),conn,botConfig));for(const text of ['buka menu','!buka menu',' !!buka menu','halo !!buka menu','!!','!!  '])assert(!shouldAutoAITrigger(message(text),conn,botConfig));assert(!shouldAutoAITrigger(message(),conn,{type:'main'}));assert(isSelfAIRequest(message(),botConfig))})

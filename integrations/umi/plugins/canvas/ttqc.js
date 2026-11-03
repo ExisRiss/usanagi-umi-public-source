@@ -39,7 +39,7 @@ const FONT_ASSETS = [
   { name: 'Plus Jakarta Sans', url: 'https://raw.githubusercontent.com/Ditzzx-vibecoder/Assets/main/ttqc/PlusJakartaSans-Medium.ttf' },
   { name: 'Plus Jakarta Sans', url: 'https://raw.githubusercontent.com/Ditzzx-vibecoder/Assets/main/ttqc/PlusJakartaSans-Bold.ttf' },
   { name: 'Font Awesome 6 Free', url: 'https://raw.githubusercontent.com/Ditzzx-vibecoder/Assets/main/ttqc/fa-solid-900.ttf' },
-  { name: 'Noto Color Emoji', url: 'https://github.com/googlefonts/noto-emoji/raw/main/fonts/NotoColorEmoji.ttf' },
+  { name: 'Noto Color Emoji', url: 'https://raw.githubusercontent.com/googlefonts/noto-emoji/main/2D/fonts/NotoColorEmoji.ttf' },
 ];
 
 const MENU_ICONS = [

@@ -341,32 +341,6 @@ if (isBlacklistedUser && !isOwner && !blacklistCmd) {
     return
 }
 
-// ==================
-// 🔒 MODE PRIVAT — BOT DIAM (Task150)
-// ==================
-/*
- * Diletakkan SEDINI MUNGKIN: sebelum database user disentuh, sebelum AFK,
- * sebelum aksi tertunda (.deploysubdomain), dan sebelum petunjuk prefix.
- * Ketiganya dulu bisa mengirim balasan ke pengguna yang tidak berhak saat
- * bot disetel private — itulah yang membuat "bot masih bales".
- */
-try {
-    const setelanUtama = global.db?.data?.settings?.[this.user?.jid]
-    const privatSesi = apakahPrivat(botConfig, setelanUtama)
-    if (privatSesi) {
-        const putusan = putusanModePrivat({
-            privat: true,
-            fromMe: Boolean(m.fromMe || m.key?.fromMe),
-            ...roleDari({ isROwner, isOwnerUtama, isOwner }),
-        })
-        if (!putusan.dilayani) {
-            if (bolehLogDiam(m.chat)) console.log(catatanDiam(putusan, { sender: m.sender, chat: m.chat }))
-            return
-        }
-    }
-} catch (modeError) {
-    console.log(`[mode-privat] gagal memeriksa setelan: ${modeError?.message || modeError}`)
-}
 
 // ==================
 // 📊 DATABASE INIT
@@ -449,6 +423,39 @@ m.__prefixMode = prefixMode
 // Do this before profile merging, so a stale PN/LID field cannot overwrite the status.
 const afkNotify = (isOwner || m.fromMe || (botConfig.type === 'jadibot' ? botConfig.public !== false : global.db.data.settings?.[this.user.jid]?.public !== false)) && !isPluginDisabled(botConfig, '_system/_afk.js')
 await handleAfkMessage(m, this, { prefix: activePrefix, aliases: userIdentityKeys, type: chatUpdate.type, notify: afkNotify })
+
+// ==================
+/* Task203 — Blok ini DIGESER dari sebelum-ke-setelah handleAfkMessage:
+ * Task150 menaruhnya paling awal sehingga aktivitas user saat mode private
+ * tidak pernah mencapai clear-AFK → AFK basi (stale) selamanya (uji
+ * afk-dispatch #11). Setelah geser: AFK tetap di-clear DULU (notify:false
+ * saat private = tanpa balasan), baru bot membungkam semua balasan.
+ * Balasan pertama (registrasi/onlyGroup/prefix hint) tetap SETELAH blok ini. */
+// 🔒 MODE PRIVAT — BOT DIAM (Task150)
+// ==================
+/*
+ * Diletakkan SEDINI MUNGKIN: sebelum database user disentuh, sebelum AFK,
+ * sebelum aksi tertunda (.deploysubdomain), dan sebelum petunjuk prefix.
+ * Ketiganya dulu bisa mengirim balasan ke pengguna yang tidak berhak saat
+ * bot disetel private — itulah yang membuat "bot masih bales".
+ */
+try {
+    const setelanUtama = global.db?.data?.settings?.[this.user?.jid]
+    const privatSesi = apakahPrivat(botConfig, setelanUtama)
+    if (privatSesi) {
+        const putusan = putusanModePrivat({
+            privat: true,
+            fromMe: Boolean(m.fromMe || m.key?.fromMe),
+            ...roleDari({ isROwner, isOwnerUtama, isOwner }),
+        })
+        if (!putusan.dilayani) {
+            if (bolehLogDiam(m.chat)) console.log(catatanDiam(putusan, { sender: m.sender, chat: m.chat }))
+            return
+        }
+    }
+} catch (modeError) {
+    console.log(`[mode-privat] gagal memeriksa setelan: ${modeError?.message || modeError}`)
+}
 const mergedUser = mergeUserIdentityRecords(global.db.data.users, userIdentityKeys)
 global.db.data.users[m.sender] ||= mergedUser
 
@@ -1804,8 +1811,9 @@ global.dfail = (type, m, conn) => {
   return msg(m, conn)
 }
 let file = global.__filename(import.meta.url, true);
-watchFile(file, async () => {
+const watcherHandler = watchFile(file, async () => {
 	unwatchFile(file);
 	console.log(chalk.redBright("Update 'handler.js'"));
 	if (global.reloadHandler) console.log(await global.reloadHandler());
 });
+watcherHandler.unref?.()

@@ -8,12 +8,14 @@ import {runUnifiedCommand,awardMessageExp,wrapRpgOutbound} from '../lib/rpg/unif
 import {createRealmService} from '../lib/realms/service.js'
 import {withRealmGate} from '../lib/realms/gate.js'
 import activity from '../plugins/economy/rpg-activity.js'
+const androidId = () => crypto.randomUUID().replace(/-/g, '')
+
 const db=getDb();let serial=0
 function fixture(){
  delete globalThis[UNIFIED_RPG];getUser('777777777')
  const id='628111'+String(++serial).padStart(7,'0'),other='628222'+String(serial).padStart(7,'0'),a=id+'@s.whatsapp.net',b=other+'@s.whatsapp.net',lid='99888'+String(serial).padStart(8,'0')+'@lid'
  const s=createUnifiedStore({db,users:{[a]:{money:5000,exp:9990,registered:true},[b]:{money:0}},links:[]});s.migrate();s.bind([a,lid]);globalThis[UNIFIED_RPG]=s;global.db={data:{users:s.users}}
- const replies=[],m={sender:a,chat:'test-chat',key:{id:crypto.randomUUID()},mentionedJid:[b],reply:async text=>{replies.push(text);return {key:{id:crypto.randomUUID()}}}},conn={sendMessage:async()=>({key:{id:crypto.randomUUID()}})}
+ const replies=[],m={sender:a,chat:'test-chat',key:{id:androidId()},mentionedJid:[b],reply:async text=>{replies.push(text);return {key:{id:androidId()}}}},conn={sendMessage:async()=>({key:{id:androidId()}})}
  const service=createRealmService({db,getUser,saveUser});const login=service.redeem(service.issueCode(lid).code),account=login.state.id
  service.act(account,{id:crypto.randomUUID(),op:'create',class:'warrior',name:'Unified '+serial})
  const u=getUser(id);u.rpg.realm.x=22;u.rpg.realm.y=50;saveUser(id,u)

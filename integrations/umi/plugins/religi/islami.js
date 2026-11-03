@@ -170,7 +170,6 @@ async function handler(m, { sock }) {
                     return m.reply('❌ Terjadi kesalahan saat mengambil data.')
                 }
             }
-            break
         }
     } catch (e) {
         console.error('Religi Plugin Error:', e)

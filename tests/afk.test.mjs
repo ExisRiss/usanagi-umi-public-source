@@ -7,12 +7,14 @@ import {UNIFIED_RPG} from '../lib/rpg/unified-store.js'
 import legacy from '../plugins/info/main-afk.js'
 import native from '../plugins/group/usanagi-afk.js'
 import {handler as imported} from '../integrations/umi/plugins/group/afk.js'
+const androidId = () => crypto.randomUUID().replace(/-/g, '')
+
 const a='111111111@s.whatsapp.net',b='222222222@s.whatsapp.net',lid='999999999@lid'
 function fixture(users={}){
  delete globalThis[UNIFIED_RPG];delete global.afkStorage
  let writes=0;global.db={data:{users},write:async()=>{writes++}}
- const output=[],conn={sendMessage:async(chat,body)=>{output.push({chat,body});return {key:{id:crypto.randomUUID()}}}}
- const message=(text='kembali',extra={})=>({sender:a,chat:'fixture@g.us',text,message:{conversation:text},key:{id:crypto.randomUUID()},reply:async text=>conn.sendMessage('fixture@g.us',{text}),...extra})
+ const output=[],conn={sendMessage:async(chat,body)=>{output.push({chat,body});return {key:{id:androidId()}}}}
+ const message=(text='kembali',extra={})=>({sender:a,chat:'fixture@g.us',text,message:{conversation:text},key:{id:androidId()},reply:async text=>conn.sendMessage('fixture@g.us',{text}),...extra})
  return {conn,output,message,writes:()=>writes}
 }
 for(const [name,command]of [['legacy',legacy],['native',native],['imported',imported]])test(name+' AFK command → plain chat → later mention is no longer AFK',async()=>{

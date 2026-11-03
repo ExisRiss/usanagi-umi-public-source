@@ -60,7 +60,11 @@ const ITEMS = {
   "🔪": { name: "Knife", type: "weapon", damage: 5, durability: 20, craftable: true, materials: { "🪵": 1, "🪨": 1 } },
   "🪓": { name: "Axe", type: "weapon", damage: 8, durability: 15, craftable: true, materials: { "🪵": 1, "🪨": 2 } },
   "🔫": { name: "Pistol", type: "weapon", damage: 15, durability: 10, ammo: "🔴" },
-  "🏹": {
+  /* Task203 — Bow sebelumnya juga memakai key "🏹" sehingga TERTIMPA
+   * item Arrows (dua key sama dalam satu objek): senjata Bow hilang
+   * dan ammo-nya jadi self-reference. Bow dipindah ke "🪃", panah
+   * tetap "🏹" supaya data inventaris lama tetap sah. */
+  "🪃": {
     name: "Bow",
     type: "weapon",
     damage: 10,
@@ -1882,7 +1886,7 @@ function checkForRandomEvents(survival, islandData, sender) {
 
         return true
 
-      case "storm":
+      case "storm": {
         // Storm is dangerous without shelter
         const hasShelter =
           survival.currentLocation.structures.some((s) => ["⛺", "🏠"].includes(s)) ||
@@ -1925,6 +1929,7 @@ function checkForRandomEvents(survival, islandData, sender) {
 
         return true
 
+      }
       case "fog":
         // Fog makes it harder to be rescued
         survival.rescueChance = Math.max(0, survival.rescueChance - 5)

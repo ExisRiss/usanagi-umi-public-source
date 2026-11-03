@@ -6,6 +6,8 @@ import {fileURLToPath} from 'node:url'
 import {createUnifiedStore,UNIFIED_RPG} from '../lib/rpg/unified-store.js'
 import {getDb,cleanup} from './fixtures/realms-sqlite.mjs'
 import realms from '../plugins/rpg/realms.js'
+const androidId = () => crypto.randomUUID().replace(/-/g, '')
+
 global.__filename=url=>fileURLToPath(url)
 const {handler}=await import('../handler.js')
 process.env.GROQ_API_KEY='fixture-no-real-credential'
@@ -16,10 +18,10 @@ function fixture({self=false,group=false,onlyGroup=false,publicMode=true,text='/
  const store=createUnifiedStore({db:getDb(),users:{[sender]:{registered,limit:50,premiumTime:0,money:0,exp:0}},links:[]});store.migrate();globalThis[UNIFIED_RPG]=store
  global.db={data:{users:store.users,chats:{},stats:{},settings:{[bot]:{public:true}},blacklistUser:{}},write:async()=>{}};global.loadDatabase=async()=>{};global.dfail=(reason,m)=>m.reply('Denied: '+reason)
  global.conn={sendMessage:()=>{throw Error('main is OFF')}}
- const conn={user:{id:bot,jid:bot},botConfig:{type:'jadibot',scope:'self-dispatch-'+id,public:publicMode,onlyGroup,defaultPrefix:prefix,defaultLimit:50,registrationRequired:true,values:{brandingAssets:{menuAudioEnabled:false}}},pushMessage:async()=>{},groupMetadata:async()=>({participants:[]}),onWhatsApp:async()=>[],readMessages:async()=>{},sendMessage:async(jid,content)=>{replies.push({jid,content});return {key:{id:crypto.randomUUID()}}}}
+ const conn={user:{id:bot,jid:bot},botConfig:{type:'jadibot',scope:'self-dispatch-'+id,public:publicMode,onlyGroup,defaultPrefix:prefix,defaultLimit:50,registrationRequired:true,values:{brandingAssets:{menuAudioEnabled:false}}},pushMessage:async()=>{},groupMetadata:async()=>({participants:[]}),onWhatsApp:async()=>[],readMessages:async()=>{},sendMessage:async(jid,content)=>{replies.push({jid,content});return {key:{id:androidId()}}}}
  Object.defineProperty(conn,'reply',{value:function(jid,text){return this.sendMessage(jid,{text})}})
  const proto=Object.defineProperty({},'reply',{value:function(text){return this.conn.reply(this.chat,text)}})
- const m=Object.assign(Object.create(proto),{conn,chat,sender,fromMe:self,key:{id:crypto.randomUUID(),remoteJid:chat,fromMe:self},message:{conversation:text},text,mentionedJid:[],isGroup:group,pushName:'Fixture'})
+ const m=Object.assign(Object.create(proto),{conn,chat,sender,fromMe:self,key:{id:androidId(),remoteJid:chat,fromMe:self},message:{conversation:text},text,mentionedJid:[],isGroup:group,pushName:'Fixture'})
  global.plugins={'rpg/realms.js':realms}
  return {conn,m,replies,store,finish(){delete globalThis[UNIFIED_RPG];delete global.db}}
 }
