@@ -9,8 +9,11 @@
  *      kombinasi, termasuk pesan dari akun bot sendiri;
  *   2. setelan private terbaca dari bentuk yang dipakai server:
  *      botConfig.public = false, managedSettings, dan settings.public lama;
- *   3. handler.js menaruh gerbang privat SEBELUM AFK, aksi tertunda, dan
- *      petunjuk prefix — dan tidak lagi mengirim balasan apa pun;
+ *   3. handler.js menaruh gerbang privat SETELAH clear-AFK (Task203 —
+ *      aktivitas di mode private tetap membersihkan AFK dengan notify:false,
+ *      supaya AFK tidak basi selamanya) tetapi SEBELUM inisialisasi user,
+ *      aksi tertunda, dan petunjuk prefix — dan tidak mengirim balasan apa
+ *      pun kepada pengguna yang tidak dilayani;
  *   4. daftar akses (`.addakses`) tidak lagi membuka mode privat.
  */
 
@@ -93,11 +96,15 @@ const posAfk = posisi('await handleAfkMessage(')
 const posAksi = posisi('const _aksiPending = cariAksi(m)')
 const posHint = posisi('const hintPrefix = cariPesanPrefix({')
 const posDbInit = posisi('DATABASE INIT')
+const posUserInit = posisi('global.db.data.users[m.sender] ||=')
 
 cek('handler mengimpor lib/mode-privat.js', isiHandler.includes("from './lib/mode-privat.js'"))
 cek('gerbang privat ada', posGerbang > 0)
-cek('gerbang privat SEBELUM inisialisasi database', posGerbang > 0 && posGerbang < posDbInit, `${posGerbang} vs ${posDbInit}`)
-cek('gerbang privat SEBELUM notifikasi AFK', posGerbang > 0 && posGerbang < posAfk, `${posGerbang} vs ${posAfk}`)
+/* Task203 membalik urutan AFK↔gerbang: pemuatan database dulu (AFK butuh
+ * global.db), lalu clear-AFK (notify:false saat private), baru gerbang diam. */
+cek('inisialisasi database SEBELUM pemeriksaan AFK', posDbInit > 0 && posDbInit < posAfk, `${posDbInit} vs ${posAfk}`)
+cek('clear-AFK SEBELUM gerbang privat (Task203 — AFK tidak basi)', posAfk > 0 && posAfk < posGerbang, `${posAfk} vs ${posGerbang}`)
+cek('gerbang privat SEBELUM inisialisasi user', posGerbang > 0 && posGerbang < posUserInit, `${posGerbang} vs ${posUserInit}`)
 cek('gerbang privat SEBELUM aksi tertunda', posGerbang > 0 && posGerbang < posAksi, `${posGerbang} vs ${posAksi}`)
 cek('gerbang privat SEBELUM petunjuk prefix', posGerbang > 0 && posGerbang < posHint, `${posGerbang} vs ${posHint}`)
 cek('tidak ada balasan "mode privat" lagi', !isiHandler.includes('petunjukPrivat'))

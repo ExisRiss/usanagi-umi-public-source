@@ -422,7 +422,13 @@ m.__prefixMode = prefixMode
 // Activity clears AFK before private/premium/registration/only-group command gates.
 // Do this before profile merging, so a stale PN/LID field cannot overwrite the status.
 const afkNotify = (isOwner || m.fromMe || (botConfig.type === 'jadibot' ? botConfig.public !== false : global.db.data.settings?.[this.user.jid]?.public !== false)) && !isPluginDisabled(botConfig, '_system/_afk.js')
-await handleAfkMessage(m, this, { prefix: activePrefix, aliases: userIdentityKeys, type: chatUpdate.type, notify: afkNotify })
+/* Task204 — kegagalan pemeriksaan AFK tidak boleh mematikan seluruh
+ * pemrosesan pesan (dulu throw di sini = bot tidak merespon chat sama sekali). */
+try {
+    await handleAfkMessage(m, this, { prefix: activePrefix, aliases: userIdentityKeys, type: chatUpdate.type, notify: afkNotify })
+} catch (afkError) {
+    console.log(`[afk] pemeriksaan dilewati: ${afkError?.message || afkError}`)
+}
 
 // ==================
 /* Task203 — Blok ini DIGESER dari sebelum-ke-setelah handleAfkMessage:
