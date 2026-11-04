@@ -26,16 +26,21 @@ Rimuru MD adalah SC hasil rename dari SC Ourin MD.
                  「 👑 𝑹𝑰𝑴𝑼𝑹𝑼 𝑴𝑫 👑 」
 */
 
-import axios from 'axios'
-import te from '../../src/lib/rimuru-error.js'
+/* Task204 — API lama (api.nexray.eu.cc) selalu membalas lyrics:"-" sehingga
+ * fitur .lirik/.lyrics selalu "tidak ketemu". Diganti rantai tangguh
+ * LrcLib → Genius (sama seperti bot Rem Assistant V2). */
+import { cariLirik } from '../../../../lib/lyrics-source.js'
 
 async function fetchLyrics(judul) {
   try {
-    const res = await axios.get(`https://api.nexray.eu.cc/search/lyrics?q=${encodeURIComponent(judul)}`)
-    if (res.data && res.data.status && res.data.result) {
-      return res.data.result
+    const r = await cariLirik(judul)
+    if (!r) return null
+    return {
+      title: r.judul,
+      artist: r.artis,
+      thumbnail: '',
+      lyrics: { plain_lyrics: r.lirik, artist_name: r.artis },
     }
-    return null
   } catch (error) {
     return null
   }
