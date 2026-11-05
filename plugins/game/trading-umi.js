@@ -74,7 +74,7 @@ function loadConfig() {
   let parsed = {}
   try { parsed = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) } catch { }
   const token = String(parsed.token || process.env.UMI_GAME_TOKEN || process.env.GAME_TOKEN || '').trim()
-  const baseUrl = String(parsed.baseUrl || process.env.UMI_GAME_BASE || 'https://game.example.com').replace(/\/+$/, '')
+  const baseUrl = String(parsed.baseUrl || process.env.UMI_GAME_BASE || 'https://game.gwenna.my.id').replace(/\/+$/, '')
   configCache = { at: Date.now(), value: { enabled: parsed.enabled !== false, baseUrl, token } }
   return configCache.value
 }
@@ -145,7 +145,7 @@ function tokenTutorial(prefix = '.', reason = '') {
     '',
     `Contoh: ${prefix}trading login 8f2c1d9a...`,
     '',
-    '🌐 Main lewat browser: https://game.example.com/trading',
+    '🌐 Main lewat browser: https://game.gwenna.my.id/trading',
     'Tempel token yang sama di tab *Token Website* di sana.',
     '',
     'Belum punya token? Buat baru di halaman Profil — token lama otomatis tidak berlaku.',

@@ -31,7 +31,7 @@ function loadConfig() {
   if (configCache.value && Date.now() - configCache.at < 30000) return configCache.value
   let parsed = {}
   try { parsed = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) } catch { /* fallback env */ }
-  const baseUrl = String(parsed.baseUrl || process.env.UMI_GAME_BASE || 'https://game.example.com').replace(/\/+$/, '')
+  const baseUrl = String(parsed.baseUrl || process.env.UMI_GAME_BASE || 'https://game.gwenna.my.id').replace(/\/+$/, '')
   configCache = { at: Date.now(), value: { enabled: parsed.enabled !== false, baseUrl } }
   return configCache.value
 }
