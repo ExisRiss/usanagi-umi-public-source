@@ -151,19 +151,9 @@ async function jalankanProbe () {
   }
 }
 
-/* Auto-run saat boot: tunggu koneksi siap (retry12× tiap5 detik). */
-let percobaan = 0
-const timerBoot = setInterval(() => {
-  percobaan += 1
-  const conn = getMainConnection()
-  if (conn?.user?.id) {
-    clearInterval(timerBoot)
-    setTimeout(() => { jalankanProbe().catch(e => log(`FATAL async: ${e?.message || e}`)) }, 8000)
-  } else if (percobaan >= 12) {
-    clearInterval(timerBoot)
-    log('FATAL: koneksi tidak siap setelah60 detik — probe batal')
-  }
-}, 5000)
+/* Auto-run boot DIMATIKAN setelah bukti hijau (log /data/t207-probe.log
+ * MULAI PROBE v4 → GLUE_TICK: SUKSES → PROBE_SELESAI). Jalankan manual
+ * kapan saja dengan perintah rowner: .t207probe */
 
 async function handler (m) {
   jalanSekali = false
