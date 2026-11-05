@@ -1,13 +1,12 @@
 /**
- * PROBE v3 — Task207 spamrch (ALAT UJI, bukan fitur).
+ * PROBE v4 — Task207 spamrch (ALAT UJI, bukan fitur).
  *
- * Bukti jalur production terbaru (fetch = newsletterFetchMessageUpdates,
- * karena newsletterFetchMessages BUG "logger is not defined" — terbukti
- * di server):
- *   A. bersihkan pesan uji lama di channel langganan (best effort)
- *   B. subscribed → channel langganan: uji fetchUpdates + reaction
+ * Bukti jalur production terbaru: fetch = newsletterFetchMessages dengan
+ * seed `global.logger` (bug library "logger is not defined" diatasi lewat
+ * global — terbukti di server):
+ *   A. subscribed → channel langganan: uji fetchMessages + reaction
  *      langsung 🧪 lalu hapus (transien, aman)
- *   C. glue penuh: newsletterCreate channel uji SENDIRI → kirim pesan
+ *   B. glue penuh: newsletterCreate channel uji SENDIRI → kirim pesan
  *      uji → jalankanTickSekali() (jalur asli spamrch) → terkirimBaru≥1
  *      → newsletterDelete (semua jejak ikut terhapus)
  *
@@ -20,11 +19,6 @@ import { getMainConnection } from '../../lib/bot-connection-context.js'
 import { buatStateSpam, jalankanTickSekali } from '../misc/spamrch.js'
 
 const OUT = '/data/t207-probe.log'
-/* Pesan uji probe v2 yang tertinggal di channel langganan (dibersihkan). */
-const JEJAK_UJI_LAMA = {
-  jid: '120363186130999681@newsletter',
-  id: '3EB0D177F0E64AE14C342B',
-}
 let jalanSekali = false
 
 function log (baris) {
@@ -57,7 +51,7 @@ function channelDariSubscribed (mentah) {
 async function jalankanProbe () {
   if (jalanSekali) return
   jalanSekali = true
-  log('=== MULAI PROBE v3 ===')
+  log('=== MULAI PROBE v4 ===')
   let channelIdUji = null
   try {
     const conn = getMainConnection()
@@ -67,22 +61,9 @@ async function jalankanProbe () {
       return
     }
     log(`koneksi ok user=${String(conn.user.id).replace(/:\d+/, '')}`)
-    log(`tipe: fetchUpdates=${typeof conn.newsletterFetchMessageUpdates} react=${typeof conn.newsletterReactMessage} subscribed=${typeof conn.newsletterSubscribed} create=${typeof conn.newsletterCreate} delete=${typeof conn.newsletterDelete}`)
+    log(`tipe: fetchMessages=${typeof conn.newsletterFetchMessages} react=${typeof conn.newsletterReactMessage} subscribed=${typeof conn.newsletterSubscribed} create=${typeof conn.newsletterCreate} delete=${typeof conn.newsletterDelete} global.logger=${typeof global.logger}`)
 
-    // A. bersihkan jejak pesan uji probe v2 (channel langganan)
-    try {
-      await denganBatas(
-        conn.sendMessage(JEJAK_UJI_LAMA.jid, {
-          delete: { remoteJid: JEJAK_UJI_LAMA.jid, id: JEJAK_UJI_LAMA.id, fromMe: true },
-        }),
-        20000, 'hapusJejakLama'
-      )
-      log(`jejak uji lama dihapus: ${JEJAK_UJI_LAMA.id}`)
-    } catch (e) {
-      log(`hapus jejak uji lama GAGAL: ${e?.message || e}`)
-    }
-
-    // B. channel langganan: fetchUpdates + reaction langsung
+    // A. channel langganan: fetchMessages + reaction langsung
     let channelIdLangganan = String(global.links?.channelId || '').trim()
     if (!channelIdLangganan.endsWith('@newsletter')) {
       try {
@@ -95,8 +76,8 @@ async function jalankanProbe () {
     }
     if (channelIdLangganan.endsWith('@newsletter')) {
       try {
-        const up = await denganBatas(conn.newsletterFetchMessageUpdates(channelIdLangganan, { count: 10 }), 20000, 'fetchUpdates')
-        log(`fetchUpdates OK jumlah=${Array.isArray(up) ? up.length : typeof up}`)
+        const up = await denganBatas(conn.newsletterFetchMessages('jid', channelIdLangganan, 10), 25000, 'fetchMessages')
+        log(`fetchMessages (global.logger) OK jumlah=${Array.isArray(up) ? up.length : typeof up}`)
         if (Array.isArray(up) && up.length) {
           const target = up[up.length - 1]
           const serverId = String(target?.key?.server_id || target?.key?.id || '')
@@ -110,11 +91,11 @@ async function jalankanProbe () {
           }
         }
       } catch (e) {
-        log(`fetchUpdates/react langganan GAGAL: ${e?.message || e}`)
+        log(`fetchMessages/react langganan GAGAL: ${e?.message || e}`)
       }
     }
 
-    // C. glue penuh di channel BUATAN SENDIRI
+    // B. glue penuh di channel BUATAN SENDIRI
     try {
       const dibuat = await denganBatas(
         conn.newsletterCreate('Umi Probe207', 'Alat uji glue spamrch — Task207, dihapus otomatis'),
@@ -135,7 +116,7 @@ async function jalankanProbe () {
       const state = buatStateSpam({ invite: 'probe', channelId: channelIdUji, emojis: ['🧪', '✅'], owner: 'probe' })
       // tandai semua pesan lama seen — hanya pesan uji yang boleh kena
       try {
-        const ulang = await denganBatas(conn.newsletterFetchMessageUpdates(channelIdUji, { count: 15 }), 20000, 'fetchSeen')
+        const ulang = await denganBatas(conn.newsletterFetchMessages('jid', channelIdUji, 15), 25000, 'fetchSeen')
         const idUji = kirim?.key?.id
         for (const p of ulang || []) {
           if (p?.key?.id && p.key.id !== idUji) state.seen.add(p.key.id)

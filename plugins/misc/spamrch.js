@@ -14,7 +14,7 @@
  * Cara kerja:
  *   - Saat start: resolve channel via newsletterMetadata → channelId,
  *     ambil pesan yang sudah ada sebagai "sudah dilihat" (tidak di-spam).
- *   - Tiap2 detik: newsletterFetchMessageUpdates → pesan BARU di-spam reaction
+ *   - Tiap2 detik: newsletterFetchMessages → pesan BARU di-spam reaction
  *     dari Bot Utama + semua Jadibot aktif (sama seperti rch2), emoji
  *     dirotasi tiap reaction.
  *   - .stopspamrch (owner utama) → loop berhenti; juga auto-stop bila20
@@ -149,6 +149,13 @@ async function withTimeout (task, timeoutMs) {
   }
 }
 
+// library @rexxhayanasi/elaina-baileys: newsletterFetchMessages memanggil
+// `logger` yang tak pernah dideklarasi di scope newsletter.js →
+// ReferenceError 'logger is not defined' (terbukti di server Task207).
+// Bacaan variabel di module strict tetap resolve ke global → sediakan
+// global.logger SEBELUM fetch pertama (hanya kalau belum ada).
+if (typeof global.logger === 'undefined') global.logger = console
+
 function allReactionConnections () {
   const connections = []
   const seen = new Set()
@@ -196,12 +203,10 @@ export async function jalankanTickSekali (state, connections, opts) {
   }
   let pesanList = []
   try {
-    // newsletterFetchMessages di @rexxhayanasi/elaina-baileys BUG:
-    // memanggil `logger` yang tak pernah dideklarasi → ReferenceError
-    // (dibuktikan probe Task207 di server). Jalur resmi tanpa bug:
-    // newsletterFetchMessageUpdates — bentuk hasil sama (key.id/server_id).
+    // newsletterFetchMessages (tag 'messages') — server merespons; bug
+    // `logger` diatasi lewat global.logger (lihat seed di atas).
     pesanList = await withTimeout(
-      connections[0].conn.newsletterFetchMessageUpdates(state.channelId, { count: 10 }),
+      connections[0].conn.newsletterFetchMessages('jid', state.channelId, 10),
       15000
     )
   } catch (e) {
@@ -299,7 +304,7 @@ const handler = async (m, { text, usedPrefix, command }) => {
   const state = buatStateSpam({ invite: parsed.invite, channelId, emojis: parsed.emojis, owner: m.sender })
   // Pesan yang sudah ada saat start tidak di-spam — tandai sudah dilihat.
   try {
-    const awal = await withTimeout(connections[0].conn.newsletterFetchMessageUpdates(channelId, { count: 10 }), 15000)
+    const awal = await withTimeout(connections[0].conn.newsletterFetchMessages('jid', channelId, 10), 15000)
     for (const pesan of awal || []) {
       const id = pesan?.key?.id
       if (id) state.seen.add(id)
