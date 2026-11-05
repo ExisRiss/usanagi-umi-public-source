@@ -463,6 +463,11 @@ try {
     const setelanUtama = global.db?.data?.settings?.[this.user?.jid]
     const privatSesi = apakahPrivat(botConfig, setelanUtama)
     if (privatSesi) {
+        // Diagnostik: sumber mana yang membuat sesi dianggap privat
+        // (laporan Task207: owner bilang mode public tapi bot diam).
+        if (bolehLogDiam(m.chat)) {
+            console.log(`[mode-privat-debug] type=${botConfig?.type} managed=${botConfig?.managedSettings} publicCfg=${botConfig?.public} dbPublic=${setelanUtama?.public} dbAdaPublik=${Boolean(setelanUtama && 'public' in setelanUtama)} jidBot=${this.user?.jid}`)
+        }
         const putusan = putusanModePrivat({
             privat: true,
             fromMe: Boolean(m.fromMe || m.key?.fromMe),
