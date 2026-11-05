@@ -67,6 +67,7 @@ export function buatStateSpam ({ invite, channelId, emojis, owner }) {
     seen: new Set(),
     terkirim: 0,
     gagalBerturut: 0,
+    lastError: '',
     berjalan: true
   }
 }
@@ -165,51 +166,68 @@ function allReactionConnections () {
 
 /** Satu job spam global (start baru menggantikan yang lama). */
 let job = null
+/** Penjaga tick: jangan ada dua tick berjalan bersamaan (fetch bisa lambat). */
+let tickBerjalan = false
 
 function hapusJob () {
   if (job?.timer) clearInterval(job.timer)
   job = null
 }
 
+function catatError (state, label, error) {
+  const pesan = String(error?.message || error || 'unknown')
+  state.lastError = `${label}: ${pesan}`
+  console.log(`[SPAMRCH] ${state.lastError}`)
+}
+
 async function tick () {
+  if (tickBerjalan) return // tick sebelumnya masih berjalan — lewati
   if (!job?.state?.berjalan) return hapusJob()
-  const { state } = job
-  // Ambil daftar koneksi TERBARU tiap tick (jadibot bisa connect/disconnect).
-  const connections = allReactionConnections()
-  if (!connections.length) {
-    if (catatHasilTick(state, [false]) === 'stop') await laporAutoStop(state)
-    return
-  }
-  let pesanList = []
+  tickBerjalan = true
   try {
-    pesanList = await withTimeout(
-      connections[0].conn.newsletterFetchMessages('jid', state.channelId, 10),
-      15000
-    )
-  } catch {
-    if (catatHasilTick(state, [false]) === 'stop') await laporAutoStop(state)
-    return
-  }
-  const aksi = prosesPolling(state, pesanList, connections.length)
-  if (!aksi.length) {
-    // Tidak ada pesan baru — bukan kegagalan.
-    state.gagalBerturut = 0
-    return
-  }
-  // Aksi dipetakan berurutan: aksi[k] untuk koneksi k % connections.length
-  const hasil = []
-  for (let k = 0; k < aksi.length; k += 1) {
-    const { conn } = connections[k % connections.length]
-    const { serverId, emoji } = aksi[k]
-    try {
-      await withTimeout(conn.newsletterReactMessage(state.channelId, serverId, emoji), 15000)
-      state.terkirim += 1
-      hasil.push(true)
-    } catch {
-      hasil.push(false)
+    const { state } = job
+    // Ambil daftar koneksi TERBARU tiap tick (jadibot bisa connect/disconnect).
+    const connections = allReactionConnections()
+    if (!connections.length) {
+      state.lastError = 'koneksi: tidak ada koneksi reaksi aktif (main/jadibot)'
+      if (catatHasilTick(state, [false]) === 'stop') await laporAutoStop(state)
+      return
     }
+    let pesanList = []
+    try {
+      pesanList = await withTimeout(
+        connections[0].conn.newsletterFetchMessages('jid', state.channelId, 10),
+        15000
+      )
+    } catch (e) {
+      catatError(state, 'fetch', e)
+      if (catatHasilTick(state, [false]) === 'stop') await laporAutoStop(state)
+      return
+    }
+    const aksi = prosesPolling(state, pesanList, connections.length)
+    if (!aksi.length) {
+      // Tidak ada pesan baru — bukan kegagalan.
+      state.gagalBerturut = 0
+      return
+    }
+    // Aksi dipetakan berurutan: aksi[k] untuk koneksi k % connections.length
+    const hasil = []
+    for (let k = 0; k < aksi.length; k += 1) {
+      const { conn } = connections[k % connections.length]
+      const { serverId, emoji } = aksi[k]
+      try {
+        await withTimeout(conn.newsletterReactMessage(state.channelId, serverId, emoji), 15000)
+        state.terkirim += 1
+        hasil.push(true)
+      } catch (e) {
+        catatError(state, `react(${emoji})`, e)
+        hasil.push(false)
+      }
+    }
+    if (catatHasilTick(state, hasil) === 'stop') await laporAutoStop(state)
+  } finally {
+    tickBerjalan = false
   }
-  if (catatHasilTick(state, hasil) === 'stop') await laporAutoStop(state)
 }
 
 async function laporAutoStop (state) {
@@ -218,7 +236,8 @@ async function laporAutoStop (state) {
     '',
     `• Alasan: semua koneksi gagal ${GAGAL_BERTURUT_MAKS} tick berturut-turut.`,
     `• Total reaction terkirim: ${state.terkirim}`,
-  ].join('\n')
+    state.lastError ? `• Error terakhir: ${state.lastError.slice(0, 300)}` : '',
+  ].filter(Boolean).join('\n')
   hapusJob()
   try {
     const conn = getMainConnection()
@@ -269,7 +288,8 @@ const handler = async (m, { text, usedPrefix, command }) => {
   } catch { /* bila gagal, tick pertama akan menganggapnya pesan baru — tetap aman */ }
 
   job = { state, dimulai: Date.now() }
-  job.timer = setInterval(() => { tick().catch(() => {}) }, SPAM_MS)
+  job.timer = setInterval(() => { tick().catch(e => { console.log('[SPAMRCH] tick fatal:', e?.message || e) }) }, SPAM_MS)
+  console.log(`[SPAMRCH] start channel=${channelId} emoji=${state.emojis.join(',')} koneksi=${connections.length}`)
 
   return m.reply([
     '🔴 *SPAM REAKSI DIMULAI*',
