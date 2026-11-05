@@ -79,7 +79,8 @@ export function buatStateSpam ({ invite, channelId, emojis, owner }) {
  * - tiap koneksi aktif mengirim1 reaction, emoji dirotasi global.
  * @returns {Array<{serverId: string, emoji: string}>}
  */
-export function prosesPolling (state, pesanList, jumlahKoneksi) {
+export function prosesPolling (state, pesanList, jumlahKoneksi, opts) {
+  const lewatiFromMe = !opts || opts.lewatiFromMe !== false
   const aksi = []
   if (!state.berjalan || jumlahKoneksi < 1) return aksi
   const urut = Array.isArray(pesanList) ? [...pesanList] : []
@@ -92,7 +93,7 @@ export function prosesPolling (state, pesanList, jumlahKoneksi) {
     const id = pesan?.key?.id
     if (!id || state.seen.has(id)) continue
     state.seen.add(id)
-    if (pesan?.key?.fromMe) continue
+    if (lewatiFromMe && pesan?.key?.fromMe) continue
     const serverId = String(pesan?.key?.server_id || id)
     for (let i = 0; i < jumlahKoneksi; i += 1) {
       const emoji = state.emojis[state.rotasi % state.emojis.length]
@@ -180,6 +181,55 @@ function catatError (state, label, error) {
   console.log(`[SPAMRCH] ${state.lastError}`)
 }
 
+/**
+ * SATU TICK inti (dipakai timer DAN probe uji): fetch → prosesPolling →
+ * react. Mengembalikan status supaya pemanggil bisa melapor/berhenti.
+ * @param {object} state
+ * @param {Array<{conn:object,type:string}>} connections koneksi reaksi
+ * @param {object} [opts] { lewatiFromMe: false } HANYA untuk uji (default true)
+ */
+export async function jalankanTickSekali (state, connections, opts) {
+  if (!state.berjalan) return { status: 'mati' }
+  if (!connections || !connections.length) {
+    state.lastError = 'koneksi: tidak ada koneksi reaksi aktif (main/jadibot)'
+    return { status: 'gagal', hitung: catatHasilTick(state, [false]) }
+  }
+  let pesanList = []
+  try {
+    pesanList = await withTimeout(
+      connections[0].conn.newsletterFetchMessages('jid', state.channelId, 10),
+      15000
+    )
+  } catch (e) {
+    catatError(state, 'fetch', e)
+    return { status: 'gagal', hitung: catatHasilTick(state, [false]) }
+  }
+  const aksi = prosesPolling(state, pesanList, connections.length, opts)
+  if (!aksi.length) {
+    // Tidak ada pesan baru — bukan kegagalan.
+    state.gagalBerturut = 0
+    return { status: 'diam', aksi: 0 }
+  }
+  // Aksi dipetakan berurutan: aksi[k] untuk koneksi k % connections.length
+  const hasil = []
+  let terkirimBaru = 0
+  for (let k = 0; k < aksi.length; k += 1) {
+    const { conn } = connections[k % connections.length]
+    const { serverId, emoji } = aksi[k]
+    try {
+      await withTimeout(conn.newsletterReactMessage(state.channelId, serverId, emoji), 15000)
+      state.terkirim += 1
+      terkirimBaru += 1
+      hasil.push(true)
+    } catch (e) {
+      catatError(state, `react(${emoji})`, e)
+      hasil.push(false)
+    }
+  }
+  const akhir = catatHasilTick(state, hasil)
+  return { status: akhir === 'stop' ? 'stop' : 'jalan', aksi: aksi.length, terkirimBaru }
+}
+
 async function tick () {
   if (tickBerjalan) return // tick sebelumnya masih berjalan — lewati
   if (!job?.state?.berjalan) return hapusJob()
@@ -188,43 +238,8 @@ async function tick () {
     const { state } = job
     // Ambil daftar koneksi TERBARU tiap tick (jadibot bisa connect/disconnect).
     const connections = allReactionConnections()
-    if (!connections.length) {
-      state.lastError = 'koneksi: tidak ada koneksi reaksi aktif (main/jadibot)'
-      if (catatHasilTick(state, [false]) === 'stop') await laporAutoStop(state)
-      return
-    }
-    let pesanList = []
-    try {
-      pesanList = await withTimeout(
-        connections[0].conn.newsletterFetchMessages('jid', state.channelId, 10),
-        15000
-      )
-    } catch (e) {
-      catatError(state, 'fetch', e)
-      if (catatHasilTick(state, [false]) === 'stop') await laporAutoStop(state)
-      return
-    }
-    const aksi = prosesPolling(state, pesanList, connections.length)
-    if (!aksi.length) {
-      // Tidak ada pesan baru — bukan kegagalan.
-      state.gagalBerturut = 0
-      return
-    }
-    // Aksi dipetakan berurutan: aksi[k] untuk koneksi k % connections.length
-    const hasil = []
-    for (let k = 0; k < aksi.length; k += 1) {
-      const { conn } = connections[k % connections.length]
-      const { serverId, emoji } = aksi[k]
-      try {
-        await withTimeout(conn.newsletterReactMessage(state.channelId, serverId, emoji), 15000)
-        state.terkirim += 1
-        hasil.push(true)
-      } catch (e) {
-        catatError(state, `react(${emoji})`, e)
-        hasil.push(false)
-      }
-    }
-    if (catatHasilTick(state, hasil) === 'stop') await laporAutoStop(state)
+    const hasil = await jalankanTickSekali(state, connections)
+    if (hasil.status === 'stop') await laporAutoStop(state)
   } finally {
     tickBerjalan = false
   }
