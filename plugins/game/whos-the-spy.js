@@ -197,15 +197,44 @@ async function pastikanMuat (conn) {
 
 /* ================= Handler utama (.ws) ================= */
 
-let handler = async (m, { conn, args }) => {
+/** Tutorial saat user hanya mengetik .ws tanpa argumen. */
+export function tutorialWs (usedPrefix) {
+  const p = usedPrefix || '.'
+  return [
+    "🕵️ *WHO'S THE SPY — TUTORIAL*",
+    '',
+    '*Cara pakai (perintah):*',
+    `• ${p}ws — tampilkan tutorial ini`,
+    `• ${p}ws buat — buat room baru (grup)`,
+    `• ${p}ws join — ikut room yang sedang menunggu`,
+    `• ${p}ws play — mulai bila pemain sudah ≥4`,
+    `• ${p}ws status — lihat status room`,
+    `• ${p}ws cancel — batalkan room (pembuat)`,
+    '',
+    '*Cara main:*',
+    '1. Minimal4, maksimal12 pemain. Pendaftaran tutup5 menit.',
+    '2. Tiap pemain menerima KATA lewat DM bot (tidak pernah di grup). Salah satunya adalah *SPY* dengan kata BERBEDA.',
+    '3. Ronde petunjuk: kirim1 petunjuk per ronde dengan *REPLY pesan bot* atau *MENTION bot*. Timer5 menit → voting otomatis.',
+    '4. Voting: pilih pemain paling mencurigakan lewat poll. Suara terbanyak tersingkir (seri = tidak ada yang tersingkir).',
+    '5. *Warga menang* bila spy tersingkir. *Spy menang* bila tersisa1 warga +1 spy.',
+    '6. XP: menang warga +100, spy +150, tiap petunjuk +10, tiap eliminasi +25.',
+    '',
+    `Contoh: ${p}ws buat → pemain lain ${p}ws join → ${p}ws play.`
+  ].join('\n')
+}
+
+let handler = async (m, { conn, args, usedPrefix }) => {
   connAktif = conn
   await pastikanMuat(conn)
   const grup = m.chat
   if (!String(grup).endsWith('@g.us')) return m.reply('Fitur ini hanya untuk grup.')
-  const sub = String(args[0] || 'status').toLowerCase()
+  const sub = args[0] ? String(args[0]).toLowerCase() : ''
   const jid = normJid(m.sender)
   const nama = (m.pushName || jid).slice(0, 40)
   const sekarang = Date.now()
+
+  // Hanya ".ws" tanpa argumen → tutorial cara pakai dan cara main.
+  if (!sub) return m.reply(tutorialWs(usedPrefix))
 
   if (sub === 'buat' || sub === 'create') {
     try {
@@ -274,12 +303,15 @@ let handler = async (m, { conn, args }) => {
     return m.reply('❌ Sesi WHO\'S THE SPY dibatalkan. Semua timer dibersihkan.')
   }
 
-  // status (default)
-  await pastikanMuat(conn)
-  return m.reply(statusPublik(daftarRuang, grup, sekarang))
+  if (sub === 'status') {
+    await pastikanMuat(conn)
+    return m.reply(statusPublik(daftarRuang, grup, sekarang))
+  }
+
+  return m.reply(`Perintah ${usedPrefix || '.'}ws ${sub} tidak dikenal.\n\n` + tutorialWs(usedPrefix))
 }
 
-handler.help = ['ws buat', 'ws join', 'ws play', 'ws cancel', 'ws status']
+handler.help = ['ws (tutorial)', 'ws buat', 'ws join', 'ws play', 'ws cancel', 'ws status']
 handler.tags = ['game']
 handler.command = /^ws$/i
 handler.group = true
