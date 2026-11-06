@@ -15,9 +15,11 @@ export const ML_SKILL_HTML = `<!DOCTYPE html>
 :root{--bg:#0b1020;--fg:#f3f0e6;--gold:#d6b25e;--u:clamp(52px,min(11vw,17vh),92px);box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--bg:#0b1020}}
 :root[data-theme="dark"]{--bg:#0b1020}
-html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
-canvas#c{display:block;width:100%;height:100%}
-.hud{position:fixed}
+html{background:transparent}
+body{margin:0;background:transparent;color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden;touch-action:pan-y;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
+#wrap{position:relative;width:100%;height:clamp(240px,54vh,430px);overflow:hidden;border-radius:10px;background:var(--bg);touch-action:pan-y}
+canvas#c{display:block;width:100%;height:100%;touch-action:none}
+.hud{position:absolute}
 #mm{left:calc(env(safe-area-inset-left,0px) + 8px);top:calc(env(safe-area-inset-top,0px) + 8px);width:calc(var(--u)*1.5);height:calc(var(--u)*1.5);border:3px solid var(--gold);border-radius:8px;background:#000}
 #gear{left:calc(env(safe-area-inset-left,0px) + 8px);top:calc(env(safe-area-inset-top,0px) + var(--u)*1.5 + 18px);width:44px;height:44px;border-radius:50%;border:2px solid var(--gold);background:#000a;color:#fff;font-size:22px;display:grid;place-items:center}
 #info{right:calc(env(safe-area-inset-right,0px) + 10px);top:calc(env(safe-area-inset-top,0px) + 8px);font-size:12px;font-weight:700;text-align:right;line-height:1.5;color:#ffe9a8}
@@ -55,6 +57,7 @@ canvas#c{display:block;width:100%;height:100%}
 </style>
 </head>
 <body>
+<div id="wrap">
 <canvas id="c"></canvas>
 <canvas id="mm" class="hud" width="128" height="128"></canvas>
 <div id="gear" class="hud">⚙</div>
@@ -65,6 +68,7 @@ canvas#c{display:block;width:100%;height:100%}
 <div id="hint" class="hud"></div>
 <div id="cbtn" class="hud">🪝</div>
 <div id="pn" class="hud"><b>Pengaturan</b><div id="rows"></div><button id="cl">Tutup</button></div>
+</div><!-- /wrap -->
 <div id="rtp"><div id="rth"><b>Tes Retribution: Turtle &amp; Lord</b><button id="rtx">✕</button></div>
 <div id="rtc"></div><div id="rti"></div>
 <div id="hb"><div id="hf"></div><div id="hs"></div><div id="hm"></div><span id="ht"></span></div>
@@ -75,8 +79,8 @@ canvas#c{display:block;width:100%;height:100%}
 <script>
 const $=id=>document.getElementById(id),cv=$('c'),ctx=cv.getContext('2d'),mm=$('mm').getContext('2d');
 const N=36,T=64,WS=N*T;let W,H,S=1;
-function rs(){const d=devicePixelRatio||1;W=innerWidth;H=innerHeight;cv.width=W*d;cv.height=H*d;ctx.setTransform(d,0,0,d,0,0);S=Math.max(.7,Math.min(1.4,Math.min(W,H)/520))}
-addEventListener('resize',rs);rs();
+const WRAP=document.getElementById("wrap");function rs(){const d=devicePixelRatio||1;W=(WRAP&&WRAP.clientWidth)||innerWidth;H=(WRAP&&WRAP.clientHeight)||innerHeight;cv.width=W*d;cv.height=H*d;ctx.setTransform(d,0,0,d,0,0);S=Math.max(.7,Math.min(1.4,Math.min(W,H)/520))}
+addEventListener("resize",rs);if(window.ResizeObserver){try{new ResizeObserver(rs).observe(WRAP)}catch(e){}}rs();
 
 // ===== OPSI =====
 const cfg={hero:0,mode:0,tg:1,rk:1,inf:0};
@@ -226,6 +230,37 @@ $('rtGo').onclick=rtStart;
 $('rtri').addEventListener('pointerdown',e=>{e.preventDefault();rtPress()});
 $('rtk').addEventListener('pointerdown',e=>{const i=e.target.dataset.i;if(i!=null){e.preventDefault();rtSk(+i)}});
 addEventListener('keydown',e=>{if($('rtp').style.display==='block'){if(e.key===' '){e.preventDefault();rtPress()}else if('123'.includes(e.key))rtSk(+e.key-1)}});
+</script>
+<script>
+/* ── Pelindung sentuh ──────────────────────────────────────────────
+ * Tujuan: kartu rich message TIDAK bisa di-swipe-reply / long-press-reply
+ * dan geseran layar tidak "dimakan" oleh WhatsApp, TAPI geser vertikal
+ * halaman + geser internal (.rail/.cbody) tetap jalan.
+ * ──────────────────────────────────────────────────────────────── */
+(function(){
+  /* area game (#wrap) & joystick memang butuh geser → jangan ditahan */
+  var bolehGeser = function(el){ return !!(el && el.closest && el.closest('#wrap,#joy,#cbtn,#pn,#rtp,input,textarea,select')) };
+  var sx = 0, sy = 0, kunci = '';
+  document.addEventListener('touchstart', function(e){
+    var t = e.touches && e.touches[0]; if(!t) return;
+    sx = t.clientX; sy = t.clientY; kunci = '';
+  }, {passive: true});
+  document.addEventListener('touchmove', function(e){
+    var t = e.touches && e.touches[0]; if(!t) return;
+    var dx = t.clientX - sx, dy = t.clientY - sy;
+    if(!kunci && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) kunci = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    /* geser ke samping di luar area geser → tahan (cegah swipe-reply) */
+    if(kunci === 'x' && !bolehGeser(e.target)) e.preventDefault();
+  }, {passive: false});
+  /* tahan menu "Balas" saat long-press */
+  document.addEventListener('contextmenu', function(e){ e.preventDefault() }, {passive: false});
+  /* jangan biarkan teks terpilih otomatis (kecuali kolom isian) */
+  document.addEventListener('selectstart', function(e){
+    if(!e.target || !/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) e.preventDefault();
+  }, {passive: false});
+  /* dua jari / pinch tidak perlu */
+  document.addEventListener('gesturestart', function(e){ e.preventDefault() }, {passive: false});
+})();
 </script>
 </body>
 </html>

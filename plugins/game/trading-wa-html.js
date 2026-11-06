@@ -23,29 +23,34 @@ export const TRADING_WA_HTML = `<!DOCTYPE html>
 <title>UMI TRADE</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;font-family:'Segoe UI',Roboto,Arial,sans-serif}
-body{background:#070b14;color:#e8eefb;padding:10px 10px 18px;font-size:13px}
+body{background:#070b14;color:#e8eefb;padding:8px 8px 14px;font-size:12.5px;overflow-x:hidden;touch-action:pan-y;-webkit-text-size-adjust:100%;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
 #app{max-width:430px;margin:0 auto}
 .hdr{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px}
 .logo{display:flex;align-items:center;gap:7px;font-weight:800;font-size:15px;letter-spacing:.3px}
 .dot{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,#22d3a6,#0e8f6f);display:flex;align-items:center;justify-content:center;font-size:13px}
 .small{font-size:9px;color:#7c8aa5;font-weight:600;letter-spacing:1.4px;display:block}
 .cards{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px}
-.card{background:#0e1524;border:1px solid #1b2740;border-radius:12px;padding:8px 10px}
+.card{background:#0e1524;border:1px solid #1b2740;border-radius:10px;padding:5px 9px}
 .card i{display:block;font-style:normal;font-size:9px;letter-spacing:1px;color:#7c8aa5;font-weight:700;margin-bottom:3px}
-.card b{font-size:16px;font-variant-numeric:tabular-nums}
+.card b{font-size:14px;font-variant-numeric:tabular-nums}
 .up{color:#26e0a5!important}.down{color:#ff6b81!important}
 /* ── strip traffic pasar ── */
-.traf{display:flex;align-items:center;gap:8px;background:#0e1524;border:1px solid #1b2740;border-radius:12px;padding:7px 10px;margin-bottom:8px}
+.traf{display:flex;align-items:center;gap:8px;background:#0e1524;border:1px solid #1b2740;border-radius:10px;padding:4px 9px;margin-bottom:6px}
 .traf .lb{font-size:9px;letter-spacing:1px;color:#7c8aa5;font-weight:700;flex:none}
 .traf .bar{flex:1;height:7px;border-radius:4px;background:#ff6b81;overflow:hidden;display:flex}
 .traf .bar span{display:block;height:100%;background:#26e0a5}
 .traf .val{font-size:10.5px;font-weight:800;font-variant-numeric:tabular-nums;flex:none}
 .traf .val .g{color:#26e0a5}.traf .val .r{color:#ff6b81}
-.tabs{display:flex;gap:6px;margin-bottom:8px}
-.tab{flex:1;text-align:center;padding:7px 0;border-radius:10px;background:#0e1524;border:1px solid #1b2740;font-weight:700;font-size:11px;color:#8fa0bd;cursor:pointer}
+.tabs{display:flex;gap:6px;margin-bottom:6px}
+.tab{flex:1;text-align:center;padding:5px 0;border-radius:10px;background:#0e1524;border:1px solid #1b2740;font-weight:700;font-size:11px;color:#8fa0bd;cursor:pointer}
 .tab.on{background:linear-gradient(135deg,#123a5c,#0d2740);border-color:#2b6ea8;color:#8fd8ff}
 /* ── panel grafik ── */
-.chart{background:#0e1524;border:1px solid #1b2740;border-radius:12px;padding:8px 9px 4px;margin-bottom:8px}
+.chartbox{background:#0e1524;border:1px solid #1b2740;border-radius:12px;margin-bottom:6px;overflow:hidden}
+.chart{padding:8px 9px 4px}
+.cbody{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;touch-action:pan-x;padding:0 9px 2px;scrollbar-width:thin}
+.cbody::-webkit-scrollbar{height:4px}
+.cbody::-webkit-scrollbar-thumb{background:#24344f;border-radius:2px}
+.cbody>svg{display:block;width:auto;min-width:100%;height:104px}
 .chart .ct{display:flex;align-items:baseline;justify-content:space-between;gap:6px;margin-bottom:2px}
 .chart .ct b{font-size:13px}
 .chart .ct b small{font-size:9.5px;color:#7c8aa5;font-weight:600;letter-spacing:.4px;margin-left:4px}
@@ -55,10 +60,10 @@ body{background:#070b14;color:#e8eefb;padding:10px 10px 18px;font-size:13px}
 .chart .legend{display:flex;justify-content:space-between;font-size:9px;color:#5d6b85;margin-top:1px}
 .chart .legend .hi{color:#26e0a5}.chart .legend .lo{color:#ff6b81}
 /* ── info saham ── */
-.info{background:#0e1524;border:1px solid #1b2740;border-radius:12px;padding:9px 10px;margin-bottom:8px}
+.info{background:#0e1524;border:1px solid #1b2740;border-radius:10px;padding:6px 9px;margin-bottom:6px}
 .info h3{font-size:9px;letter-spacing:1.2px;color:#7c8aa5;margin-bottom:6px}
-.igrid{display:grid;grid-template-columns:1fr 1fr;gap:5px 10px}
-.igrid div{display:flex;justify-content:space-between;gap:6px;font-size:10.5px;border-bottom:1px dashed #16213a;padding-bottom:4px}
+.igrid{display:grid;grid-template-columns:1fr 1fr;gap:3px 10px}
+.igrid div{display:flex;justify-content:space-between;gap:6px;font-size:10px;border-bottom:1px dashed #16213a;padding-bottom:2px}
 .igrid span{color:#7c8aa5;white-space:nowrap}
 .igrid b{font-weight:800;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .badge{display:inline-block;padding:1px 6px;border-radius:999px;font-size:9px;font-weight:800;letter-spacing:.4px;border:1px solid #24344f;color:#8fa0bd}
@@ -66,8 +71,8 @@ body{background:#070b14;color:#e8eefb;padding:10px 10px 18px;font-size:13px}
 .badge.r{border-color:rgba(255,107,129,.4);background:rgba(255,107,129,.12);color:#ff6b81}
 .badge.y{border-color:rgba(255,204,87,.35);background:rgba(255,204,87,.1);color:#ffcc57}
 /* ── ticker berjalan (mirip bursa asli) ── */
-.ticker{overflow:hidden;background:#0e1524;border:1px solid #1b2740;border-radius:10px;margin-bottom:8px;height:26px;position:relative}
-.tick-track{display:flex;gap:16px;white-space:nowrap;position:absolute;left:0;top:0;line-height:26px;font-size:10.5px;font-weight:800;animation:tickmove 30s linear infinite;font-variant-numeric:tabular-nums}
+.ticker{overflow:hidden;background:#0e1524;border:1px solid #1b2740;border-radius:10px;margin-bottom:6px;height:22px;position:relative}
+.tick-track{display:flex;gap:16px;white-space:nowrap;position:absolute;left:0;top:0;line-height:22px;font-size:10.5px;font-weight:800;animation:tickmove 30s linear infinite;font-variant-numeric:tabular-nums}
 @keyframes tickmove{from{transform:translateX(0)}to{transform:translateX(-50%)}}
 .tk b{color:#cfe2ff}.tk .u{color:#26e0a5}.tk .d{color:#ff6b81}
 /* ── timeframe + sinyal ── */
@@ -78,7 +83,7 @@ body{background:#070b14;color:#e8eefb;padding:10px 10px 18px;font-size:13px}
 .sig.buy{background:rgba(38,224,165,.12);border-color:rgba(38,224,165,.45);color:#26e0a5}
 .sig.sell{background:rgba(255,107,129,.12);border-color:rgba(255,107,129,.45);color:#ff6b81}
 /* ── bid/ask ── */
-.bidask{display:flex;gap:6px;margin-top:5px}
+.bidask{display:flex;gap:6px;margin-top:4px}
 .bidask div{flex:1;text-align:center;border:1px solid #1b2740;border-radius:8px;padding:3px 0;font-size:10.5px;font-variant-numeric:tabular-nums;background:#0a1220}
 .bidask i{font-style:normal;display:block;font-size:8px;letter-spacing:1.4px;color:#7c8aa5;font-weight:700}
 .bidask .b b{color:#26e0a5}.bidask .a b{color:#ff6b81}
@@ -87,10 +92,10 @@ body{background:#070b14;color:#e8eefb;padding:10px 10px 18px;font-size:13px}
 .flts{display:flex;gap:6px;margin-bottom:6px}
 .flt{padding:4px 11px;border-radius:999px;border:1px solid #24344f;background:#122036;color:#8fa0bd;font-size:9.5px;font-weight:800;cursor:pointer}
 .flt.on{background:#123a5c;border-color:#2b6ea8;color:#8fd8ff}
-.rail{display:flex;gap:7px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:5px;margin-bottom:8px;-webkit-overflow-scrolling:touch}
+.rail{display:flex;gap:7px;overflow-x:auto;padding:0 1px 4px;margin-bottom:6px;-webkit-overflow-scrolling:touch;touch-action:pan-x;overscroll-behavior-x:contain}
 .rail::-webkit-scrollbar{height:4px}
 .rail::-webkit-scrollbar-thumb{background:#24344f;border-radius:2px}
-.rcard{flex:0 0 106px;scroll-snap-align:start;background:#0e1524;border:1px solid #1b2740;border-radius:11px;padding:7px 8px;cursor:pointer}
+.rcard{flex:0 0 100px;background:#0e1524;border:1px solid #1b2740;border-radius:11px;padding:7px 8px;cursor:pointer}
 .rcard.sel{border-color:#2b6ea8;background:#102a44}
 .rcard b{font-size:12px;display:block}
 .rcard .rp{font-size:11.5px;font-weight:800;font-variant-numeric:tabular-nums;display:block;margin-top:2px}
@@ -103,15 +108,15 @@ body{background:#070b14;color:#e8eefb;padding:10px 10px 18px;font-size:13px}
 .hold .col{text-align:right}
 .hold .pl{font-size:9.5px;font-weight:700;display:block}
 .hclose{margin-left:6px;padding:3px 8px;border-radius:7px;border:1px solid rgba(255,107,129,.45);background:rgba(255,107,129,.12);color:#ff6b81;font-size:9px;font-weight:900;cursor:pointer}
-.panel{background:#0e1524;border:1px solid #1b2740;border-radius:12px;padding:10px;margin-bottom:9px}
+.panel{background:#0e1524;border:1px solid #1b2740;border-radius:10px;padding:8px 9px;margin-bottom:6px}
 .panel h3{font-size:12px;margin-bottom:7px;color:#9fb4d6;letter-spacing:.4px}
-.qtybar{display:flex;gap:6px;margin:7px 0}
-.qtybar button{flex:1;padding:7px 0;border-radius:9px;border:1px solid #24344f;background:#122036;color:#cfe2ff;font-weight:800;font-size:11px;cursor:pointer}
+.qtybar{display:flex;gap:6px;margin:5px 0}
+.qtybar button{flex:1;padding:5px 0;border-radius:9px;border:1px solid #24344f;background:#122036;color:#cfe2ff;font-weight:800;font-size:11px;cursor:pointer}
 .qtybar button:active{filter:brightness(1.4)}
-input[type=number]{width:100%;padding:9px;border-radius:9px;border:1px solid #24344f;background:#0a1220;color:#e8eefb;font-size:15px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
+input[type=number]{width:100%;padding:7px;border-radius:9px;border:1px solid #24344f;background:#0a1220;color:#e8eefb;font-size:15px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums}
 input[type=number]:focus{outline:none;border-color:#2b6ea8}
 .acts{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px}
-.acts button{padding:11px 0;border:none;border-radius:11px;font-weight:900;font-size:12.5px;letter-spacing:.4px;cursor:pointer;color:#04220f}
+.acts button{padding:9px 0;border:none;border-radius:11px;font-weight:900;font-size:12.5px;letter-spacing:.4px;cursor:pointer;color:#04220f}
 .buy{background:linear-gradient(#2ee6a7,#12a877)}
 .sell{background:linear-gradient(#ff8a9a,#e04b63);color:#2a0410}
 .acts button:active{transform:translateY(1px);filter:brightness(1.1)}
@@ -151,6 +156,7 @@ input[type=number]:focus{outline:none;border-color:#2b6ea8}
   </div>
 
   <div id="viewMarket">
+    <div class="chartbox">
     <div class="chart">
       <div class="ct">
         <b id="chName">UMI<small id="chSector">Teknologi</small></b>
@@ -163,13 +169,16 @@ input[type=number]:focus{outline:none;border-color:#2b6ea8}
         <div class="tf" data-tf="30">30M</div>
         <div class="sig" id="sigBadge">SINYAL: NETRAL</div>
       </div>
-      <svg id="chSvg" viewBox="0 0 320 128" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="cbody" id="cbody"><svg id="chSvg" viewBox="0 0 340 104" preserveAspectRatio="none"></svg></div>
+      <div class="chart">
       <div class="legend"><span id="chTfLb">1m · tiap bar 1 menit</span><span><b class="hi" id="chHi">—</b> / <b class="lo" id="chLo">—</b></span></div>
       <div class="bidask">
         <div class="b"><i>BID</i><b id="bidPx">—</b></div>
         <div class="a"><i>ASK</i><b id="askPx">—</b></div>
       </div>
       <div class="hint">Sinyal otomatis di grafik: ▲ <b class="up">BUY</b> saat harga naik · ▼ <b class="down">SELL</b> saat turun — ikuti arah trend, jangan lawan.</div>
+    </div>
     </div>
 
     <div class="info">
@@ -657,6 +666,36 @@ setInterval(function(){
   var t=tickNow();
   if(t!==lastTick){lastTick=t;refresh()}
 },TICK);
+})();
+</script>
+<script>
+/* ── Pelindung sentuh ──────────────────────────────────────────────
+ * Tujuan: kartu rich message TIDAK bisa di-swipe-reply / long-press-reply
+ * dan geseran layar tidak "dimakan" oleh WhatsApp, TAPI geser vertikal
+ * halaman + geser internal (.rail/.cbody) tetap jalan.
+ * ──────────────────────────────────────────────────────────────── */
+(function(){
+  var bolehGeser = function(el){ return !!(el && el.closest && el.closest('#scrollArea,.cbody,.rail,input,textarea,select')) };
+  var sx = 0, sy = 0, kunci = '';
+  document.addEventListener('touchstart', function(e){
+    var t = e.touches && e.touches[0]; if(!t) return;
+    sx = t.clientX; sy = t.clientY; kunci = '';
+  }, {passive: true});
+  document.addEventListener('touchmove', function(e){
+    var t = e.touches && e.touches[0]; if(!t) return;
+    var dx = t.clientX - sx, dy = t.clientY - sy;
+    if(!kunci && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) kunci = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    /* geser ke samping di luar area geser → tahan (cegah swipe-reply) */
+    if(kunci === 'x' && !bolehGeser(e.target)) e.preventDefault();
+  }, {passive: false});
+  /* tahan menu "Balas" saat long-press */
+  document.addEventListener('contextmenu', function(e){ e.preventDefault() }, {passive: false});
+  /* jangan biarkan teks terpilih otomatis (kecuali kolom isian) */
+  document.addEventListener('selectstart', function(e){
+    if(!e.target || !/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) e.preventDefault();
+  }, {passive: false});
+  /* dua jari / pinch tidak perlu */
+  document.addEventListener('gesturestart', function(e){ e.preventDefault() }, {passive: false});
 })();
 </script>
 </body>
