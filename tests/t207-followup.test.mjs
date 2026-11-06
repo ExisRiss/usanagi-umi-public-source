@@ -129,6 +129,16 @@ test('spamrch: parse link channel + emoji (dengan/s tanpa nomor post)', async ()
   assert.deepEqual(c.emojis, ['🤣', '😀'])
   // tanpa link → null
   assert.equal(parseSpamrch('🤣,🗿'), null)
+  // Kasus asli laporan6/11 — emoji dipisah spasi di tengah: 🤣,🫣,🤔 🗿
+  const d = parseSpamrch('https://whatsapp.com/channel/0029Vb8patRIiRouT6Cxqt18 🤣,🫣,🤔 🗿')
+  assert.ok(d, 'parse spasi harus berhasil')
+  assert.equal(d.invite, '0029Vb8patRIiRouT6Cxqt18')
+  assert.deepEqual(d.emojis, ['🤣', '🫣', '🤔', '🗿'])
+  // Kasus asli laporan6/11 — koma menempel setelah link: `link, 🤣…`
+  const e = parseSpamrch('https://whatsapp.com/channel/0029Vb8patRIiRouT6Cxqt18, 🤣,🫣,🤔 🗿')
+  assert.ok(e, 'parse koma setelah link harus berhasil')
+  assert.equal(e.invite, '0029Vb8patRIiRouT6Cxqt18')
+  assert.deepEqual(e.emojis, ['🤣', '🫣', '🤔', '🗿'])
 })
 
 test('spamrch: validEmoji menerima emoji, menolak teks biasa', async () => {

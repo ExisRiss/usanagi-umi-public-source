@@ -37,15 +37,18 @@ export const GAGAL_BERTURUT_MAKS = 20
 const INVISIBLE = /[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060-\u206F\uFEFF]/g
 const EMOJI_ONLY = /^[\p{Extended_Pictographic}\p{Regional_Indicator}\p{Emoji_Modifier}\u200D\uFE0F\u20E3#*0-9]+$/u
 /* eslint-enable no-control-regex, no-misleading-character-class */
-const LINK_CHANNEL = /(?:https?:\/\/)?(?:www\.)?whatsapp\.com\/channel\/([A-Za-z0-9_-]+)(?:\/\d{1,24})?(?=$|[/?#\s])/i
+/* Lookahead menerima KOMA setelah link (`link, 🤣,🗿`) — laporan user
+ *6/11: `…/0029Vb…, 🤣…` ditolak karena koma tak ada di kelas akhir. */
+const LINK_CHANNEL = /(?:https?:\/\/)?(?:www\.)?whatsapp\.com\/channel\/([A-Za-z0-9_-]+)(?:\/\d{1,24})?(?=$|[/?#\s,])/i
 
-/** Parse input: link channel (opsional /<postId>) + daftar emoji dipisah koma. */
+/** Parse input: link channel (opsional /<postId>) + daftar emoji.
+ * Emoji dipisah koma DAN/ATAU spasi (`🤣,🫣,🤔 🗿` tetap diterima). */
 export function parseSpamrch (value) {
   const input = String(value || '').replace(INVISIBLE, '').trim()
   const match = input.match(LINK_CHANNEL)
   if (!match) return null
   const after = input.slice((match.index || 0) + match[0].length).trim()
-  const emojis = [...new Set(after.split(',').map(item => item.trim()).filter(Boolean))]
+  const emojis = [...new Set(after.split(/[\s,]+/).map(item => item.trim()).filter(Boolean))]
   return { invite: match[1], emojis }
 }
 
@@ -127,7 +130,7 @@ export function catatHasilTick (state, hasilSemua) {
 
 function usage (prefix, command) {
   return [
-    '❌ Kirim *link channel* WhatsApp dan emoji (dipisah koma).',
+    '❌ Kirim *link channel* WhatsApp dan emoji (dipisah koma atau spasi).',
     '',
     'Contoh:',
     `${prefix}${command} https://whatsapp.com/channel/0029Vb... 🤣,🗿,😀,🙃,🙂`,
@@ -288,8 +291,8 @@ const handler = async (m, { text, usedPrefix, command }) => {
 
   const parsed = parseSpamrch(text)
   if (!parsed || !parsed.emojis.length) return m.reply(usage(usedPrefix, command))
-  if (parsed.emojis.length > MAX_EMOJIS) return m.reply(`❌ Maksimal ${MAX_EMOJIS} emoji dipisahkan dengan koma.`)
-  if (!parsed.emojis.every(validEmoji)) return m.reply('❌ Format emoji tidak valid. Pisahkan emoji dengan koma, contoh: 🤣,🗿,😀')
+  if (parsed.emojis.length > MAX_EMOJIS) return m.reply(`❌ Maksimal ${MAX_EMOJIS} emoji dipisahkan dengan koma atau spasi.`)
+  if (!parsed.emojis.every(validEmoji)) return m.reply('❌ Format emoji tidak valid. Pisahkan emoji dengan koma atau spasi, contoh: 🤣,🗿,😀')
 
   const connections = allReactionConnections()
   if (!connections.length) return m.reply('❌ Bot utama dan Jadibot yang terhubung tidak tersedia.')
