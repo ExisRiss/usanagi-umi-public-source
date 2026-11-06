@@ -15,7 +15,7 @@ export const ULAR_TANGGA_HTML = `<!DOCTYPE html>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
 :root{--ink:#3e392a;--paper:#f0e3c8;--red:#944932;--green:#31594d;--line:#b6a27b}
-body{min-height:100vh;background:radial-gradient(ellipse at 50% 0%,#e9dec7,#c6b899);color:var(--ink);padding:18px 12px 24px;font:13px Georgia,'Times New Roman',serif}
+body{min-height:0;background:radial-gradient(ellipse at 50% 0%,#e9dec7,#c6b899);color:var(--ink);padding:12px 10px 16px;font:13px Georgia,'Times New Roman',serif}
 #app{max-width:520px;margin:0 auto}
 .hdr{text-align:center;position:relative;padding-bottom:14px}
 .kicker{display:flex;align-items:center;gap:9px;justify-content:center;color:#736449;font:600 8px Arial,sans-serif;letter-spacing:2.4px}
@@ -385,6 +385,36 @@ else window.addEventListener('resize',measureBoard);
 document.addEventListener('visibilitychange',function(){if(document.hidden&&AC){try{AC.suspend()}catch(e){}}});
 muteB.textContent=muted?'🔇':'🔊';
 rollB.disabled=(S.mode==='bot'&&S.turn===1);queueBot();
+})();
+</script>
+<script>
+/* ── Pelindung sentuh ──────────────────────────────────────────────
+ * Tujuan: kartu rich message TIDAK bisa di-swipe-reply / long-press-reply
+ * dan geseran layar tidak "dimakan" oleh WhatsApp, TAPI geser vertikal
+ * halaman + geser internal (.rail/.cbody) tetap jalan.
+ * ──────────────────────────────────────────────────────────────── */
+(function(){
+  var bolehGeser = function(el){ return !!(el && el.closest && el.closest('#app #board,#app .dice,#app button,input,textarea,select')) };
+  var sx = 0, sy = 0, kunci = '';
+  document.addEventListener('touchstart', function(e){
+    var t = e.touches && e.touches[0]; if(!t) return;
+    sx = t.clientX; sy = t.clientY; kunci = '';
+  }, {passive: true});
+  document.addEventListener('touchmove', function(e){
+    var t = e.touches && e.touches[0]; if(!t) return;
+    var dx = t.clientX - sx, dy = t.clientY - sy;
+    if(!kunci && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) kunci = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    /* geser ke samping di luar area geser → tahan (cegah swipe-reply) */
+    if(kunci === 'x' && !bolehGeser(e.target)) e.preventDefault();
+  }, {passive: false});
+  /* tahan menu "Balas" saat long-press */
+  document.addEventListener('contextmenu', function(e){ e.preventDefault() }, {passive: false});
+  /* jangan biarkan teks terpilih otomatis (kecuali kolom isian) */
+  document.addEventListener('selectstart', function(e){
+    if(!e.target || !/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) e.preventDefault();
+  }, {passive: false});
+  /* dua jari / pinch tidak perlu */
+  document.addEventListener('gesturestart', function(e){ e.preventDefault() }, {passive: false});
 })();
 </script>
 </body>
