@@ -633,9 +633,29 @@ const handler = async (m, { conn, text, usedPrefix, command, isOwner, isROwner }
     )
   }
 
-  const url = normalizeUrl(target)
+  let url = normalizeUrl(target)
   if (!url) {
-    return m.reply('❌ Link channel tidak valid. Pastikan ada ID pesan di akhir, contoh:\nhttps://whatsapp.com/channel/xxxxxxxxxxxx/158')
+    // Link channel TANPA nomor post → pakai post terbaru (laporan6/11).
+    const polos = String(target || '').match(/(?:https?:\/\/)?(?:www\.)?whatsapp\.com\/channel\/([A-Za-z0-9_-]+)(?:\/\d{1,24})?/i)
+    if (polos && conn) {
+      try {
+        const metadata = await Promise.race([
+          conn.newsletterMetadata('invite', polos[1]),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
+        ])
+        const channelId = String(metadata?.id || '').trim()
+        const pesan = await Promise.race([
+          conn.newsletterFetchMessages('jid', channelId, 5),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
+        ])
+        const terakhir = (pesan || [])[pesan.length - 1]
+        const postId = String(terakhir?.key?.server_id || terakhir?.key?.id || '')
+        if (postId) url = `https://whatsapp.com/channel/${polos[1]}/${postId}`
+      } catch { /* jatuh ke pesan error di bawah */ }
+    }
+    if (!url) {
+      return m.reply('❌ Link channel tidak valid. Kirim link post, contoh:\nhttps://whatsapp.com/channel/xxxxxxxxxxxx/158\n(tanpa nomor post juga boleh — akan diarahkan ke post terbaru)')
+    }
   }
   const reaksi = parseEmoji(emojiInput)
   if (!reaksi) return m.reply('❌ Emoji tidak ditemukan di pesanmu. Contoh: ' + prefix + cmd + ' <link> 🔥')

@@ -24,8 +24,17 @@
  * Akses: rowner (perintah ini memerintahkan banyak akun WhatsApp).
  */
 
+import fs from 'node:fs'
 import { getMainConnection } from '../../lib/bot-connection-context.js'
 import { getSubBots } from '../../lib/jadibot.js'
+
+/** Log persisten — console bisa terlewat; /data/spamrch.log bisa dibaca kapan saja. */
+function logSpamrch (baris) {
+  try {
+    fs.appendFileSync('/data/spamrch.log', `[${new Date().toISOString()}] ${baris}\n`)
+  } catch { /* tetap ke console */ }
+  console.log(`[SPAMRCH] ${baris}`)
+}
 
 export const SPAM_MS = 2000
 export const MAX_EMOJIS = 5
@@ -188,7 +197,7 @@ function hapusJob () {
 function catatError (state, label, error) {
   const pesan = String(error?.message || error || 'unknown')
   state.lastError = `${label}: ${pesan}`
-  console.log(`[SPAMRCH] ${state.lastError}`)
+  logSpamrch(state.lastError)
 }
 
 /**
@@ -258,6 +267,7 @@ async function tick () {
 }
 
 async function laporAutoStop (state) {
+  logSpamrch(`auto-stop setelah ${GAGAL_BERTURUT_MAKS} tick gagal; terkirim=${state.terkirim}; lastError=${state.lastError || '-'}`)
   const info = [
     '⚠️ *SPAM REAKSI AUTO-STOP*',
     '',
@@ -305,18 +315,20 @@ const handler = async (m, { text, usedPrefix, command }) => {
   hapusJob()
 
   const state = buatStateSpam({ invite: parsed.invite, channelId, emojis: parsed.emojis, owner: m.sender })
-  // Pesan yang sudah ada saat start tidak di-spam — tandai sudah dilihat.
+  // Ikuti channel dulu supaya semua akun diizinkan mengirim reaction
+  // (laporan6/11: reaction tak terkirim — bot kemungkinan belum follow).
   try {
-    const awal = await withTimeout(connections[0].conn.newsletterFetchMessages('jid', channelId, 10), 15000)
-    for (const pesan of awal || []) {
-      const id = pesan?.key?.id
-      if (id) state.seen.add(id)
-    }
-  } catch { /* bila gagal, tick pertama akan menganggapnya pesan baru — tetap aman */ }
+    await withTimeout(connections[0].conn.newsletterFollow(channelId), 15000)
+    logSpamrch(`follow ok channel=${channelId}`)
+  } catch (e) {
+    logSpamrch(`follow gagal (lanjut): ${e?.message || e}`)
+  }
+  // Sengaja TANPA pre-seed: pesan yang sudah ada saat start IKUT di-spam
+  // (permintaan owner: "padahal aku udah kirim" — pesannya harus kena).
 
   job = { state, dimulai: Date.now() }
-  job.timer = setInterval(() => { tick().catch(e => { console.log('[SPAMRCH] tick fatal:', e?.message || e) }) }, SPAM_MS)
-  console.log(`[SPAMRCH] start channel=${channelId} emoji=${state.emojis.join(',')} koneksi=${connections.length}`)
+  job.timer = setInterval(() => { tick().catch(e => { logSpamrch(`tick fatal: ${e?.message || e}`) }) }, SPAM_MS)
+  logSpamrch(`start channel=${channelId} emoji=${state.emojis.join(',')} koneksi=${connections.length}`)
 
   return m.reply([
     '🔴 *SPAM REAKSI DIMULAI*',

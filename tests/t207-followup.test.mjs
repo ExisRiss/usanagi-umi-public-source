@@ -141,6 +141,22 @@ test('spamrch: parse link channel + emoji (dengan/s tanpa nomor post)', async ()
   assert.deepEqual(e.emojis, ['🤣', '🫣', '🤔', '🗿'])
 })
 
+test('rch2: parse link polos (postId opsional) + emoji dipisah spasi', async () => {
+  const { parseInput } = await import('../plugins/misc/rch2.js')
+  // Laporan6/11: link saluran polos tanpa nomor post tetap diterima
+  const a = parseInput('https://whatsapp.com/channel/0029Vb8patRIiRouT6Cxqt18 🤣,🫣,🤔 🗿')
+  assert.ok(a, 'link polos harus berhasil diparse')
+  assert.equal(a.invite, '0029Vb8patRIiRouT6Cxqt18')
+  assert.equal(a.postId, '', 'postId kosong → handler pakai post terbaru')
+  assert.deepEqual(a.emojis, ['🤣', '🫣', '🤔', '🗿'])
+  // Link dengan nomor post tetap diprioritaskan
+  const b = parseInput('https://whatsapp.com/channel/0029Vb8/436 🗿,😀')
+  assert.equal(b.postId, '436')
+  assert.deepEqual(b.emojis, ['🗿', '😀'])
+  // Tanpa link → null
+  assert.equal(parseInput('🤣,🗿'), null)
+})
+
 test('spamrch: validEmoji menerima emoji, menolak teks biasa', async () => {
   const { validEmoji } = await import('../plugins/misc/spamrch.js')
   assert.equal(validEmoji('🤣'), true)
