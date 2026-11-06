@@ -51,6 +51,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
 import { apiKey, refreshApiKeys } from '../../config/api-keys.js'
+import { getMainConnection } from '../../lib/bot-connection-context.js'
+import { parseInput } from '../misc/rch2.js'
 
 // Endpoint bisa diarahkan lewat environment (dipakai untuk pengujian).
 const RCH_ENDPOINT = process.env.UMI_RCH_ENDPOINT || 'https://apiv2.reactionwa.online/api/v2/react'
@@ -633,29 +635,9 @@ const handler = async (m, { conn, text, usedPrefix, command, isOwner, isROwner }
     )
   }
 
-  let url = normalizeUrl(target)
+  const url = normalizeUrl(target)
   if (!url) {
-    // Link channel TANPA nomor post → pakai post terbaru (laporan6/11).
-    const polos = String(target || '').match(/(?:https?:\/\/)?(?:www\.)?whatsapp\.com\/channel\/([A-Za-z0-9_-]+)(?:\/\d{1,24})?/i)
-    if (polos && conn) {
-      try {
-        const metadata = await Promise.race([
-          conn.newsletterMetadata('invite', polos[1]),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
-        ])
-        const channelId = String(metadata?.id || '').trim()
-        const pesan = await Promise.race([
-          conn.newsletterFetchMessages('jid', channelId, 5),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 15000)),
-        ])
-        const terakhir = (pesan || [])[pesan.length - 1]
-        const postId = String(terakhir?.key?.server_id || terakhir?.key?.id || '')
-        if (postId) url = `https://whatsapp.com/channel/${polos[1]}/${postId}`
-      } catch { /* jatuh ke pesan error di bawah */ }
-    }
-    if (!url) {
-      return m.reply('❌ Link channel tidak valid. Kirim link post, contoh:\nhttps://whatsapp.com/channel/xxxxxxxxxxxx/158\n(tanpa nomor post juga boleh — akan diarahkan ke post terbaru)')
-    }
+    return m.reply('❌ Link channel tidak valid. Pastikan ada ID pesan di akhir, contoh:\nhttps://whatsapp.com/channel/xxxxxxxxxxxx/158')
   }
   const reaksi = parseEmoji(emojiInput)
   if (!reaksi) return m.reply('❌ Emoji tidak ditemukan di pesanmu. Contoh: ' + prefix + cmd + ' <link> 🔥')
@@ -665,6 +647,47 @@ const handler = async (m, { conn, text, usedPrefix, command, isOwner, isROwner }
   syncRemoteKeys().catch(() => {})
 
   const hasil = await reactChannel(url, reaksi)
+
+  /* G4 — pengaman sampai-ke-saluran: VIP kadang melapor masuk antrean tetapi
+   * reaction tidak muncul di channel. Setelah VIP sukses, akun bot langsung
+   * mengirim reaction yang sama lewat newsletterReactMessage (jalur yang
+   * terbukti sampai pada probe t207). Fire-and-forget — tak menahan balasan,
+   * kegagalan di sini tidak membatalkan hasil VIP. Jejak → /data/rch-probe.log */
+  if (hasil.ok) {
+    const catatG4 = (baris) => {
+      try {
+        fs.mkdirSync('/data', { recursive: true })
+        fs.appendFileSync('/data/rch-probe.log', `[${new Date().toISOString()}] G4 ${baris}\n`)
+      } catch { /* log sekunder */ }
+    }
+    const denganBatas = (p, ms, label) => Promise.race([
+      p,
+      new Promise((_, rj) => { setTimeout(() => rj(new Error(`${label} timeout ${ms}ms`)), ms) }),
+    ])
+    ;(async () => {
+      try {
+        const parsed = parseInput(url)
+        if (!parsed || !parsed.invite) throw new Error('link tidak terbaca parseInput')
+        const connMain = getMainConnection()
+        if (!connMain || typeof connMain.newsletterReactMessage !== 'function') throw new Error('koneksi utama tidak siap')
+        const md = await denganBatas(connMain.newsletterMetadata('invite', parsed.invite), 15000, 'metadata')
+        const jid = String((md && md.id) || '').trim()
+        if (!jid.endsWith('@newsletter')) throw new Error('channel id tidak terbaca')
+        try { await denganBatas(connMain.newsletterFollow(jid), 10000, 'follow') } catch { /* sudah ikut / izin lain */ }
+        let postId = parsed.postId || ''
+        if (!postId) {
+          const pesan = await denganBatas(connMain.newsletterFetchMessages('jid', jid, 5), 15000, 'fetch')
+          const terakhir = (pesan || [])[pesan.length - 1]
+          postId = String((terakhir && terakhir.key && (terakhir.key.server_id || terakhir.key.id)) || '')
+        }
+        if (!postId) throw new Error('postId tidak terbaca (link polos + fetch kosong)')
+        await denganBatas(connMain.newsletterReactMessage(jid, postId, reaksi), 15000, 'react')
+        catatG4(`CONNECTION-FALLBACK OK jid=${jid} post=${postId} emoji=${reaksi} (setelah VIP ok)`)
+      } catch (e) {
+        catatG4(`CONNECTION-FALLBACK gagal: ${(e && e.message) || e} — VIP tetap jalan`)
+      }
+    })()
+  }
 
   if (!hasil.ok) {
     /* "RCH LIMIT" otomatis: semua kunci kena limit → bot langsung memberi tahu,

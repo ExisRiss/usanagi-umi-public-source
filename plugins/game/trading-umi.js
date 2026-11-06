@@ -74,7 +74,7 @@ function loadConfig() {
   let parsed = {}
   try { parsed = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')) } catch { }
   const token = String(parsed.token || process.env.UMI_GAME_TOKEN || process.env.GAME_TOKEN || '').trim()
-  const baseUrl = String(parsed.baseUrl || process.env.UMI_GAME_BASE || 'https://game.gwenna.my.id').replace(/\/+$/, '')
+  const baseUrl = String(parsed.baseUrl || process.env.UMI_GAME_BASE || 'https://game.example.com').replace(/\/+$/, '')
   configCache = { at: Date.now(), value: { enabled: parsed.enabled !== false, baseUrl, token } }
   return configCache.value
 }
@@ -102,6 +102,11 @@ function setLink(number, token) {
 }
 
 /* ── HTTP ke server game ── */
+/* 521/522/523/524 = cloudflare gagal capai origin (server game mati) */
+const CF_ORIGIN_DOWN = new Set([521, 522, 523, 524])
+function serverDownMsg(status) {
+  return `Server game sedang offline (HTTP ${status}). Ini masalah di sisi server game, bukan bot — servernya perlu dinyalakan ulang oleh owner. Coba lagi beberapa menit lagi.`
+}
 async function callGame(config, pathname, { method = 'GET', body, bot = false, auth } = {}) {
   const headers = { 'Content-Type': 'application/json' }
   if (bot) {
@@ -109,15 +114,37 @@ async function callGame(config, pathname, { method = 'GET', body, bot = false, a
     headers['X-UMI-Game-Token'] = config.token
   }
   if (auth) headers.Authorization = `Bearer ${auth}`
-  const res = await fetch(`${config.baseUrl}${pathname}`, {
+  const url = `${config.baseUrl}${pathname}`
+  const payload = body === undefined ? undefined : JSON.stringify(body)
+  const doFetch = () => fetch(url, {
     method, headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    body: payload,
     signal: AbortSignal.timeout(TIMEOUT_MS),
   })
+  let res
+  try {
+    res = await doFetch()
+    /* origin down → sekali coba lagi khusus GET (aman, tak ada efek samping) */
+    if (CF_ORIGIN_DOWN.has(res.status) && method === 'GET') {
+      await new Promise((r) => setTimeout(r, 2000))
+      res = await doFetch()
+    }
+  } catch (e) {
+    const name = e && e.name
+    if (name === 'TimeoutError' || name === 'AbortError' || (e && e.cause)) {
+      const err = new Error('Server game tidak merespons (timeout). Kemungkinan servernya sedang mati atau kelebihan beban — coba lagi beberapa saat lagi.')
+      err.status = 0
+      throw err
+    }
+    throw e
+  }
   let data = {}
   try { data = await res.json() } catch { }
   if (!res.ok) {
-    const err = new Error(String(data.error || `Server game membalas HTTP ${res.status}`))
+    const msg = CF_ORIGIN_DOWN.has(res.status)
+      ? serverDownMsg(res.status)
+      : String(data.error || `Server game membalas HTTP ${res.status}`)
+    const err = new Error(msg)
     err.payload = data
     err.status = res.status
     throw err
@@ -145,7 +172,7 @@ function tokenTutorial(prefix = '.', reason = '') {
     '',
     `Contoh: ${prefix}trading login 8f2c1d9a...`,
     '',
-    '🌐 Main lewat browser: https://game.gwenna.my.id/trading',
+    '🌐 Main lewat browser: https://game.example.com/trading',
     'Tempel token yang sama di tab *Token Website* di sana.',
     '',
     'Belum punya token? Buat baru di halaman Profil — token lama otomatis tidak berlaku.',

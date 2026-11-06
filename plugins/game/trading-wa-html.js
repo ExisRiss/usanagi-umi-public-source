@@ -65,16 +65,44 @@ body{background:#070b14;color:#e8eefb;padding:10px 10px 18px;font-size:13px}
 .badge.g{border-color:rgba(38,224,165,.4);background:rgba(38,224,165,.12);color:#26e0a5}
 .badge.r{border-color:rgba(255,107,129,.4);background:rgba(255,107,129,.12);color:#ff6b81}
 .badge.y{border-color:rgba(255,204,87,.35);background:rgba(255,204,87,.1);color:#ffcc57}
-/* ── daftar saham ── */
-.row{display:flex;align-items:center;gap:8px;padding:8px;background:#0e1524;border:1px solid #1b2740;border-radius:11px;margin-bottom:6px;cursor:pointer}
-.row.sel{border-color:#2b6ea8;background:#102a44}
-.row .q{flex:1;min-width:0}
-.row .q b{font-size:12.5px;display:block}
-.row .q span{font-size:9.5px;color:#7c8aa5;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.row .p{text-align:right;font-variant-numeric:tabular-nums}
-.row .p b{font-size:12.5px;display:block}
-.row .p span{font-size:9.5px;font-weight:700}
-.spark{width:56px;height:22px;flex:none}
+/* ── ticker berjalan (mirip bursa asli) ── */
+.ticker{overflow:hidden;background:#0e1524;border:1px solid #1b2740;border-radius:10px;margin-bottom:8px;height:26px;position:relative}
+.tick-track{display:flex;gap:16px;white-space:nowrap;position:absolute;left:0;top:0;line-height:26px;font-size:10.5px;font-weight:800;animation:tickmove 30s linear infinite;font-variant-numeric:tabular-nums}
+@keyframes tickmove{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.tk b{color:#cfe2ff}.tk .u{color:#26e0a5}.tk .d{color:#ff6b81}
+/* ── timeframe + sinyal ── */
+.tfbar{display:flex;gap:5px;align-items:center;margin:5px 0 3px}
+.tf{padding:3px 9px;border-radius:8px;border:1px solid #24344f;background:#122036;color:#8fa0bd;font-size:9.5px;font-weight:800;cursor:pointer}
+.tf.on{background:#123a5c;border-color:#2b6ea8;color:#8fd8ff}
+.sig{margin-left:auto;padding:3px 10px;border-radius:8px;font-size:9.5px;font-weight:900;letter-spacing:.6px;border:1px solid #24344f;color:#8fa0bd;background:#122036}
+.sig.buy{background:rgba(38,224,165,.12);border-color:rgba(38,224,165,.45);color:#26e0a5}
+.sig.sell{background:rgba(255,107,129,.12);border-color:rgba(255,107,129,.45);color:#ff6b81}
+/* ── bid/ask ── */
+.bidask{display:flex;gap:6px;margin-top:5px}
+.bidask div{flex:1;text-align:center;border:1px solid #1b2740;border-radius:8px;padding:3px 0;font-size:10.5px;font-variant-numeric:tabular-nums;background:#0a1220}
+.bidask i{font-style:normal;display:block;font-size:8px;letter-spacing:1.4px;color:#7c8aa5;font-weight:700}
+.bidask .b b{color:#26e0a5}.bidask .a b{color:#ff6b81}
+.hint{font-size:9px;color:#5d6b85;margin-top:4px;line-height:1.5}
+/* ── daftar saham: rail geser (bukan daftar panjang) ── */
+.flts{display:flex;gap:6px;margin-bottom:6px}
+.flt{padding:4px 11px;border-radius:999px;border:1px solid #24344f;background:#122036;color:#8fa0bd;font-size:9.5px;font-weight:800;cursor:pointer}
+.flt.on{background:#123a5c;border-color:#2b6ea8;color:#8fd8ff}
+.rail{display:flex;gap:7px;overflow-x:auto;scroll-snap-type:x mandatory;padding-bottom:5px;margin-bottom:8px;-webkit-overflow-scrolling:touch}
+.rail::-webkit-scrollbar{height:4px}
+.rail::-webkit-scrollbar-thumb{background:#24344f;border-radius:2px}
+.rcard{flex:0 0 106px;scroll-snap-align:start;background:#0e1524;border:1px solid #1b2740;border-radius:11px;padding:7px 8px;cursor:pointer}
+.rcard.sel{border-color:#2b6ea8;background:#102a44}
+.rcard b{font-size:12px;display:block}
+.rcard .rp{font-size:11.5px;font-weight:800;font-variant-numeric:tabular-nums;display:block;margin-top:2px}
+.rcard .rc{font-size:9.5px;font-weight:800}
+.rcard .spark{width:100%;height:16px;display:block;margin-top:3px}
+/* ── posisi: P/L + tombol tutup ── */
+.hold{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:6px 0;border-bottom:1px dashed #1b2740;font-size:11.5px}
+.hold:last-child{border-bottom:none}
+.hold .n{color:#9fb4d6}
+.hold .col{text-align:right}
+.hold .pl{font-size:9.5px;font-weight:700;display:block}
+.hclose{margin-left:6px;padding:3px 8px;border-radius:7px;border:1px solid rgba(255,107,129,.45);background:rgba(255,107,129,.12);color:#ff6b81;font-size:9px;font-weight:900;cursor:pointer}
 .panel{background:#0e1524;border:1px solid #1b2740;border-radius:12px;padding:10px;margin-bottom:9px}
 .panel h3{font-size:12px;margin-bottom:7px;color:#9fb4d6;letter-spacing:.4px}
 .qtybar{display:flex;gap:6px;margin:7px 0}
@@ -104,6 +132,8 @@ input[type=number]:focus{outline:none;border-color:#2b6ea8}
     <button id="reset">RESET</button>
   </div>
 
+  <div class="ticker"><div class="tick-track" id="tickTrack"></div></div>
+
   <div class="cards">
     <div class="card"><i>KAS</i><b id="cash">$AS 0</b></div>
     <div class="card"><i>TOTAL ASET</i><b id="equity">$AS 0</b></div>
@@ -126,8 +156,20 @@ input[type=number]:focus{outline:none;border-color:#2b6ea8}
         <b id="chName">UMI<small id="chSector">Teknologi</small></b>
         <span><span class="px" id="chPrice">$AS 0</span><span class="pc" id="chPct">0%</span></span>
       </div>
+      <div class="tfbar">
+        <div class="tf on" data-tf="1">1M</div>
+        <div class="tf" data-tf="5">5M</div>
+        <div class="tf" data-tf="15">15M</div>
+        <div class="tf" data-tf="30">30M</div>
+        <div class="sig" id="sigBadge">SINYAL: NETRAL</div>
+      </div>
       <svg id="chSvg" viewBox="0 0 320 128" preserveAspectRatio="none"></svg>
-      <div class="legend"><span>20 menit · tiap batang 1 menit</span><span><b class="hi" id="chHi">—</b> / <b class="lo" id="chLo">—</b></span></div>
+      <div class="legend"><span id="chTfLb">1m · tiap bar 1 menit</span><span><b class="hi" id="chHi">—</b> / <b class="lo" id="chLo">—</b></span></div>
+      <div class="bidask">
+        <div class="b"><i>BID</i><b id="bidPx">—</b></div>
+        <div class="a"><i>ASK</i><b id="askPx">—</b></div>
+      </div>
+      <div class="hint">Sinyal otomatis di grafik: ▲ <b class="up">BUY</b> saat harga naik · ▼ <b class="down">SELL</b> saat turun — ikuti arah trend, jangan lawan.</div>
     </div>
 
     <div class="info">
@@ -146,7 +188,13 @@ input[type=number]:focus{outline:none;border-color:#2b6ea8}
       </div>
     </div>
 
-    <div id="stocks"></div>
+    <div class="flts" id="flts">
+      <div class="flt on" data-flt="all">SEMUA</div>
+      <div class="flt" data-flt="up">NAIK</div>
+      <div class="flt" data-flt="down">TURUN</div>
+      <div class="flt" data-flt="top">TOP MOVERS</div>
+    </div>
+    <div class="rail" id="stocks"></div>
   </div>
 
   <div id="viewPf" style="display:none">
@@ -311,17 +359,53 @@ var toastTimer=null;
 function toast(msg){var el=$('toast');el.textContent=msg;el.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(function(){el.classList.remove('show')},1700)}
 
 /* ── grafik: candle + bar volume ── */
-function chartSvg(cs){
-  var W=320,H=88,VH=26,GAP=4,PAD=2;
+var tf=1;
+/* gabungkan bar1m → timeframe lebih besar (OHLCV) */
+function aggCandles(cs,k){
+  if(k<=1) return cs;
+  var out=[];
+  for(var i=0;i<cs.length;i+=k){
+    var seg=cs.slice(i,i+k);
+    if(!seg.length) break;
+    var h=-1e9,l=1e9,v=0;
+    for(var j=0;j<seg.length;j++){if(seg[j].h>h)h=seg[j].h;if(seg[j].l<l)l=seg[j].l;v+=seg[j].v}
+    out.push({o:seg[0].o,c:seg[seg.length-1].c,h:h,l:l,v:v});
+  }
+  return out;
+}
+/* arah per bar vs EMA6:1 naik, -1 turun,0 datar — dasar sinyal BUY/SELL */
+function sigDirs(cs){
+  var out=[];
+  for(var i=0;i<cs.length;i++){
+    var s=Math.max(0,i-5),sum=0,cnt=0;
+    for(var j=s;j<=i;j++){sum+=cs[j].c;cnt++}
+    var ema=sum/cnt;
+    out.push(cs[i].c>ema?1:cs[i].c<ema?-1:0);
+  }
+  return out;
+}
+function chartSvg(cs,dirs){
+  var W=320,H=88,VH=26,GAP=4,PAD=2,AX=44;
+  var CW=W-AX;
   var hi=-1e9,lo=1e9,maxV=1;
   cs.forEach(function(c){if(c.h>hi)hi=c.h;if(c.l<lo)lo=c.l;if(c.v>maxV)maxV=c.v});
-  var span=(hi-lo)||1, n=cs.length, slot=(W-PAD*2)/n, bw=Math.max(3,slot*0.58);
+  var span=(hi-lo)||1, n=cs.length||1, slot=(CW-PAD*2)/n, bw=Math.max(3,slot*0.58);
   function y(p){return PAD+(H-PAD*2)*((hi-p)/span)}
   var out='';
-  /* garis bantu */
-  for(var g=0;g<3;g++){
-    var gy=(PAD+(H-PAD*2)*g/2).toFixed(1);
-    out+='<line x1="0" x2="'+W+'" y1="'+gy+'" y2="'+gy+'" stroke="#16213a" stroke-width="1"/>';
+  /* grid + sumbu harga di kanan (mirip platform forex) */
+  for(var g=0;g<4;g++){
+    var gy=(PAD+(H-PAD*2)*g/3);
+    out+='<line x1="0" x2="'+CW+'" y1="'+gy.toFixed(1)+'" y2="'+gy.toFixed(1)+'" stroke="#16213a" stroke-width="1"/>';
+    var pv=hi-span*g/3;
+    out+='<text x="'+(CW+4)+'" y="'+(gy+3).toFixed(1)+'" fill="#5d6b85" font-size="7.5">'+money(r2(pv))+'</text>';
+  }
+  /* garis harga terakhir + tag */
+  var last=cs[cs.length-1];
+  if(last){
+    var ly=+y(last.c).toFixed(1);
+    out+='<line x1="0" x2="'+CW+'" y1="'+ly+'" y2="'+ly+'" stroke="#8fd8ff" stroke-width="1" stroke-dasharray="3,3" opacity=".75"/>';
+    out+='<rect x="'+(CW+1)+'" y="'+(ly-6)+'" width="'+(AX-2)+'" height="12" rx="2" fill="#2b6ea8"/>';
+    out+='<text x="'+(CW+4)+'" y="'+(ly+3)+'" fill="#eaf6ff" font-size="7.5" font-weight="700">'+money(r2(last.c))+'</text>';
   }
   cs.forEach(function(c,i){
     var cx=PAD+slot*i+slot/2, up=c.c>=c.o, col=up?'#26e0a5':'#ff6b81';
@@ -331,12 +415,20 @@ function chartSvg(cs){
     out+='<rect x="'+(cx-bw/2).toFixed(1)+'" y="'+top.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+bh.toFixed(1)+'" rx="1" fill="'+col+'" opacity=".95"/>';
     var vh=(c.v/maxV)*VH;
     out+='<rect x="'+(cx-bw/2).toFixed(1)+'" y="'+(H+GAP+VH-vh).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+vh.toFixed(1)+'" rx="1" fill="'+col+'" opacity=".32"/>';
+    /* panah sinyal saat arah berubah: naik→BUY, turun→SELL */
+    if(dirs && i>0 && dirs[i]!==0 && dirs[i]!==dirs[i-1]){
+      if(dirs[i]===1) out+='<text x="'+cx.toFixed(1)+'" y="'+(y(c.l)+9).toFixed(1)+'" fill="#26e0a5" font-size="9" text-anchor="middle">▲BUY</text>';
+      else out+='<text x="'+cx.toFixed(1)+'" y="'+(y(c.h)-4).toFixed(1)+'" fill="#ff6b81" font-size="9" text-anchor="middle">▼SELL</text>';
+    }
   });
   return out;
 }
 function renderChart(tick){
-  var q=quote(selected,tick), cs=candles(selected,tick,20);
-  $('chSvg').innerHTML=chartSvg(cs);
+  var q=quote(selected,tick);
+  var base=candles(selected,tick,20*Math.max(1,tf));
+  var cs=aggCandles(base,tf);
+  var dirs=sigDirs(cs);
+  $('chSvg').innerHTML=chartSvg(cs,dirs);
   $('chName').childNodes[0].nodeValue=selected;
   $('chSector').textContent=BY[selected].sektor;
   $('chPrice').textContent='$AS '+money(q.price);
@@ -346,6 +438,16 @@ function renderChart(tick){
   cs.forEach(function(c){if(c.h>hiq)hiq=c.h;if(c.l<loq)loq=c.l});
   $('chHi').textContent=money(r2(hiq));
   $('chLo').textContent=money(r2(loq));
+  /* bid/ask ala forex (spread 0,1%) */
+  var spread=r2(q.price*0.001);
+  $('bidPx').textContent=money(r2(q.price-spread/2));
+  $('askPx').textContent=money(r2(q.price+spread/2));
+  /* badge sinyal + label timeframe */
+  var d=dirs.length?dirs[dirs.length-1]:0;
+  var badge=$('sigBadge');
+  badge.textContent='SINYAL: '+(d===1?'BUY':d===-1?'SELL':'NETRAL');
+  badge.className='sig'+(d===1?' buy':d===-1?' sell':'');
+  $('chTfLb').textContent=(tf===1?'1m · tiap bar 1 menit':tf+'m · tiap bar '+tf+' menit')+' · '+cs.length+' bar';
 }
 /* ── info saham ── */
 function renderInfo(tick){
@@ -386,20 +488,34 @@ function sparkSvg(vals,up){
   var color=up?'#26e0a5':'#ff6b81';
   return '<svg class="spark" viewBox="0 0 56 22"><polyline fill="none" stroke="'+color+'" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" points="'+pts+'"/></svg>';
 }
+var flt='all';
 function renderStocks(tick){
+  var list=SAHAM.slice();
+  if(flt==='up') list=list.filter(function(s){return quote(s.sym,tick).pct>=0});
+  else if(flt==='down') list=list.filter(function(s){return quote(s.sym,tick).pct<0});
+  else if(flt==='top') list.sort(function(a,b){return Math.abs(quote(b.sym,tick).pct)-Math.abs(quote(a.sym,tick).pct)});
   var html='';
-  SAHAM.forEach(function(s){
+  list.forEach(function(s){
     var q=quote(s.sym,tick);
-    html+='<div class="row'+(s.sym===selected?' sel':'')+'" data-sym="'+s.sym+'">'+
-      '<div class="q"><b>'+s.sym+'</b><span>'+s.name+'</span></div>'+
+    html+='<div class="rcard'+(s.sym===selected?' sel':'')+'" data-sym="'+s.sym+'">'+
+      '<b>'+s.sym+'</b>'+
+      '<span class="rp">'+money(q.price)+'</span>'+
+      '<span class="rc '+(q.pct>=0?'up':'down')+'">'+sgn(q.pct)+'%</span>'+
       sparkSvg(q.spark,q.pct>=0)+
-      '<div class="p"><b>$AS '+money(q.price)+'</b><span class="'+(q.pct>=0?'up':'down')+'">'+sgn(q.pct)+'%</span></div>'+
     '</div>';
   });
   $('stocks').innerHTML=html;
-  Array.prototype.forEach.call($('stocks').querySelectorAll('.row'),function(el){
+  Array.prototype.forEach.call($('stocks').querySelectorAll('.rcard'),function(el){
     el.addEventListener('click',function(){selected=el.getAttribute('data-sym');refresh();});
   });
+}
+/* ticker berjalan penuh (duplikat isi → animasi mulus) */
+function renderTicker(tick){
+  var items=SAHAM.map(function(s){
+    var q=quote(s.sym,tick);
+    return '<span class="tk"><b>'+s.sym+'</b> '+money(q.price)+' <span class="'+(q.pct>=0?'u':'d')+'">'+sgn(q.pct)+'%</span></span>';
+  }).join('');
+  $('tickTrack').innerHTML=items+items;
 }
 function portfolio(){
   var value=0,pnl=0;
@@ -431,9 +547,21 @@ function renderHolds(){
   Object.keys(state.holds).forEach(function(sym){
     var h=state.holds[sym]; if(!h||!h.lot) return;
     var p=priceAt(sym), val=p*h.lot, pl=(p-h.avg)*h.lot;
-    rows+='<div class="hold"><span class="n">'+sym+' · '+h.lot+' lot</span><span>$AS '+money(val)+' <b class="'+(pl>=0?'up':'down')+'">'+sgn(pl)+'</b></span></div>';
+    var pct=h.avg?pl/(h.avg*h.lot)*100:0;
+    rows+='<div class="hold"><span class="n">'+sym+' · '+h.lot+' lot</span><span class="col">$AS '+money(val)+' <b class="'+(pl>=0?'up':'down')+'">'+sgn(pl)+'</b><span class="pl '+(pl>=0?'up':'down')+'">'+sgn(pct)+'%</span></span><button class="hclose" data-close="'+sym+'">TUTUP</button></div>';
   });
   $('holds').innerHTML=rows||'<div class="hold"><span class="n">Belum ada saham.</span><span>-</span></div>';
+  Array.prototype.forEach.call($('holds').querySelectorAll('.hclose'),function(b){
+    b.addEventListener('click',function(){
+      var sym=b.getAttribute('data-close');
+      var h=state.holds[sym]; if(!h||!h.lot) return;
+      var price=priceAt(sym);
+      state.cash=r2(state.cash+price*h.lot);
+      state.trades++;
+      delete state.holds[sym];
+      save();refresh('✅ Tutup posisi '+sym+' · $AS '+money(price*h.lot));
+    });
+  });
 }
 function qtyValue(){
   var v=parseInt($('qty').value,10);
@@ -468,7 +596,7 @@ function sell(){
 }
 function refresh(msg){
   var t=tickNow();
-  renderCards();renderHolds();renderChart(t);renderInfo(t);renderTraffic(t);renderStocks(t);renderPanel(t);
+  renderCards();renderHolds();renderChart(t);renderInfo(t);renderTraffic(t);renderTicker(t);renderStocks(t);renderPanel(t);
   if(msg) toast(msg);
 }
 
@@ -484,6 +612,24 @@ Array.prototype.forEach.call(document.querySelectorAll('.qtybar button'),functio
       $('qty').value=Math.max(1,Math.floor(state.cash/price));
     } else $('qty').value=q;
     updateTotal();
+  });
+});
+/* timeframe chart (1M/5M/15M/30M) */
+Array.prototype.forEach.call(document.querySelectorAll('.tf'),function(el){
+  el.addEventListener('click',function(){
+    Array.prototype.forEach.call(document.querySelectorAll('.tf'),function(x){x.classList.remove('on')});
+    el.classList.add('on');
+    tf=parseInt(el.getAttribute('data-tf'),10)||1;
+    refresh();
+  });
+});
+/* filter rail saham */
+Array.prototype.forEach.call(document.querySelectorAll('.flt'),function(el){
+  el.addEventListener('click',function(){
+    Array.prototype.forEach.call(document.querySelectorAll('.flt'),function(x){x.classList.remove('on')});
+    el.classList.add('on');
+    flt=el.getAttribute('data-flt');
+    refresh();
   });
 });
 Array.prototype.forEach.call(document.querySelectorAll('.tab'),function(t){

@@ -1,5 +1,16 @@
 let handler = async (m, { conn }) => {
-  let groups = await conn.groupFetchAllParticipating()
+  // all() sudah retry internal (GROUP_LIST_CHANGED); ini jaring pengaman
+  // terakhir supaya .list tidak pernah memunculkan error mentah ke chat.
+  let groups
+  for (let i = 0; i < 3; i += 1) {
+    try {
+      groups = await conn.groupFetchAllParticipating()
+      break
+    } catch (error) {
+      if (error?.code !== 'GROUP_LIST_CHANGED' || i === 2) throw error
+      await new Promise(resolve => setTimeout(resolve, 500 * (i + 1)))
+    }
+  }
   let list = Object.values(groups)
 
   if (!list.length) throw 'Bot belum masuk grup manapun.'
