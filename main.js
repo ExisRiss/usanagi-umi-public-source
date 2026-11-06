@@ -837,6 +837,7 @@ let reconnectTimer = null;
 let reconnectInProgress = false;
 let reconnectAttempts = 0;
 let lastConnectionUpdateAt = Date.now();
+global.__umiLastConnectionAt = lastConnectionUpdateAt;
 
 function getDisconnectCode(error) {
     return (
@@ -854,6 +855,13 @@ function clearReconnectState() {
     reconnectInProgress = false;
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = null;
+}
+
+/* Task212 — penjaga 24 jam (plugins/owner/_penjaga-24jam.js) memakai ini
+ * untuk memicu siklus reconnect yang SAMA dengan event 'close', tanpa
+ * menduplikasi logika. Dipanggil hanya saat soket zombie/tertutup. */
+global.__umiReconnect = (reason) => {
+    try { scheduleReconnect(reason || 428) } catch (e) { console.error('[PENJAGA24] reconnect gagal:', e) }
 }
 
 function scheduleReconnect(reason) {
@@ -888,6 +896,8 @@ function scheduleReconnect(reason) {
 async function connectionUpdate(update) {
     const { receivedPendingNotifications, connection, lastDisconnect, isOnline } = update;
     lastConnectionUpdateAt = Date.now();
+    /* Task212 — dibaca penjaga 24 jam untuk mendeteksi soket zombie. */
+    global.__umiLastConnectionAt = lastConnectionUpdateAt;
     global.stopped = connection || global.stopped;
 
     if (connection === 'connecting') {

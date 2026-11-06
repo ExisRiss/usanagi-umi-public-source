@@ -21,14 +21,24 @@ import { getMainConnection } from '../../lib/bot-connection-context.js'
 import { reactChannel } from '../tools/rch.js'
 
 const OUT = '/data/rch-probe.log'
+/* Task212 — panel hosting sempat mati (HTTP 500 DaemonConnectionException)
+ * sehingga /data/rch-probe.log tidak bisa dibaca. Salinan ke console tetap
+ * dibuat (owner bisa lihat di panel > Console), dan hasil akhirnya juga
+ * dikirim sebagai pesan WA ke owner supaya bukti tidak bergantung panel. */
+const OUT_LOKAL = 'rch-probe.log'
 const EMOJI_UJI = '🧪'
 let jalanSekali = false
+const hasil = { vip: [], conn: [], catatan: [] }
 
 function log (baris) {
-  try {
-    fs.mkdirSync('/data', { recursive: true })
-    fs.appendFileSync(OUT, `[${new Date().toISOString()}] ${baris}\n`)
-  } catch { /* tetap coba console */ }
+  const waktu = new Date().toISOString()
+  for (const jalur of [OUT, OUT_LOKAL]) {
+    try {
+      if (jalur.startsWith('/')) fs.mkdirSync('/data', { recursive: true })
+      fs.appendFileSync(jalur, `[${waktu}] ${baris}\n`)
+      break
+    } catch { /* coba jalur berikutnya */ }
+  }
   console.log(`[T211-PROBE] ${baris}`)
 }
 
@@ -160,6 +170,7 @@ async function jalankanProbe () {
       await tidur(5000)
       const bacaVip = await buktiBaca(conn, channelId, serverId)
       log(`KESIMPULAN VIP: ok=${vipOk} | terbaca(updates)=${bacaVip.updatesEmoji} | terbaca(msg)=${bacaVip.msgEmoji}`)
+      hasil.vip.push(`• VIP ok=${vipOk} · terbaca=${bacaVip.updatesEmoji || bacaVip.msgEmoji}`)
     } else {
       log('VIP dilewati (invite/serverId kosong)')
     }
@@ -174,6 +185,7 @@ async function jalankanProbe () {
     await tidur(3000)
     const bacaConn = await buktiBaca(conn, channelId, serverId)
     log(`KESIMPULAN CONNECTION: terbaca(updates)=${bacaConn.updatesEmoji} | terbaca(msg)=${bacaConn.msgEmoji}`)
+    hasil.conn.push(`• Connection terbaca=${bacaConn.updatesEmoji || bacaConn.msgEmoji}`)
 
     /* ── bersih-bersih ── */
     try {
@@ -194,10 +206,43 @@ async function jalankanProbe () {
     }
 
     log('=== PROBE_SELESAI ===')
+    await laporOwner(conn, channelId)
   } catch (e) {
     log(`FATAL: ${e?.message || e}`)
   } finally {
     jalanSekali = false
+  }
+}
+
+/* Task212 — bukti tidak lagi bergantung pada panel (yang sempat HTTP 500).
+ * Ringkasan hasil dikirim sebagai pesan WA ke owner (nomor di config.js). */
+async function laporOwner (conn, channelId) {
+  try {
+    const daftar = (Array.isArray(global.owner) ? global.owner : [])
+      .map((baris) => String((Array.isArray(baris) ? baris[0] : baris) || '').replace(/[^0-9]/g, ''))
+      .filter(Boolean)
+    if (!daftar.length || !conn) return
+    const isi = [
+      '🧪 *PROBE G4 SELESAI*',
+      '',
+      `Saluran: ${channelId || '-'}`,
+      ...(hasil.catatan.length ? ['', ...hasil.catatan] : []),
+      '',
+      '*A. Jalur VIP (.rch)*',
+      ...(hasil.vip.length ? hasil.vip : ['-']),
+      '',
+      '*B. Jalur koneksi bot*',
+      ...(hasil.conn.length ? hasil.conn : ['-']),
+      '',
+      'Baca: "terbaca=true" = emoji benar-benar sampai di saluran (bukti).',
+      'Detail: /data/rch-probe.log + console [T211-PROBE].',
+    ].join('\n')
+    for (const nomor of daftar.slice(0, 3)) {
+      try { await conn.sendMessage(`${nomor}@s.whatsapp.net`, { text: isi }) } catch (e) { log(`lapor owner +${nomor} gagal: ${e?.message || e}`) }
+    }
+    log('ringkasan dikirim ke owner')
+  } catch (e) {
+    log(`laporOwner FATAL: ${e?.message || e}`)
   }
 }
 

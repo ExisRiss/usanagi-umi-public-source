@@ -40,6 +40,9 @@ import path from 'node:path'
 import {
   bacaRegistry,
   simpanRegistry,
+  daftarNamaDipesan,
+  bolehPakaiNama,
+  domainBotTambahan,
   bacaKontrolDomain,
   simpanKontrolDomain,
   statusDomain,
@@ -56,7 +59,10 @@ import { daftarkanAksi } from '../../lib/pending-aksi.js'
 import { adaLampiran, namaBerkasLampiran, captionLampiran } from '../../lib/lampiran.js'
 
 /* Akar domain bawaan bot. Urutan ini juga dipakai sebagai tombol. */
-const AKAR_BAWAAN = ['kieran.my.id', 'kieran.web.id', 'gwenna.my.id']
+/* Task212 — alzriss.my.id dipasang sebagai akar baru (DNS + tunnel
+ * Cloudflare sudah diarahkan). Subdomain publik di dalamnya dibatasi oleh
+ * daftar nama yang dipesan owner (lib/subdomain-kaira.js → NAMA_DIPESAN). */
+const AKAR_BAWAAN = ['kieran.my.id', 'kieran.web.id', 'gwenna.my.id', 'alzriss.my.id']
 const AWALAN_SUB = 'alzriss'
 const DIR_SITUS = path.join(process.cwd(), 'situs')
 const BERKAS_TUNGGU = path.join(process.cwd(), 'data', 'subdomain-baru-tunggu.json')
@@ -1297,7 +1303,7 @@ async function unduhLampiranLokal(m, conn) {
 
 /* ───────────── handler ───────────── */
 
-const COMMAND = /^(subdomainmenu|subdomain|domain|deploysubdomain|deploydomain|kontrolsubdomain|kontrol-?domain|addsupabase|addfile)$/i
+const COMMAND = /^(subdomainmenu|subdomain|domain|deploysubdomain|deploydomain|kontrolsubdomain|kontrol-?domain|addsupabase|addfile|subdomainpesan)$/i
 
 let handler = async function (m, extra = {}) {
   const conn = extra.conn || this
@@ -1314,6 +1320,7 @@ let handler = async function (m, extra = {}) {
   if (perintah === 'deploydomain') return perintahDeployDomain(m, conn, args, extra)
   if (perintah === 'addsupabase') return perintahAddSupabase(m, conn, args, extra)
   if (perintah === 'addfile') return perintahAddFile(m, conn, args, extra)
+  if (perintah === 'subdomainpesan') return perintahSubdomainPesan(m, conn, args, extra)
   if (/^kontrol-?domain$/i.test(perintah)) return perintahKontrolDomain(m, conn, args, extra)
   if (perintah === 'kontrolsubdomain') {
     /* /kontrolsubdomain <nama> <aksi> → aksi; tanpa aksi → panel */
@@ -1365,6 +1372,79 @@ handler.all = async function (m) {
   }
   if (!adaLampiran(m) && !/^\s*<[a-z!/]/i.test(String(m.text || ''))) return
   return prosesLampiran(this, m, tunggu)
+}
+
+/* ── Task212: daftar nama subdomain yang dipesan (khusus owner/developer) ──
+ * `/subdomainpesan`                     → tampilkan nama yang dipesan
+ * `/subdomainpesan cek <nama>`          → cek siapa pemilik nama itu
+ * `/subdomainpesan <akar> <nama>`       → pesan nama untuk owner di akar itu
+ * `/subdomainpesan hapus <akar> <nama>` → lepaskan pesanan
+ * Disimpan di `data/subdomain-dipesan.json` — berlaku tanpa mengubah kode. */
+async function perintahSubdomainPesan(m, conn, args, extra) {
+  const admin = sayaOwnerBot(m, extra)
+  if (!admin) return m.reply('🔒 Daftar nama yang dipesan hanya bisa dibuka owner/developer bot.')
+  const berkas = path.join(process.cwd(), 'data', 'subdomain-dipesan.json')
+  const baca = () => {
+    try { return JSON.parse(fs.readFileSync(berkas, 'utf8')) || {} } catch { return {} }
+  }
+  const aksi = String(args[0] || '').toLowerCase()
+
+  if (aksi === 'cek') {
+    const nama = String(args[1] || '').toLowerCase()
+    if (!nama) return m.reply('Cara: /subdomainpesan cek <nama>')
+    const izin = bolehPakaiNama(nama, { akar: args[2] || '', pemilik: m.sender })
+    return m.reply([`🔎 *CEK NAMA: ${nama}*`, '', izin.boleh ? '✅ boleh dipakai' : `🔒 dipesan: ${izin.milik || 'owner'}`, izin.alasan || ''].join('\n'))
+  }
+
+  if (aksi === 'hapus') {
+    const akar = String(args[1] || '*').toLowerCase()
+    const nama = String(args[2] || '').toLowerCase()
+    const data = baca()
+    if (!nama || !data[akar] || !data[akar][nama]) return m.reply('Nama itu tidak ada di daftar pesanan.')
+    delete data[akar][nama]
+    if (!Object.keys(data[akar]).length) delete data[akar]
+    fs.mkdirSync(path.dirname(berkas), { recursive: true })
+    fs.writeFileSync(berkas, JSON.stringify(data, null, 2), { mode: 0o600 })
+    return m.reply(`🗑️ Pesanan nama *${nama}* di *${akar}* dilepas — sekarang bisa dipakai orang lain.`)
+  }
+
+  /* bentuk: /subdomainpesan <akar> <nama> */
+  if (aksi && args[1]) {
+    const akar = akarAman(aksi)
+    const nama = String(args[1]).toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-{2,}/g, '-').replace(/^-+|-+$/g, '')
+    if (!akar.includes('.') || !nama) return m.reply('Cara: /subdomainpesan <domain-akar> <nama>\nContoh: /subdomainpesan alzriss.my.id kenangan')
+    const data = baca()
+    data[akar] = data[akar] || {}
+    data[akar][nama] = { pemilik: 'owner', catatan: `Dipesan ${nomorDari(m.sender)} ${new Date().toISOString().slice(0, 10)}` }
+    fs.mkdirSync(path.dirname(berkas), { recursive: true })
+    fs.writeFileSync(berkas, JSON.stringify(data, null, 2), { mode: 0o600 })
+    catat('pesan-nama', { akar, nama, oleh: nomorDari(m.sender) })
+    return m.reply([`🔒 *NAMA DIPESAN*`, '', `Domain: *${akar}*`, `Nama  : *${nama}*`, '', 'Nama ini tidak bisa dibuat orang lain lewat chat.'].join('\n'))
+  }
+
+  /* tampilan daftar */
+  const kontrol = bacaKontrolDomain()
+  const dipesan = daftarNamaDipesan()
+  const baris = []
+  for (const [akar, isi] of Object.entries(dipesan)) {
+    for (const [nama, info] of Object.entries(isi || {})) {
+      const host = akar === '*' ? `<nama>.*` : `${nama}.${akar}`
+      baris.push(`• *${host}* — ${String((info && info.pemilik) || 'owner')}${(info && info.laporan) ? '' : ''}`)
+    }
+  }
+  return m.reply([
+    '🔒 *NAMA SUBDOMAIN YANG DIPESAN*',
+    '',
+    `Domain bot : ${['gwenna.my.id', ...domainBotTambahan()].join(' · ')}`,
+    `Domain akar tercatat: ${Object.keys(kontrol).join(', ') || '-'}`,
+    '',
+    ...(baris.length ? baris : ['(belum ada)']),
+    '',
+    'Tambah  : `/subdomainpesan <akar> <nama>`',
+    'Cek     : `/subdomainpesan cek <nama>`',
+    'Lepas   : `/subdomainpesan hapus <akar> <nama>`',
+    'Akses   : `/kontroldomain alzriss.my.id public|private`',
+  ].join('\n'))
 }
 
 export { AKAR_BAWAAN, AWALAN_SUB, hostSubdomain, hostDomain, slugSitus, labelAman, daftarAkar }
