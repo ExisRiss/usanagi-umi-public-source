@@ -4,6 +4,7 @@ import fs from 'fs'
 import path from 'node:path'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { isMainBotSettingsManaged, loadMainBotSettings } from './main-bot-settings.js'
+import { normalizePrefixMode } from './prefix-policy.js'
 
 const context = globalThis.__usanagiBotConfigContext || new AsyncLocalStorage()
 globalThis.__usanagiBotConfigContext = context
@@ -134,7 +135,8 @@ export function getMainBotConfig() {
     type: 'main',
     scope: MAIN_SCOPE,
     number: '',
-    defaultPrefix: String(settings ? settings.prefix : (global.mainBot?.defaultPrefix || '.')),
+    // Task117: bot utama hanya memakai `$`.
+    defaultPrefix: String(settings ? settings.prefix : (global.mainBot?.defaultPrefix || '$')),
     defaultLimit: settings ? settings.defaultLimit : 50,
     limitEnabled: settings ? settings.limitEnabled !== false : global.mainBot?.limitEnabled !== false,
     public: settings ? settings.mode !== 'self' : true,
@@ -155,6 +157,8 @@ function defaults() {
   return {
     namebot,
     defaultPrefix: String(configured.defaultPrefix || '.'),
+    // Task112: strict = hanya prefix yang disetel yang dijalankan.
+    prefixMode: normalizePrefixMode(configured.prefixMode),
     defaultLimit: normalizeDefaultLimit(configured.defaultLimit, 25),
     limitEnabled: configured.limitEnabled !== false,
     public: configured.public !== false,
@@ -190,6 +194,7 @@ function sanitize(raw = {}) {
   const output = merge(base, raw)
   output.namebot = String(output.namebot || base.namebot).slice(0, 80)
   output.defaultPrefix = String(output.defaultPrefix || '.').slice(0, 3) || '.'
+  output.prefixMode = normalizePrefixMode(output.prefixMode)
   output.defaultLimit = normalizeDefaultLimit(output.defaultLimit, base.defaultLimit)
   output.limitEnabled = output.limitEnabled !== false
   output.autoAI = { enabled: raw.autoAIEnabled === false ? false : output.autoAI?.enabled !== false }
@@ -227,6 +232,7 @@ export function loadJadibotConfig(number, sessionPath = '', { create = true } = 
     scope: `jadibot:${normalized}`,
     number: normalized,
     defaultPrefix: values.defaultPrefix,
+    prefixMode: values.prefixMode,
     defaultLimit: values.defaultLimit,
     limitEnabled: values.limitEnabled !== false,
     public: values.public,
@@ -239,6 +245,7 @@ export function loadJadibotConfig(number, sessionPath = '', { create = true } = 
     file,
     values: {
       namebot: values.namebot,
+      prefixMode: values.prefixMode,
       limitEnabled: values.limitEnabled !== false,
       autoAI: values.autoAI,
       autoTyping: values.autoTyping,
@@ -268,6 +275,7 @@ export function saveJadibotConfig(profile) {
   const serializable = sanitize({
     namebot: profile.values?.namebot,
     defaultPrefix: profile.defaultPrefix,
+    prefixMode: profile.prefixMode || profile.values?.prefixMode,
     defaultLimit: profile.defaultLimit,
     limitEnabled: profile.limitEnabled !== false,
     public: profile.public,

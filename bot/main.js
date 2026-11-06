@@ -1,5 +1,11 @@
 import { initializeUnifiedRpg } from './lib/rpg/unified-runtime.js';
 import fs from 'fs';
+/* Task173f — urutan DNS IPv4 dulu (lihat scripts/boot.js). Dipasang juga di
+ * sini karena main.js bisa dijalankan langsung tanpa boot.js. */
+import dns from 'dns';
+try {
+    dns.setDefaultResultOrder('ipv4first');
+} catch (error) { /* Node lama */ }
 import { spawn } from 'child_process';
 import { tmpdir } from 'os';
 import { format } from 'util';
@@ -13,33 +19,44 @@ import chalk from 'chalk';
 import pino from 'pino';
 import syntaxerror from 'syntax-error';
 import { Low, JSONFile } from 'lowdb';
+import { pasangPenulisDatabase } from './lib/db-writer.js';
+/* Task196 — lisensi sc full-aktif hanya bila data/sc-license.enc ada (instansi
+ * distribusi). Instansi normal tidak punya berkas itu: semua nonaktif. */
+import { scLicenseAktif, scLicenseValid, validasiScLicense } from './lib/sc-license.js';
 
 import { makeWASocket, protoType, serialize } from './lib/simple.js';
+import { opsiSocket, ringkasOpsi } from './lib/socket-options.js';
 import { installAutoTyping } from './lib/auto-typing.js';
 import { installBotConfigAccessors, getMainBotConfig } from './lib/bot-config.js';
 import { installRpgGlobals } from './lib/rpg/awang-rpg-globals.js';
 import { installApiGlobals } from './lib/api-globals.js';
+// Task173 — fetch aman (IPv4 dipaksa bila perlu, timeout 30 s, 3 percobaan)
+// dipasang SEBELUM Baileys mengunduh media apa pun.
+import { pasangFetchAman } from './lib/jaringan-aman.js';
+pasangFetchAman();
 import { syncMainPrefix } from './core/awang-prefix.js';
 import { getExplicitlyEnabledWelcomeGroups } from './core/awang-welcome.js';
 import { startJadibotPlatformApi } from './lib/jadibot-platform-api.js';
 import { startGameRoomNotifier } from './lib/game-room-notifier.js';
-import { installAutoBackup, updateAutoBackupConnection } from './lib/auto-backup.js';
-import { normalizePluginText, storedDefaultPrefix } from './core/awang-prefix-text.js';
+import { normalizePluginText, storedDefaultPrefix, storedPrefixMode } from './core/awang-prefix-text.js';
 import { startJadibotSessionCleaner } from './lib/jadibot-session-cleaner.js';
-import { startVercelBackupScheduler } from './lib/vercel-backup-scheduler.js';
-import { startBackupSystem } from './lib/backup/service.js';
 import { startPlatform, stopPlatform } from './lib/platform/index.js';
+import { SINGLE_MODE } from './config/single-mode.js';
+import { startSingleModeUsers } from './lib/single-mode.js';
 import { readMainBotState, writeMainBotState, normalizeMainBotNumber } from './lib/main-bot-config.js';
 import { applyMainBotSettingsAtBoot, syncMainBotSettingsProfile } from './lib/main-bot-settings.js';
 import { installErrorHooks } from './lib/error-hub.js';
+// Task90: handler event 'call' memanggil isAnticallActive() tetapi fungsinya
+// belum pernah diimpor, sehingga setiap panggilan masuk memicu
+// unhandledRejection "isAnticallActive is not defined" (~15 kali di log).
+import { isAnticallActive } from './core/awang-call.js';
 import {
     useMultiFileAuthState,
     initAuthCreds,
-    Browsers,
     fetchLatestBaileysVersion,
     makeCacheableSignalKeyStore,
     DisconnectReason
-} from '@rexxhayanasi/elaina-baileys';
+} from './lib/baileys.js';
 
 /* ============================================================
  * JADIBOT LIBRARY
@@ -107,9 +124,14 @@ installBotConfigAccessors();
 // Prefix default pilihan owner (disimpan di data/prefix-settings.json) menang
 // atas nilai bawaan config.js, supaya setelan tidak hilang saat restart.
 const savedPrefix = storedDefaultPrefix();
+const savedPrefixMode = storedPrefixMode();
 if (savedPrefix) {
     if (!global.mainBot) global.mainBot = {};
     global.mainBot.defaultPrefix = savedPrefix;
+}
+if (savedPrefixMode) {
+    if (!global.mainBot) global.mainBot = {};
+    global.mainBot.prefixMode = savedPrefixMode;
 }
 if (syncMainPrefix(global.mainBot?.defaultPrefix, global.mainBot?.prefixRevision)) {
     console.log(`Prefix bot utama disinkronkan ke: ${global.mainBot.defaultPrefix}`);
@@ -125,6 +147,9 @@ serialize();
  * DATABASE
  * ============================================================ */
 global.db = new Low(new JSONFile('database.json'));
+// Task119: simpan database bertahap supaya event loop tidak tersendat
+// (sebelumnya db.write() menahan proses 0,7–1,4 detik tiap 30 detik).
+pasangPenulisDatabase(global.db, 'database.json');
 
 global.loadDatabase = async function loadDatabase() {
     if (global.db.READ) {
@@ -252,25 +277,17 @@ const { version } = await fetchLatestBaileysVersion();
  * ============================================================ */
 const runtimePerformance = global.runtimePerformance || {};
 
-const connectionOptions = {
+/* Task214 — opsi socket dipusatkan di lib/socket-options.js supaya bot utama,
+ * jadibot, dan mode single memakai nilai yang SAMA PERSIS. */
+const connectionOptions = opsiSocket({
     auth: {
         creds: state.creds,
         keys: makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' }))
     },
     version,
     logger: pino({ level: 'silent' }),
-    browser: Browsers.ubuntu('Chrome'),
-    generateHighQualityLinkPreview: true,
-    syncFullHistory: false,
-    shouldSyncHistoryMessage: () => false,
-    markOnlineOnConnect: true,
-    connectTimeoutMs: Number(runtimePerformance.connectTimeoutMs) || 45000,
-    keepAliveIntervalMs: Number(runtimePerformance.keepAliveIntervalMs) || 15000,
-    retryRequestDelayMs: Number(runtimePerformance.retryRequestDelayMs) || 100,
-    maxMsgRetryCount: Number(runtimePerformance.maxMessageRetries) || 10,
-    defaultQueryTimeoutMs: 60000,
-    printQRInTerminal: false
-};
+    performance: runtimePerformance
+});
 
 /* ============================================================
  * SETTING BOT UTAMA
@@ -278,16 +295,21 @@ const connectionOptions = {
 // Bot utama bisa dimatikan total dari website. Kalau nonaktif, bot tidak
 // mencoba menyambung, tidak memunculkan prompt pairing, dan tidak ikut
 // reconnect berulang. Jadibot serta API platform tetap berjalan normal.
-const mainBotState = readMainBotState();
+const mainBotState = SINGLE_MODE
+    ? { enabled: false, pairingNumber: '' }
+    : readMainBotState();
 global.mainBotEnabled = mainBotState.enabled;
+global.singleMode = SINGLE_MODE;
 if (mainBotState.pairingNumber) {
     // Dipakai requestPairing() supaya tidak perlu prompt manual.
     process.env.PAIRING_NUMBER = mainBotState.pairingNumber;
 }
 console.log(
-    mainBotState.enabled
-        ? chalk.green('⚙️ Bot utama: AKTIF')
-        : chalk.yellow('⚙️ Bot utama: NONAKTIF (diatur dari website > halaman Bot Utama)')
+    SINGLE_MODE
+        ? chalk.cyan('⚙️ Mode SINGLE: bot utama tidak dipakai (hanya nomor dari config/users.json)')
+        : mainBotState.enabled
+            ? chalk.green('⚙️ Bot utama: AKTIF')
+            : chalk.yellow('⚙️ Bot utama: NONAKTIF (diatur dari website > halaman Bot Utama)')
 );
 
 /** Simpan nomor pairing yang dipakai saat bot utama menyambung. */
@@ -335,21 +357,42 @@ global.conn = installAutoTyping(makeWASocket(connectionOptions));
 global.conn.botConfig = getMainBotConfig();
 syncMainBotSettingsProfile(global.conn.botConfig);
 global.conn.isJadibot = false;
-startJadibotPlatformApi();
+/*
+ * HTTP API jadibot tetap dinyalakan di mode single JIKA config.js memintanya
+ * (`global.jadibotPlatform.enabled === true`). Tanpa API ini website
+ * (jadibot-alzriss.gwenna.my.id) tidak punya backend: /api/health, /api/sessions,
+ * /api/settings/* semuanya 502 karena diteruskan ke port yang tidak mendengarkan.
+ * Untuk pemasangan yang memang tidak memakai website, set enabled: false di
+ * config.js dan API tidak akan membuka port apa pun.
+ */
+const platformApiWanted = SINGLE_MODE
+    ? global.jadibotPlatform?.enabled === true
+    : global.jadibotPlatform?.enabled !== false;
+if (platformApiWanted) {
+    startJadibotPlatformApi();
+} else {
+    console.log(chalk.cyan('🌐 HTTP API platform: MATI (dimatikan di config.js)'));
+}
 startGameRoomNotifier();
-startVercelBackupScheduler();
-// Sistem backup 10 menit + bot Telegram + REST API /api/backup-system.
-startBackupSystem();
 // Ekosistem multi-aplikasi: adapter Telegram + service bersama (RBAC, server,
 // saham, RPG, media to-URL). Tidak membuat socket WhatsApp kedua dan tidak
 // mengubah perilaku bot WhatsApp yang sudah berjalan.
-startPlatform().catch(error => console.error('[PLATFORM] Gagal start:', error.message));
+if (!SINGLE_MODE) {
+    startPlatform().catch(error => console.error('[PLATFORM] Gagal start:', error.message));
+} else {
+    console.log(chalk.cyan('🤖 Platform Telegram & multi-app: MATI (mode single)'));
+}
 for (const signal of ['SIGTERM', 'SIGINT']) {
-    process.on(signal, () => {
+    process.on(signal, async () => {
+        // Task119: simpan perubahan terakhir sebelum keluar (maks. 5 detik).
+        try {
+            if (global.db?.data && global.__umiDbKotor === true) {
+                await Promise.race([global.db.write(true), new Promise(r => setTimeout(r, 5000))]);
+            }
+        } catch {}
         stopPlatform().catch(() => {}).finally(() => process.exit(0));
     });
 }
-installAutoBackup(global.conn);
 startJadibotSessionCleaner();
 
 /* ============================================================
@@ -366,6 +409,13 @@ global.mainPairingReadline = null;
 // Di-set true kalau nomor pairing tidak bisa didapat sama sekali, supaya
 // percobaan reconnect tidak menumpuk log error yang sama tanpa henti.
 global.pairingUnavailable = false;
+/**
+ * Pairing hanya boleh dimulai oleh tindakan owner (tombol MINTA CODE di panel
+ * atau menyimpan nomor baru). Sebelum Task90, socket tanpa sesi langsung
+ * meminta kode sendiri: owner menghapus sesi, eh WhatsApp malah mengirim
+ * permintaan pairing tanpa diminta. Semua jalur otomatis wajib cek flag ini.
+ */
+global.mainPairingExplicit = false;
 // Kapan terakhir kode pairing diminta (ms). WhatsApp membatasi permintaan
 // berulang, jadi ada jeda minimum antar percobaan.
 let lastPairingCodeRequestAt = 0;
@@ -497,6 +547,37 @@ global.requestPairing = async function(options = {}) {
             }
         }
 
+        /* Task196 — LISENSI SC: instansi berlisensi wajib memasukkan password
+         * sebelum kode pairing dikeluarkan. Env PAIRING_PASSWORD dipakai bila
+         * stdin tidak interaktif;3 kali salah → instalasi dihancurkan. */
+        if (scLicenseAktif() && !scLicenseValid()) {
+            const maks = 3;
+            for (let percobaan = 0; percobaan < maks; percobaan += 1) {
+                let jawab = String(process.env.PAIRING_PASSWORD || '').trim();
+                if (!jawab) {
+                    if (!ask) {
+                        throw new Error('Instansi ini dilindungi password sc. Isi variabel PAIRING_PASSWORD di panel (Startup → Variables), atau jalankan pairing di konsol interaktif.');
+                    }
+                    jawab = String((await ask(chalk.yellow('🔑 Masukkan password source code: ')) || '')).trim();
+                    if (jawab === null || jawab === '') throw new Error('Password sc belum diisi.');
+                }
+                const hasil = validasiScLicense(jawab);
+                if (hasil.ok) {
+                    delete process.env.PAIRING_PASSWORD;
+                    console.log(chalk.green('✅ Password sc valid — melanjutkan pairing.'));
+                    break;
+                }
+                delete process.env.PAIRING_PASSWORD;
+                const sisa = maks - percobaan - 1;
+                if (sisa <= 0) {
+                    /* validasiScLicense sudah memanggil hancurkanInstansi(). */
+                    console.log(chalk.red('❌ Password sc salah berkali-kali.'));
+                    return null;
+                }
+                console.log(chalk.red(`❌ Password salah. Percobaan tersisa: ${sisa}.`));
+            }
+        }
+
         // Socket bisa berganti tepat setelah sesi dihapus/di-reload (tombol HAPUS
         // SESI). Dulu kondisi itu langsung menggagalkan pairing walau hanya
         // transien, sehingga owner harus menekan tombol dua kali. Sekarang
@@ -552,6 +633,9 @@ global.requestPairing = async function(options = {}) {
  * jadi tidak boleh "diam saja" karena cooldown atau pairingUnavailable.
  * Kalau gagal, alasannya dilempar ke pemanggil supaya tampil di website. */
 global.requestMainPairing = async function() {
+    // Sampai di sini berarti owner memang meminta kode (tombol panel atau
+    // nomor baru disimpan). Izinkan jalur pairing berjalan.
+    global.mainPairingExplicit = true;
     if (!global.mainBotEnabled) {
         throw Object.assign(new Error('Bot utama sedang nonaktif. Aktifkan dulu lalu coba lagi.'), { status: 409 });
     }
@@ -617,7 +701,10 @@ global.resetMainBotSession = async function() {
     global.lastPairingCode = null;
     global.lastPairingError = null;
     lastPairingCodeRequestAt = 0;
-    console.log(chalk.yellow(`[MAIN-BOT] Sesi bot utama dihapus (${removed.length} berkas). Pairing ulang diperlukan.`));
+    // Sesi dihapus bukan berarti minta kode baru. Pairing hanya dimulai lagi
+    // kalau owner menekan MINTA CODE.
+    global.mainPairingExplicit = false;
+    console.log(chalk.yellow(`[MAIN-BOT] Sesi bot utama dihapus (${removed.length} berkas). Pairing ulang hanya berjalan setelah owner memintanya.`));
     return { removed: removed.length };
 };
 
@@ -626,15 +713,17 @@ global.resetMainBotSession = async function() {
 global.resetMainBotConfig = async function() {
     try { fs.rmSync(path.join(process.cwd(), '.main-bot.env'), { force: true }); } catch {}
     delete process.env.PAIRING_NUMBER;
-    global.mainBotEnabled = true;
+    // Jangan paksa bot utama menyala: kalau owner sengaja mematikannya,
+    // reset konfigurasi tidak boleh mengaktifkannya diam-diam.
+    global.mainPairingExplicit = false;
     global.pairingRequested = false;
     global.pairingInputShown = false;
     global.pairingUnavailable = false;
     global.lastPairingCode = null;
     global.lastPairingError = null;
     lastPairingCodeRequestAt = 0;
-    console.log(chalk.yellow('[MAIN-BOT] Konfigurasi bot utama direset: nomor pairing dihapus, bot diaktifkan.'));
-    return { enabled: true, pairingNumber: '' };
+    console.log(chalk.yellow('[MAIN-BOT] Konfigurasi bot utama direset: nomor pairing dihapus, status on/off tidak diubah.'));
+    return { enabled: Boolean(global.mainBotEnabled), pairingNumber: '' };
 };
 
 /* ============================================================
@@ -643,19 +732,29 @@ global.resetMainBotConfig = async function() {
 if (global.db) {
     let dbWriteInProgress = false;
 
-    // Menulis database setiap 2 detik membuat event loop tersendat ketika data
-    // membesar. Simpan terjadwal dan cegah write yang saling tumpang tindih.
+    // Task119: database sekarang ±12,5 MB (10.273 user). Menulis seluruh berkas
+    // tiap 30 detik berarti ±1,5 GB I/O per jam → disk sibuk, balasan bot telat.
+    // Sekarang: hanya menulis kalau ada perubahan (global.__umiDbKotor, dipasang
+    // handler tiap pesan) dan paling sering tiap 3 menit. Saat sepi = nol tulis.
+    const JEDA_SIMPAN_DB = Math.max(
+        30000,
+        Number(global.dbSaveIntervalMs || runtimePerformance.dbSaveIntervalMs) || 180000
+    );
     setInterval(async () => {
         if (dbWriteInProgress || !global.db.data) return;
+        if (global.__umiDbKotor !== true) return;
         dbWriteInProgress = true;
+        global.__umiDbKotor = false;
         try {
             await global.db.write();
         } catch (error) {
+            global.__umiDbKotor = true;
             console.error('[DATABASE SAVE]', error);
         } finally {
             dbWriteInProgress = false;
         }
-    }, Number(runtimePerformance.dbSaveIntervalMs) || 30000);
+    }, JEDA_SIMPAN_DB);
+    console.log(`[DATABASE] simpan otomatis: tiap ${Math.round(JEDA_SIMPAN_DB / 1000)} dtk bila ada perubahan`);
 
     // Pembersihan file sementara tidak perlu menjalankan proses `find` tiap 2 detik.
     setInterval(() => {
@@ -667,6 +766,19 @@ if (global.db) {
             });
             child.unref();
         }
+        // Task90: pembersih sebelumnya hanya menghapus BERKAS, sehingga folder
+        // sementara yt-dlp (PyInstaller membongkar dirinya ke /tmp/_MEIxxxx,
+        // ±60 MB tiap proses) menumpuk sampai disk penuh (ENOSPC) dan sesi
+        // WhatsApp gagal disimpan. Bersihkan folder _MEI yang sudah tua.
+        const meimei = spawn('find', [tmpdir(), '-maxdepth', '1', '-name', '_MEI*', '-type', 'd', '-mmin', '+30', '-exec', 'rm', '-rf', '{}', '+'], {
+            stdio: 'ignore'
+        });
+        meimei.unref();
+        // Folder kerja unduhan kita sendiri (usanagi-*, diag-*, recheck-*).
+        const workDirs = spawn('find', [tmpdir(), '-maxdepth', '1', '-type', 'd', '-mmin', '+30', '-name', 'usanagi-*', '-exec', 'rm', '-rf', '{}', '+'], {
+            stdio: 'ignore'
+        });
+        workDirs.unref();
     }, Number(runtimePerformance.tempCleanupIntervalMs) || 300000);
 }
 
@@ -717,6 +829,7 @@ let reconnectTimer = null;
 let reconnectInProgress = false;
 let reconnectAttempts = 0;
 let lastConnectionUpdateAt = Date.now();
+global.__umiLastConnectionAt = lastConnectionUpdateAt;
 
 function getDisconnectCode(error) {
     return (
@@ -734,6 +847,13 @@ function clearReconnectState() {
     reconnectInProgress = false;
     if (reconnectTimer) clearTimeout(reconnectTimer);
     reconnectTimer = null;
+}
+
+/* Task212 — penjaga 24 jam (plugins/owner/_penjaga-24jam.js) memakai ini
+ * untuk memicu siklus reconnect yang SAMA dengan event 'close', tanpa
+ * menduplikasi logika. Dipanggil hanya saat soket zombie/tertutup. */
+global.__umiReconnect = (reason) => {
+    try { scheduleReconnect(reason || 428) } catch (e) { console.error('[PENJAGA24] reconnect gagal:', e) }
 }
 
 function scheduleReconnect(reason) {
@@ -768,6 +888,8 @@ function scheduleReconnect(reason) {
 async function connectionUpdate(update) {
     const { receivedPendingNotifications, connection, lastDisconnect, isOnline } = update;
     lastConnectionUpdateAt = Date.now();
+    /* Task212 — dibaca penjaga 24 jam untuk mendeteksi soket zombie. */
+    global.__umiLastConnectionAt = lastConnectionUpdateAt;
     global.stopped = connection || global.stopped;
 
     if (connection === 'connecting') {
@@ -775,7 +897,9 @@ async function connectionUpdate(update) {
         // state so the startup prompt does not race a closed/reconnecting socket.
         global.mainPairingSocketReady = true;
         console.log(chalk.redBright('Mengaktifkan Bot, Mohon tunggu sebentar...'));
-        if (!global.conn?.authState?.creds?.registered && !global.pairingRequested && !global.pairingInputShown) {
+        if (!global.conn?.authState?.creds?.registered && !global.mainPairingExplicit) {
+            console.log(chalk.yellow('Sesi bot utama belum tertaut. Pairing menunggu perintah owner (panel > MINTA CODE).'));
+        } else if (global.mainPairingExplicit && !global.conn?.authState?.creds?.registered && !global.pairingRequested && !global.pairingInputShown) {
             setTimeout(() => requestMainPairingWhenSocketReady(), 1200);
         }
     } else if (connection === 'open') {
@@ -800,6 +924,8 @@ async function connectionUpdate(update) {
     }
 
     if (isOnline === true) console.log(chalk.green('Status Aktif'));
+    // Task187 — koneksi sehat: reset penoleran 401 bot utama.
+    if (isOnline === true) global.mainLoggedOutHits = 0;
     // Kode pairing hanya hidup sampai perangkat benar-benar tertaut.
     if (isOnline === true && global.lastPairingCode) global.lastPairingCode = null;
     else if (isOnline === false) console.log(chalk.red('Status Mati'));
@@ -822,6 +948,18 @@ async function connectionUpdate(update) {
         if (reason === DisconnectReason.loggedOut) {
             // Jangan menghapus sessions otomatis. Penghapusan otomatis membuat bot
             // terlihat menghilang dan memaksa pairing ulang tanpa persetujuan owner.
+            //
+            // Task187 — 401 ditoleransi 3 kali sebelum menyerah: file sesi TIDAK
+            // pernah dihapus (tetap), tapi dicoba sambung ulang dulu karena 401
+            // sering transient (gangguan server WhatsApp / app state). Setelah 3x
+            // berturut-turut gagal, bot diam menunggu perintah pairing owner —
+            // perilaku lama dipertahankan.
+            global.mainLoggedOutHits = (global.mainLoggedOutHits || 0) + 1;
+            if (global.mainLoggedOutHits <= 3) {
+                console.log(chalk.yellow(`Sesi terima 401 (percobaan ${global.mainLoggedOutHits}/3) — file sesi dipertahankan, coba sambung ulang...`));
+                scheduleReconnect(reason);
+                return;
+            }
             console.log(chalk.red('Sesi telah logout. File sesi dipertahankan untuk diagnosis; pairing ulang diperlukan.'));
             return;
         }
@@ -861,7 +999,6 @@ global.reloadHandler = async function (restatConn) {
         global.conn = installAutoTyping(makeWASocket(connectionOptions, { chats: oldChats }));
         global.conn.botConfig = getMainBotConfig();
         global.conn.isJadibot = false;
-        updateAutoBackupConnection(global.conn);
         isInit = true;
     }
 
@@ -906,7 +1043,18 @@ global.reloadHandler = async function (restatConn) {
      * "aktif" tetapi panggilan tidak pernah ditolak.
      * ==================================================== */
     global.conn.ev.on('call', async calls => {
-        const anticall = await isAnticallActive().catch(() => false);
+        // Task90: fungsi ini dulu dipanggil tanpa pernah diimpor, sehingga setiap
+        // panggilan masuk memicu unhandledRejection "isAnticallActive is not
+        // defined" (~15 kali di log). Impor dinamis + try/catch menjaga event
+        // 'call' tetap aman walau modul SQLite bermasalah saat boot.
+        let anticall = false
+        try {
+            const callModule = await import('./core/awang-call.js')
+            anticall = await callModule.isAnticallActive()
+        } catch (error) {
+            console.log(chalk.yellow('[ANTICALL] status tidak terbaca:'), error.message)
+            return
+        }
         if (!anticall) return;
         for (const call of calls) {
             const { id, from, status } = call;
@@ -977,6 +1125,23 @@ function validPluginFile(file) {
         pluginFilter(path.basename(resolved));
 }
 
+/**
+ * Task130 — cadangan pemuatan untuk plugin yang bukan format ESM Umi.
+ * Mendukung: potongan `case`, modul CJS (`module.exports`), dan scrapper.
+ * Tidak pernah melempar; kalau tidak dikenali → null.
+ */
+async function muatFormatLain(file, key) {
+    try {
+        const { muatPlugin } = await import('./lib/plugin-format.js');
+        const hasil = await muatPlugin(file, key);
+        if (hasil && typeof hasil.handler === 'function') return hasil;
+        return null;
+    } catch (e) {
+        console.error(`[FORMAT] ${key}: ${e.message}`);
+        return null;
+    }
+}
+
 /* ============================================================
  * LOAD PLUGINS (RECURSIVE, PLUGINS ONLY)
  * ============================================================ */
@@ -999,15 +1164,36 @@ async function filesInit() {
                 });
 
                 if (err) {
-                    console.error(`Failed to load plugin ${key}: syntax error\n${format(err)}`);
+                    /* Task130 — berkas format "case" memang BUKAN modul sah
+                     * (`case 'x':` di luar switch), jadi pemeriksaan sintaks di
+                     * atas selalu menolaknya. Dulu langsung `continue` sehingga
+                     * jalan cadangan tak pernah dicoba. Sekarang dicoba dulu
+                     * lewat lapisan kompatibilitas; kalau tetap gagal, baru
+                     * dilaporkan seperti sebelumnya. */
+                    const cadanganCase = await muatFormatLain(file, key);
+                    if (cadanganCase) {
+                        global.plugins[key] = normalizePluginText(cadanganCase.handler);
+                        console.log(`  \x1b[36m↻\x1b[0m  Plugin ${key} dimuat sebagai format "${cadanganCase.format}"`);
+                    } else {
+                        console.error(`Failed to load plugin ${key}: syntax error\n${format(err)}`);
+                    }
                     continue;
                 }
 
                 const module = await import(`${pathToFileURL(file).href}?load=${Date.now()}`);
                 global.plugins[key] = normalizePluginText(module.default || module);
             } catch (e) {
-                console.error(`Failed to load plugin ${key}: ${e.message}`);
-                delete global.plugins[key];
+                /* Task130 — berkas dengan format lain (case / scrapper / CJS) bukan
+                 * plugin ESM. Dulu hanya dicatat sebagai error lalu dilewati.
+                 * Sekarang dicoba lewat lapisan kompatibilitas sebelum menyerah. */
+                const cadangan = await muatFormatLain(file, key);
+                if (cadangan) {
+                    global.plugins[key] = normalizePluginText(cadangan.handler);
+                    console.log(`  \x1b[36m↻\x1b[0m  Plugin ${key} dimuat sebagai format "${cadangan.format}"`);
+                } else {
+                    console.error(`Failed to load plugin ${key}: ${e.message}`);
+                    delete global.plugins[key];
+                }
             }
         }
 
@@ -1213,7 +1399,7 @@ setInterval(async () => {
         total++;
     }
 
-    await global.db.write().catch(console.error);
+    await global.db.write(true).catch(console.error);
     console.log(`[AUTO RESET LIMIT]\nReset : ${total}\nLimit : ${jumlah}`);
 }, 60000);
 
@@ -1255,7 +1441,16 @@ console.log('Quick Test Done');
 // their connections now; the in-flight guard avoids a duplicate later on open.
 void restoreJadibotsIndependently();
 
+// Mode single: hanya nomor yang didaftarkan user (config/users.json) yang hidup.
+if (SINGLE_MODE) {
+    setTimeout(() => {
+        startSingleModeUsers().catch(error => console.error('[SINGLE] Gagal menyiapkan user:', error.message));
+    }, 2500);
+}
+
 function requestMainPairingWhenSocketReady(attempt = 0) {
+    // Tanpa izin eksplisit, helper ini tidak boleh menghubungi WhatsApp.
+    if (!global.mainPairingExplicit) return;
     if (global.conn?.authState?.creds?.registered || global.pairingRequested || global.pairingInputShown) return;
     if (global.mainPairingSocketReady) {
         global.requestPairing();
@@ -1272,7 +1467,7 @@ function requestMainPairingWhenSocketReady(attempt = 0) {
     setTimeout(() => requestMainPairingWhenSocketReady(attempt + 1), 1000);
 }
 
-if (global.mainBotEnabled && !global.conn.authState.creds.registered) {
+if (global.mainBotEnabled && global.mainPairingExplicit && !global.conn.authState.creds.registered) {
     setTimeout(async () => {
         // The first Baileys connection can emit `connecting` before this file has
         // finished binding its handlers. Recreate it once after handlers exist so
@@ -1290,4 +1485,9 @@ if (global.mainBotEnabled && !global.conn.authState.creds.registered) {
 }
 
 console.log(chalk.green('Bot siap digunakan!'));
-console.log(chalk.yellow('Scan QR atau masukkan pairing code di WhatsApp'));
+if (SINGLE_MODE) {
+    console.log(chalk.cyan('Mode single: tidak ada bot utama & tidak ada API.'));
+    console.log(chalk.cyan('Nomor yang hidup diatur di config/users.json (lihat log [SINGLE] di atas).'));
+} else {
+    console.log(chalk.yellow('Scan QR atau masukkan pairing code di WhatsApp'));
+}

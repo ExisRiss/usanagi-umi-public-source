@@ -2,7 +2,7 @@
 
 import os from 'os'
 import fs from 'fs'
-import { generateWAMessageFromContent, prepareWAMessageMedia } from '@rexxhayanasi/elaina-baileys'
+import { generateWAMessageFromContent, prepareWAMessageMedia } from '@whiskeysockets/baileys'
 import { settings } from '../config/settings.js'
 import { pluginStore, getAllCategories, getPluginsByCategory } from '../core/awang-loader.js'
 import { creatorWatermark } from '../core/awang-identitas.js'
@@ -13,6 +13,10 @@ import { getUser as getRpgUser } from '../lib/rpg/awang-db.js'
 import { isOwner as checkOwner } from './awang-cekakses.js'
 import { createReplyV1Quoted } from './awang-reply.js'
 import { readMenuMedia } from './menu-media.js'
+import { ButtonV2 } from './awang-tombol.js'
+import { rapikanBagian, periksaPayload } from './tombol-payload.js'
+import { bangunTeksMenu, PILIHAN_BAWAAN } from './umi-menu/menu-text.js'
+import { tombolMenu, tombolRingkas, bagianMenuUtama, bagianSemuaMenu, jumlahBaris } from './umi-menu/menu-buttons.js'
 
 function formatCategoryName(categoryKey) {
   return categoryKey
@@ -256,6 +260,37 @@ export function buildMenuFooter({ prefix = settings.defaultPrefix, pushName = 'K
   )
 
   return lines.join('\n')
+}
+
+/**
+ * Task123 — daftar kategori untuk tombol "▦ SEMUA MENU".
+ *
+ * Sumber utama tetap pluginStore milik core/awang-loader.js. Tetapi saat bot
+ * baru hidup (atau saat plugin dimuat ulang) store itu bisa masih kosong,
+ * sehingga menu hanya membawa 3 tombol. `global.plugins` selalu berisi handler
+ * yang sudah termuat, jadi dipakai sebagai cadangan/pelengkap.
+ */
+export function daftarKategoriMenu() {
+  const hitung = new Map()
+
+  for (const key of getAllCategories()) {
+    const total = getPluginsByCategory(key).length
+    if (total > 0) hitung.set(String(key), total)
+  }
+
+  const daftar = global.plugins && typeof global.plugins === 'object' ? global.plugins : {}
+  for (const handler of Object.values(daftar)) {
+    if (!handler || handler.disabled || handler.hiddenFromCategory) continue
+    const key = String(handler.category || '').trim().toLowerCase()
+    if (!key) continue
+    if (!hitung.get(key)) hitung.set(key, 0)
+    hitung.set(key, hitung.get(key) + 1)
+  }
+
+  return [...hitung.entries()]
+    .filter(([, total]) => total > 0)
+    .map(([key, total]) => ({ key, label: formatCategoryName(key), total }))
+    .sort((a, b) => String(a.key).localeCompare(String(b.key)))
 }
 
 export function buildCategoryList({ prefix = settings.defaultPrefix } = {}) {
@@ -694,35 +729,280 @@ async function sendUsanagiStyle1(conn, m, { usedPrefix, caption, mention }) {
   })
 }
 
-export async function sendModernMenu(conn, m, usedPrefix) {
-  const [user, mention] = await Promise.all([
-    getMenuUser(m, conn),
-    resolveMenuMention(m, conn)
-  ])
-const caption = [
-    '┏┈┈┈┈┈┈┈┈┈┈┈┈╼',
-    `┆ *Hᴀʟᴏ* ${mention.text}`,
-    '┢╶╶╶╶╶╶╶╶╶╶╶╶╼',
-    '┣╌ ⟪ *Yᴏᴜʀ Iɴғᴏ* ⟫',
-    `┆➥ Nᴀᴍᴇ : ${mention.name}`,
-    `┆➥ Sᴛᴀᴛᴜs : ${user.status}`,
-    `┆➥ Lɪᴍɪᴛ : ${user.limit}`,
-    '╰╶╶╶╶╶╶╶╶╶╶╶╶╳',
-    '',
-    '┏╶╶╶╶╶╶╶╶╶╶╶╶╼',
-    '┆ Sɪʟᴀʜᴋᴀɴ Kʟɪᴋ Bᴜᴛᴛᴏɴ Dɪʙᴀᴡᴀʜ',
-    '┆ Uɴᴛᴜᴋ Ceᴋ Fɪᴛᴜʀ Yᴀɴɢ Aᴅᴀ',
-    '┗ ╶╶╶╶╶╶╶╶╶╶╶╶╼',
-    '',
-    '*By AlzRiss - Usanagi Umi AI*',
-    '',
-    '🌐 *JADIBOT BY AlzRiss*',
-    '▸ https://website-jadibot-by-alzriss.vercel.app'
-].join('\n')
+/* ============================================================
+ * MENU TEKS (Task121) — `.menu` satu prefix
+ * ============================================================ */
 
-  await sendUsanagiStyle1(conn, m, {
-    usedPrefix,
-    caption,
-    mention
+/**
+ * Teks menu gaya baru: sapaan → blok info bot/pengguna → daftar menu → watermark.
+ * Isinya sama dengan kartu rich, hanya tanpa gambar/tombol.
+ */
+export function teksMenuBaru({
+  prefix = settings.defaultPrefix || '.',
+  pushName = 'Kak',
+  contactNumber = '-',
+  isOwnerUser = false,
+  registeredAt = null,
+  sapaan = '',
+} = {}) {
+  return bangunTeksMenu({
+    sapaan,
+    info: buildMenuFooter({ prefix, pushName, contactNumber, isOwnerUser, registeredAt }),
+    pilihan: PILIHAN_BAWAAN,
+    prefix,
+    watermark: creatorWatermark(),
   })
 }
+
+/**
+ * Buang baris berbentuk daftar bernomor ("1. …", "2) …") dari teks.
+ * Dipakai supaya isi pesan tombol tidak pernah lagi memuat menu 1–6.
+ */
+export function tanpaDaftarBernomor(teks) {
+  return String(teks == null ? '' : teks)
+    .split('\n')
+    .filter(baris => !/^\s*\d+[.)]\s/.test(baris))
+    .join('\n')
+}
+
+/** Kirim menu teks baru ke chat. */
+export async function sendMenuTeksBaru(conn, m, opsi = {}) {
+  const prefix = String(opsi.prefix || settings.defaultPrefix || '.')
+  const mention = await resolveMenuMention(m, conn).catch(() => ({ text: 'Kak', name: 'Kak', jid: '' }))
+  const isOwnerUser = await checkOwner(m?.sender, conn).catch(() => false)
+  const contactNumber = await resolvePhoneNumber(m?.sender, conn).catch(() => '-')
+  const user = await getUser(m?.sender).catch(() => null)
+
+  const teks = teksMenuBaru({
+    prefix,
+    pushName: m?.pushName || mention.name || 'Kak',
+    contactNumber,
+    isOwnerUser,
+    registeredAt: user?.registeredAt,
+    sapaan: `${getGreeting()} ${mention.text}`.trim(),
+  })
+
+  try {
+    await conn.sendMessage(m.chat, { text: teks }, m?.raw ? { quoted: m.raw } : undefined)
+    return { ok: true, mode: 'teks' }
+  } catch (error) {
+    console.error('[MENU] gagal kirim menu teks:', error?.message || error)
+    return { ok: false, mode: 'gagal', error: String(error?.message || error) }
+  }
+}
+
+/* ============================================================
+ * VISUAL MENU (Task120) — foto header, di-cache supaya tidak lemot
+ * ============================================================ */
+
+const TTL_VISUAL_MS = 10 * 60 * 1000
+const cacheGambar = new Map()   // path|url → { buf, expires }
+const cacheUnggah = new WeakMap() // conn → Map(kunci → { value, expires })
+
+function ukuranAman(file) {
+  try { return `${file}:${fs.statSync(file).mtimeMs}` } catch { return null }
+}
+
+/** Perkecil gambar header sekali, simpan di memori 10 menit. */
+async function bufferGambar(fileAtauUrl) {
+  const kunci = /^https?:\/\//i.test(fileAtauUrl) ? fileAtauUrl : ukuranAman(fileAtauUrl)
+  if (!kunci) return null
+  const hit = cacheGambar.get(kunci)
+  if (hit && hit.expires > Date.now()) return hit.buf
+
+  let mentah
+  if (/^https?:\/\//i.test(fileAtauUrl)) {
+    const res = await fetch(fileAtauUrl)
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    mentah = Buffer.from(await res.arrayBuffer())
+  } else {
+    mentah = fs.readFileSync(fileAtauUrl)
+  }
+
+  let buf = mentah
+  try {
+    // 720 px cukup tajam untuk bubble WhatsApp dan jauh lebih ringan diunggah.
+    buf = await (await import('sharp')).default(mentah)
+      .resize({ width: 720, withoutEnlargement: true })
+      .jpeg({ quality: 78, mozjpeg: true })
+      .toBuffer()
+  } catch {}
+
+  cacheGambar.set(kunci, { buf, expires: Date.now() + TTL_VISUAL_MS })
+  if (cacheGambar.size > 8) cacheGambar.delete(cacheGambar.keys().next().value)
+  return buf
+}
+
+/**
+ * Siapkan foto/video header menu: { headerType, imageMessage|videoMessage }.
+ * Mengembalikan null bila aset tidak ada — menu tetap dikirim tanpa foto.
+ */
+export async function siapkanVisualMenu(conn) {
+  const assets = conn?.botConfig?.values?.brandingAssets || global.brandingAssets || {}
+  const kandidat = [
+    assets.menu,
+    assets.menuImage,
+    './assets/menu/umi-menu-bg.jpg',
+    './assets/menu/bg.jpg',
+    './assets/menu/cover.jpg',
+    './assets/video/menu.mp4',
+  ].filter(nilai => typeof nilai === 'string' && nilai.trim())
+
+  const pilihan = kandidat.find(nilai => {
+    if (/^https?:\/\//i.test(nilai)) return true
+    try { return fs.statSync(nilai).isFile() } catch { return false }
+  })
+  if (!pilihan) return null
+
+  const video = /\.(mp4|webm)$/i.test(pilihan)
+  let buf
+  let mimetype
+  if (video) {
+    if (/^https?:\/\//i.test(pilihan)) return null // video dari URL: lewati, terlalu berat
+    buf = fs.readFileSync(pilihan)
+    mimetype = /\.webm$/i.test(pilihan) ? 'video/webm' : 'video/mp4'
+  } else {
+    buf = await bufferGambar(pilihan)
+    mimetype = 'image/jpeg'
+  }
+  if (!buf || !buf.length) return null
+
+  const kunciUnggah = `${pilihan}:${buf.length}:${mimetype}`
+  let peta = cacheUnggah.get(conn)
+  if (!peta) {
+    peta = new Map()
+    cacheUnggah.set(conn, peta)
+  }
+  const hit = peta.get(kunciUnggah)
+  if (hit && hit.expires > Date.now()) return hit.value
+
+  const siap = await prepareWAMessageMedia(
+    video ? { video: buf, mimetype } : { image: buf, mimetype },
+    { upload: conn.waUploadToServer }
+  )
+  const hasil = siap?.imageMessage
+    ? { headerType: 4, imageMessage: siap.imageMessage }
+    : siap?.videoMessage
+      ? { headerType: 5, videoMessage: siap.videoMessage }
+      : null
+  if (hasil) {
+    peta.set(kunciUnggah, { value: hasil, expires: Date.now() + TTL_VISUAL_MS })
+    while (peta.size > 4) peta.delete(peta.keys().next().value)
+  }
+  return hasil
+}
+
+/** Judul menu mengikuti nama bot milik koneksi (jadibot punya nama sendiri). */
+function namaBot(conn) {
+  return String(
+    conn?.botConfig?.values?.botName ||
+    conn?.botConfig?.botName ||
+    settings.botName ||
+    'Usanagi Umi AI'
+  ).slice(0, 60)
+}
+
+/**
+ * MENU RICH (prefix ganda, mis. `..menu`) — Task120.
+ *
+ * Bentuknya mengikuti template owner:
+ *   header foto + judul + sapaan
+ *   isi  : blok info pengguna/bot
+ *   kaki : watermark
+ *   tombol: [♕ OWNER BOT] dan [☰ LIST MENU] (daftar kategori, single_select)
+ *
+ * Semua dikirim sebagai `interactiveMessage` polos (tanpa bungkus view-once)
+ * — lihat lib/tombol-payload.js untuk alasannya.
+ */
+export async function sendModernMenu(conn, m, usedPrefix) {
+  const prefix = String(usedPrefix || settings.defaultPrefix || '.')
+  const [user, mention] = await Promise.all([
+    getMenuUser(m, conn).catch(() => ({ status: 'User', limit: 0, role: 'Beginner' })),
+    resolveMenuMention(m, conn).catch(() => ({ text: 'Kak', name: 'Kak', jid: '' })),
+  ])
+  const isOwnerUser = await checkOwner(m?.sender, conn).catch(() => false)
+  const contactNumber = await resolvePhoneNumber(m?.sender, conn).catch(() => '-')
+
+  const info = buildMenuFooter({
+    prefix,
+    pushName: m?.pushName || mention.name || 'Kak',
+    contactNumber,
+    isOwnerUser,
+    registeredAt: (await getUser(m?.sender).catch(() => null))?.registeredAt,
+  })
+
+  /* Task122 — daftar "📋 MENU UTAMA 1–6" DIHAPUS dari isi pesan.
+   * Pilihannya sekarang hanya ada di tombol `single_select`; isi pesannya
+   * tinggal sapaan + blok info bot/pengguna. */
+  const daftarKategori = daftarKategoriMenu()
+
+  /* Task123 — tombol dilengkapi: TOOLS / MAKER / GROUP langsung, MENU (6 menu
+   * utama), SEMUA MENU (seluruh kategori, maks 10 baris per bagian), OWNER. */
+  const judulMenu = `${namaBot(conn)} Menu`
+  const tombol = tombolMenu({ prefix, kategori: daftarKategori, judulMenu, judulSemua: 'Semua Menu & Kategori' })
+  const barisTombol =
+    jumlahBaris(bagianMenuUtama({ prefix })) + jumlahBaris(bagianSemuaMenu({ prefix, kategori: daftarKategori }))
+
+  /* Task122: isi pesan TIDAK memuat daftar bernomor — daftar hanya hidup di
+   * tombol. Buang baris bernomor kalau suatu saat blok info memuatnya. */
+  const infoBersih = tanpaDaftarBernomor(info)
+
+  const teksCadangan = teksMenuBaru({
+    prefix,
+    pushName: m?.pushName || mention.name || 'Kak',
+    contactNumber,
+    isOwnerUser,
+    registeredAt: (await getUser(m?.sender).catch(() => null))?.registeredAt,
+    sapaan: `${getGreeting()} ${mention.text}`.trim(),
+  })
+
+  try {
+    const button = new ButtonV2(conn)
+      .setTitle(namaBot(conn))
+      .setSubtitle(`${getGreeting()} ${mention.text}`.slice(0, 60))
+      .setContextInfo({ mentionedJid: mention.jid ? [mention.jid] : [] })
+      .setBody(infoBersih)
+      .setFooter(creatorWatermark())
+
+    try {
+      const visual = await siapkanVisualMenu(conn)
+      if (visual) button.setMedia(visual)
+    } catch (error) {
+      console.warn('[MENU] foto header dilewati:', error?.message || error)
+    }
+
+    for (const item of tombol) button.addRawButton(item)
+
+    // Periksa payload yang BENAR-BENAR akan dikirim (bukan contoh terpisah).
+    const cek = periksaPayload(button.payload())
+    if (!cek.ok) throw new Error(`payload menu tidak valid: ${cek.masalah.join('; ')}`)
+
+    await button.send(m.chat, m?.raw ? { quoted: m.raw } : {})
+    return { ok: true, mode: 'tombol-lengkap', info: { ...cek.info, barisTombol } }
+  } catch (error) {
+    /* Task123 — jangan langsung menyerah ke teks. Coba dulu tombol RINGKAS
+     * (hanya Owner + daftar menu utama): sebagian client menolak payload besar
+     * tapi menerima daftar kecil. */
+    console.warn(`[MENU] tombol lengkap ditolak (${error?.message || error}); mencoba tombol ringkas.`)
+    try {
+      const ringkas = new ButtonV2(conn)
+        .setTitle(namaBot(conn))
+        .setSubtitle(`${getGreeting()} ${mention.text}`.slice(0, 60))
+        .setContextInfo({ mentionedJid: mention.jid ? [mention.jid] : [] })
+        .setBody(infoBersih)
+        .setFooter(creatorWatermark())
+      for (const item of tombolRingkas({ prefix, judulMenu })) ringkas.addRawButton(item)
+      const cekRingkas = periksaPayload(ringkas.payload())
+      if (!cekRingkas.ok) throw new Error(cekRingkas.masalah.join('; '))
+      await ringkas.send(m.chat, m?.raw ? { quoted: m.raw } : {})
+      return { ok: true, mode: 'tombol-ringkas', info: cekRingkas.info }
+    } catch (errorRingkas) {
+      console.warn(`[MENU] tombol ringkas juga ditolak (${errorRingkas?.message || errorRingkas}); mengirim menu teks.`)
+    }
+    // Tombol interaktif bisa ditolak WhatsApp. Menu teks selalu bisa dikirim,
+    // jadi `.menu` tidak boleh ikut gagal.
+    await conn.sendMessage(m.chat, { text: teksCadangan }, m?.raw ? { quoted: m.raw } : {})
+    return { ok: false, mode: 'teks-cadangan', error: String(error?.message || error) }
+  }
+}
+

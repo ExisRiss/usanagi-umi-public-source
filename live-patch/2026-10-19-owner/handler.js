@@ -9,7 +9,7 @@ import { planAutoAI, shouldAutoAITrigger, isSelfAIRequest } from './lib/auto-ai.
 import { schedulePluginCommand } from './lib/auto-ai-scheduler.js';
 import { runWithBotConnection } from './lib/bot-connection-context.js';
 import { smsg } from './lib/simple.js';
-import { generateWAMessageFromContent, proto } from '@rexxhayanasi/elaina-baileys'
+import { generateWAMessageFromContent, proto } from '@whiskeysockets/baileys'
 import { format } from 'util';
 import { reportPluginError } from './lib/error-report.js';
 import { fileURLToPath } from 'url';

@@ -1,6 +1,14 @@
 import { createGroupMetadataCache } from './group-metadata-cache.js';
+import { jidTujuan, opsiKirim } from './jid-guard.js';
 import path from 'path';
 import fs from 'fs';
+import { richFor } from './rich-message-adapter.js';
+
+/* PNG transparan 1x1 — pengganti avatar default kalau berkas media tidak ada. */
+const TRANSPARENT_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYGD4DwABBAEAX+X0jAAAAABJRU5ErkJggg==',
+  'base64'
+);
 import util from 'util';
 import { fileURLToPath } from 'url';
 import chalk from 'chalk';
@@ -14,7 +22,7 @@ import { extractSelectionId } from './message-response.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * @type {import('@rexxhayanasi/elaina-baileys')}
+ * @type {import('@whiskeysockets/baileys')}
  */
 import MakeWASocket, {
 	proto,
@@ -28,18 +36,19 @@ import MakeWASocket, {
 	getBinaryNodeChild,
 	WAMessageStubType,
 	extractMessageContent,
-} from '@rexxhayanasi/elaina-baileys';
+} from './baileys.js';
 
 import { rewriteOutgoingContent, prefixForChat } from './prefix-rewrite.js';
 
 export function makeWASocket(connectionOptions, options = {}) {
 	/**
-	 * @type {import('@rexxhayanasi/elaina-baileys').WASocket}
+	 * @type {import('@whiskeysockets/baileys').WASocket}
 	 */
 	let metadataCache;
 	let conn = MakeWASocket({ ...connectionOptions, cachedGroupMetadata: jid => metadataCache ? metadataCache.get(jid) : undefined });
 	metadataCache = createGroupMetadataCache({ fetchGroup: conn.groupMetadata.bind(conn), fetchAll: conn.groupFetchAllParticipating.bind(conn) });
 	conn.groupMetadata = metadataCache.get;
+	conn.noteIncomingGroupMetadata = metadataCache.noteIncoming; // Task189 — handler memberi sinyal pesan masuk
 	conn.groupFetchAllParticipating = metadataCache.all;
 	metadataCache.bind(conn.ev);
 
@@ -101,8 +110,22 @@ export function makeWASocket(connectionOptions, options = {}) {
 					const child = getBinaryNodeChild(result, 'picture');
 					return child.content;
 				} catch {
-					return fs.readFileSync(path.resolve(__dirname, '../media/avatar_contact.png'));
-					//return 'https://telegra.ph/file/24fa902ead26340f3df2c.png'
+					/*
+					 * Dulu: fs.readFileSync('../media/avatar_contact.png') tanpa
+					 * penjagaan. Berkas itu tidak ada di repo, sehingga .add /
+					 * .kick / welcome gagal dengan
+					 *   ENOENT: ... /media/avatar_contact.png
+					 * (laporan 21-10-2026). Sekarang: coba beberapa lokasi, lalu
+					 * pakai PNG transparan 1x1 dari memori supaya fitur tetap jalan.
+					 */
+					for (const candidate of [
+						path.resolve(__dirname, '../media/avatar_contact.png'),
+						path.resolve(process.cwd(), 'media/avatar_contact.png'),
+						path.resolve(process.cwd(), 'assets/image/avatar_contact.png'),
+					]) {
+						try { return fs.readFileSync(candidate); } catch { }
+					}
+					return TRANSPARENT_PNG;
 				}
 			},
 		},
@@ -192,11 +215,22 @@ export function makeWASocket(connectionOptions, options = {}) {
 			 * @param {String|Buffer} path
 			 * @param {String} filename
 			 * @param {String} caption
-			 * @param {import('@rexxhayanasi/elaina-baileys').proto.WebMessageInfo} quoted
+			 * @param {import('@whiskeysockets/baileys').proto.WebMessageInfo} quoted
 			 * @param {Boolean} ptt
 			 * @param {Object} options
 			 */
 			async value(jid, path, filename = '', caption = '', quoted, ptt = false, options = {}) {
+				/* Task131 — lihat catatan di jid-guard.js: objek pesan bukan id chat.
+				 * Task132 — getter `.chat` pada proto hasil sendMessage bisa melempar
+				 * (conn tidak ada), jadi dibaca di dalam try/catch. */
+				let chatKutipFile = null
+				try {
+					chatKutipFile = quoted && typeof quoted === 'object' ? quoted.chat : null
+				} catch {
+					chatKutipFile = null
+				}
+				jid = jidTujuan(jid, chatKutipFile)
+				if (!jid) throw new TypeError('sendFile: tujuan chat tidak valid')
 				let type = await conn.getFile(path, true);
 				let { res, data: file, filename: pathFile } = type;
 				if ((res && res.status !== 200) || file.length <= 65536) {
@@ -239,7 +273,7 @@ export function makeWASocket(connectionOptions, options = {}) {
 					fileName: filename || pathFile.split('/').pop(),
 				};
 				/**
-				 * @type {import('@rexxhayanasi/elaina-baileys').proto.WebMessageInfo}
+				 * @type {import('@whiskeysockets/baileys').proto.WebMessageInfo}
 				 */
 				let m;
 				try {
@@ -271,7 +305,7 @@ export function makeWASocket(connectionOptions, options = {}) {
 			 * @param {String|Buffer} path
 			 * @param {String} filename
 			 * @param {String} caption
-			 * @param {import('@rexxhayanasi/elaina-baileys').proto.WebMessageInfo} quoted
+			 * @param {import('@whiskeysockets/baileys').proto.WebMessageInfo} quoted
 			 * @param {Boolean} ptt
 			 * @param {Object} options
 			 */
@@ -380,7 +414,7 @@ export function makeWASocket(connectionOptions, options = {}) {
 			 * Send Contact
 			 * @param {String} jid
 			 * @param {String[][]|String[]} data
-			 * @param {import('@rexxhayanasi/elaina-baileys').proto.WebMessageInfo} quoted
+			 * @param {import('@whiskeysockets/baileys').proto.WebMessageInfo} quoted
 			 * @param {Object} options
 			 */
 			async value(jid, data, quoted, options) {
@@ -430,14 +464,33 @@ END:VCARD
 			 * Reply to a message
 			 * @param {String} jid
 			 * @param {String|Buffer} text
-			 * @param {import('@rexxhayanasi/elaina-baileys').proto.WebMessageInfo} quoted
+			 * @param {import('@whiskeysockets/baileys').proto.WebMessageInfo} quoted
 			 * @param {Object} options
 			 */
 			value(jid, text = '', quoted, options) {
+				/* Task131 — sebagian plugin memanggil `conn.reply(m, teks)` dengan
+				 * objek pesan sebagai tujuan. Tanpa penjagaan ini, baileys melempar
+				 * "TypeError: jid?.endsWith is not a function" dan pesannya hilang. */
+				/* Task132 — sebagian plugin mengutip hasil `conn.sendMessage`
+				 * (proto WebMessageInfo mentah). Getter `.chat` pada objek itu
+				 * butuh `this.conn` yang tidak ada, sehingga proses mati dengan
+				 * "Cannot read properties of undefined (reading 'getJid')"
+				 * (terjadi di plugins/game/game-tebakgambar.js). Baca dengan
+				 * try/catch supaya reply tetap terkirim tanpa kutipan. */
+				let chatKutip = null
+				try {
+					chatKutip = quoted && typeof quoted === 'object' ? quoted.chat : null
+				} catch {
+					chatKutip = null
+				}
+				const tujuan = jidTujuan(jid, chatKutip)
+				if (!tujuan) {
+					throw new TypeError('reply: tujuan chat tidak valid (pakai id chat, mis. 628xx@s.whatsapp.net)')
+				}
 				return Buffer.isBuffer(text)
-					? conn.sendFile(jid, text, 'file', '', quoted, false, options)
+					? conn.sendFile(tujuan, text, 'file', '', quoted, false, options)
 					: conn.sendMessage(
-							jid,
+							tujuan,
 							{
 								text,
 								...options,
@@ -453,7 +506,7 @@ END:VCARD
 			/**
 			 * cMod
 			 * @param {String} jid
-			 * @param {import('@rexxhayanasi/elaina-baileys').proto.WebMessageInfo} message
+			 * @param {import('@whiskeysockets/baileys').proto.WebMessageInfo} message
 			 * @param {String} text
 			 * @param {String} sender
 			 * @param {*} options
@@ -488,7 +541,7 @@ END:VCARD
 			/**
 			 * Exact Copy Forward
 			 * @param {String} jid
-			 * @param {import('@rexxhayanasi/elaina-baileys').proto.WebMessageInfo} message
+			 * @param {import('@whiskeysockets/baileys').proto.WebMessageInfo} message
 			 * @param {Boolean|Number} forwardingScore
 			 * @param {Object} options
 			 */
@@ -587,7 +640,7 @@ END:VCARD
 			/**
 			 *
 			 * @param {String} messageID
-			 * @returns {import('@rexxhayanasi/elaina-baileys').proto.WebMessageInfo}
+			 * @returns {import('@whiskeysockets/baileys').proto.WebMessageInfo}
 			 */
 			value(messageID) {
 				return Object.entries(conn.chats)
@@ -651,7 +704,7 @@ END:VCARD
 		pushMessage: {
 			/**
 			 * pushMessage
-			 * @param {import('@rexxhayanasi/elaina-baileys').proto.WebMessageInfo[]} m
+			 * @param {import('@whiskeysockets/baileys').proto.WebMessageInfo[]} m
 			 */
 			async value(m) {
 				if (!m) return;
@@ -669,13 +722,13 @@ END:VCARD
 						const chat = conn.getJid(message.key.remoteJid || message.message?.senderKeyDistributionMessage?.groupId || '');
 						if (message.message?.[mtype]?.contextInfo?.quotedMessage) {
 							/**
-							 * @type {import('@rexxhayanasi/elaina-baileys').proto.IContextInfo}
+							 * @type {import('@whiskeysockets/baileys').proto.IContextInfo}
 							 */
 							let context = message.message[mtype].contextInfo;
 							let participant = conn.getJid(context.participant);
 							const remoteJid = conn.getJid(context.remoteJid || participant);
 							/**
-							 * @type {import('@rexxhayanasi/elaina-baileys').proto.IMessage}
+							 * @type {import('@whiskeysockets/baileys').proto.IMessage}
 							 *
 							 */
 							let quoted = message.message[mtype].contextInfo.quotedMessage;
@@ -760,7 +813,7 @@ END:VCARD
 		serializeM: {
 			/**
 			 * Serialize Message, so it easier to manipulate
-			 * @param {import('@rexxhayanasi/elaina-baileys').proto.WebMessageInfo} m
+			 * @param {import('@whiskeysockets/baileys').proto.WebMessageInfo} m
 			 */
 			value(m) {
 				return smsg(conn, m);
@@ -795,6 +848,64 @@ END:VCARD
 				}
 			: {}),
 	});
+	/*
+	 * Task104 — satu lapisan adapter untuk semua pesan "kaya".
+	 *
+	 * Sebelumnya plugins/game-html/picopark.js memanggil conn.sendRichHtml,
+	 * padahal method itu tidak pernah dibuat di koneksi mana pun sehingga
+	 * selalu jatuh ke relayMessage manual. Sekarang method resmi tersedia di
+	 * setiap koneksi (termasuk jadibot) dan semuanya lewat
+	 * lib/rich-message-adapter.js — kalau library koneksi berganti, hanya
+	 * adapter yang perlu diubah.
+	 */
+	const richHelpers = {
+		rich: {
+			value: richFor(sock),
+			enumerable: true,
+		},
+		sendRichHtml: {
+			/**
+			 * Kirim kartu HTML (Mini App) ke satu tujuan.
+			 * @param {string} jid
+			 * @param {string} html
+			 * @param {object} options { title, quoted, fallbackText }
+			 */
+			async value(jid, html, options = {}) {
+				return richFor(sock).sendHtmlApp(jid, html, options);
+			},
+			enumerable: true,
+		},
+		sendRichText: {
+			/** Kirim rich response (teks/tabel) dengan fallback teks otomatis. */
+			async value(jid, content, options = {}) {
+				return richFor(sock).sendRich(jid, content, options);
+			},
+			enumerable: true,
+		},
+		sendRichTable: {
+			async value(jid, table, options = {}) {
+				return richFor(sock).sendTable(jid, table, options);
+			},
+			enumerable: true,
+		},
+		sendGameCard: {
+			async value(jid, state, options = {}) {
+				return richFor(sock).sendGameCard(jid, state, options);
+			},
+			enumerable: true,
+		},
+	};
+	// Hanya definisikan yang belum ada — kalau library versi baru sudah
+	// menyediakan nama yang sama, versi library yang dipakai (tidak bentrok).
+	for (const [name, descriptor] of Object.entries(richHelpers)) {
+		try {
+			if (Object.prototype.hasOwnProperty.call(sock, name)) continue;
+			Object.defineProperty(sock, name, { ...descriptor, configurable: true });
+		} catch (error) {
+			console.error(`[RICH] gagal memasang helper ${name}:`, error?.message || error);
+		}
+	}
+
 	if (sock.user?.id) sock.user.jid = sock.decodeJid(sock.user.id);
 	store.bind(sock);
 	return sock;
@@ -802,12 +913,12 @@ END:VCARD
 /**
  * Serialize Message
  * @param {ReturnType<typeof makeWASocket>} conn
- * @param {import('@rexxhayanasi/elaina-baileys').proto.WebMessageInfo} m
+ * @param {import('@whiskeysockets/baileys').proto.WebMessageInfo} m
  */
 export function smsg(conn, m) {
 	if (!m) return m;
 	/**
-	 * @type {import('@rexxhayanasi/elaina-baileys').proto.WebMessageInfo}
+	 * @type {import('@whiskeysockets/baileys').proto.WebMessageInfo}
 	 */
 	let M = proto.WebMessageInfo;
 	m = M.create(m);
@@ -862,11 +973,15 @@ export function serialize() {
 		chat: {
 			get() {
 				const senderKeyDistributionMessage = this.message?.senderKeyDistributionMessage?.groupId;
-				return this.conn.getJid(
+				const jidMentah =
 					this.key?.remoteJidAlt?.endsWith('@s.whatsapp.net')
 						? this.key.remoteJidAlt
-						: this.key?.remoteJid || (senderKeyDistributionMessage && senderKeyDistributionMessage !== 'status@broadcast')
-				);
+						: this.key?.remoteJid || (senderKeyDistributionMessage && senderKeyDistributionMessage !== 'status@broadcast');
+				/* Task203 — objek proto tanpa conn (mis. kutipan hasil sendMessage)
+				 * membuat "Cannot read properties of undefined (reading 'getJid')"
+				 * (log error bot). Fallback tanpa konversi lid. */
+				if (!this.conn?.getJid) return jidMentah || null;
+				return this.conn.getJid(jidMentah);
 			},
 		},
 		isGroup: {
@@ -877,7 +992,10 @@ export function serialize() {
 		},
 		sender: {
 			get() {
-				return this.conn.getJid((this.key?.fromMe && this.conn?.user.id) || this?.key?.participantAlt || this?.participant || this?.key?.participant || this.chat);
+				const jidMentah = (this.key?.fromMe && this.conn?.user.id) || this?.key?.participantAlt || this?.participant || this?.key?.participant || this.chat;
+				/* Task203 — penjaga sama: objek proto tanpa conn tidak boleh crash. */
+				if (!this.conn?.getJid) return jidMentah;
+				return this.conn.getJid(jidMentah);
 			},
 			enumerable: true,
 		},
@@ -1038,8 +1156,16 @@ export function serialize() {
 					},
 					download: {
 						value(saveToFile = false) {
-							const mtype = this.mediaType;
-							return self.conn?.downloadM(this.mediaMessage[mtype], mtype.replace(/message/i, ''), saveToFile);
+							/* Task181 — kutipan tanpa media (mis. teks) dulu membuat
+							 * TypeError "Cannot read properties of null (reading 'null')"
+							 * dan synchronous throw tidak tertangkap .catch() pemanggil.
+							 * Sekarang selalu mengembalikan Promise. */
+							const mtype = this.mediaType
+							const pesan = this.mediaMessage?.[mtype]
+							if (!mtype || !pesan) {
+								return Promise.reject(new Error('Pesan yang dibalas tidak memiliki media yang bisa diunduh.'))
+							}
+							return self.conn?.downloadM(pesan, mtype.replace(/message/i, ''), saveToFile);
 						},
 						enumerable: true,
 						configurable: true,
@@ -1169,15 +1295,25 @@ export function serialize() {
 		},
 		download: {
 			value(saveToFile = false) {
-				const mtype = this.mediaType;
-				return this.conn?.downloadM(this.mediaMessage[mtype], mtype.replace(/message/i, ''), saveToFile);
+				/* Task181 — lihat catatan pada download quoted: jangan pernah
+				 * melempar TypeError sinkron saat pesan tak punya media. */
+				const mtype = this.mediaType
+				const pesan = this.mediaMessage?.[mtype]
+				if (!mtype || !pesan) {
+					return Promise.reject(new Error('Pesan ini tidak memiliki media yang bisa diunduh.'))
+				}
+				return this.conn?.downloadM(pesan, mtype.replace(/message/i, ''), saveToFile);
 			},
 			enumerable: true,
 			configurable: true,
 		},
 		reply: {
 			value(text, chatId, options) {
-				return this.conn?.reply(chatId ? chatId : this.chat, text, this, options);
+				/* Task131 — kebiasaan bot lain: `m.reply(teks, m)` artinya "balas
+				 * pesan ini". Di sini argumen kedua adalah id chat, jadi objek pesan
+				 * (dan opsi yang ternyata objek pesan) tidak boleh diteruskan mentah. */
+				const tujuan = jidTujuan(chatId, this.chat);
+				return this.conn?.reply(tujuan || this.chat, text, this, opsiKirim(options));
 			},
 		},
 		react: {

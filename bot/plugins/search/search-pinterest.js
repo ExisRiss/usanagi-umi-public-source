@@ -112,7 +112,19 @@ async function handler(m, { conn, text, usedPrefix, command }) {
         m.reply(`Sending ${imagesToSend} Pinterest images for "${query}"...`);
         
         for (let i = 0; i < imagesToSend; i++) {
-            await conn.sendMessage(m.chat, { image: { url: results[i].image } });
+            try {
+                await conn.sendMessage(m.chat, {
+                    image: { url: results[i].image },
+                    caption: results[i].source || ''
+                }, { quoted: m.raw });
+            } catch (error) {
+                // Sebagian media Pinterest ditolak WhatsApp (406 not-acceptable).
+                // Kirim tautan aslinya supaya pengguna tetap dapat hasilnya.
+                console.warn(`[PINTEREST] gambar ${i + 1} ditolak: ${error.message}`);
+                await conn.sendMessage(m.chat, {
+                    text: `🖼️ ${results[i].caption || query}\n${results[i].source}`
+                }, { quoted: m.raw });
+            }
         }
     } catch {
         m.reply('Error occurred while fetching Pinterest images. Please try again later.');

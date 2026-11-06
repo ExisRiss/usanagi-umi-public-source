@@ -8,6 +8,7 @@ import { ButtonV2 } from '../../lib/awang-tombol.js'
 import { ytDlpExtractAudio, ytDlpDownloadVideo } from '../../lib/awang-ytdlp.js'
 import { sendRemoteMediaFast } from '../../lib/awang-media-transfer.js'
 import { downloadWithFallback } from '../../lib/scrape/YouTube.js'
+import { downloadYoutube } from '../../lib/youtube-media.js'
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
 const YT = 'https://www.youtube.com'
@@ -15,7 +16,8 @@ const SEARCH = `${YT}/results?search_query=`
 const WATCH = `${YT}/watch?v=`
 const PLAYER = `${YT}/youtubei/v1/player`
 const MAX_AUDIO = 55 * 1024 * 1024
-const MAX_VIDEO = 95 * 1024 * 1024
+// Diturunkan dari 95 MB: cegah /tmp penuh saat beberapa unduhan bersamaan.
+const MAX_VIDEO = 64 * 1024 * 1024
 const CACHE = new Map()
 let CONFIG_PROMISE = null
 
@@ -405,9 +407,26 @@ async function menu(m, conn, prefix, data) {
 async function downloadWithYtDlp(data, type, max) {
   const source = `${WATCH}${data.videoId}`
 
-  return type === 'audio'
-    ? ytDlpExtractAudio(source, max, { prefix: 'usanagi-play' })
-    : ytDlpDownloadVideo(source, max, { prefix: 'usanagi-play' })
+  // lib/youtube-media.js: selector DASH yang benar (bv*[height<=N]+ba),
+  // merge ffmpeg, prioritas H.264/AAC agar bisa diputar WhatsApp,
+  // plus pembaruan binary yt-dlp bila gagal karena kedaluwarsa.
+  const media = await downloadYoutube(source, {
+    type: type === 'audio' ? 'audio' : 'video',
+    maxBytes: max,
+    prefix: 'usanagi-play',
+  })
+
+  /* Task133 — kalau yang didapat hanya audio padahal yang diminta video,
+   * jangan kirim mp3 sebagai video. Lempar error yang jelas supaya rantai
+   * sumber lain (cobalt) dicoba dulu. */
+  if (media.audioOnly && type !== 'audio') {
+    await fs.remove(media.file).catch(() => {})
+    const err = new Error('hanya audio yang tersedia untuk video ini (diblokir YouTube untuk IP server)')
+    err.code = 'UMI_AUDIO_ONLY'
+    throw err
+  }
+
+  return media.file
 }
 
 async function cobaltOne(base, url, type) {
@@ -681,7 +700,18 @@ async function sendMedia(m, conn, data, type) {
   }
 
   try {
-    list = await buildCandidates(data, type)
+    // Jalur utama: yt-dlp + ffmpeg. Terbukti menghasilkan berkas di server,
+    // sedangkan cobalt (tanpa API key) dan URL InnerTube (403 dari IP server)
+    // hanya jadi cadangan.
+    try {
+      outFile = await downloadWithYtDlp(data, type, max)
+      cleanup.push(outFile)
+    } catch (error) {
+      rememberError('youtube-media', error)
+      outFile = null
+    }
+
+    list = outFile ? [] : await buildCandidates(data, type)
 
     for (const candidate of list.filter(item => item?.url && !item.needsTranscode)) {
       try {
@@ -698,7 +728,7 @@ async function sendMedia(m, conn, data, type) {
       rememberError('direct-download', error)
     }
 
-    if (!result) {
+    if (!outFile && !result) {
       CACHE.delete(`player:${data.videoId}`)
       list = await buildCandidates(data, type)
 
@@ -720,7 +750,7 @@ async function sendMedia(m, conn, data, type) {
 
     // SaveTube uses a separate converter/CDN path, so it remains usable when
     // YouTube blocks direct InnerTube URLs from a datacenter IP.
-    if (!result) {
+    if (!outFile && !result) {
       let saveTubeCandidate = null
       try {
         saveTubeCandidate = await saveTube(data.videoId, type)
@@ -754,15 +784,8 @@ async function sendMedia(m, conn, data, type) {
       }
     }
 
-    if (!result) {
-      try {
-        outFile = await downloadWithYtDlp(data, type, max)
-        cleanup.push(outFile)
-      } catch (error) {
-        rememberError('yt-dlp', error)
-        outFile = null
-      }
-    }
+    // yt-dlp sudah dicoba di awal sendMedia; tidak diulang agar tidak
+    // menghabiskan waktu dua kali untuk kegagalan yang sama.
 
     if (!outFile && result) {
       const { buf: raw, needsTranscode } = result
@@ -778,7 +801,12 @@ async function sendMedia(m, conn, data, type) {
       }
     }
 
-    if (!outFile) throw new Error('Semua sumber download gagal memproses video ini. Coba video lain atau ulangi beberapa saat lagi.')
+    if (!outFile) {
+      const detail = providerErrors.slice(-3).join(' · ')
+      throw new Error(
+        `Semua sumber download gagal memproses video ini.${detail ? ` (${detail})` : ''}`
+      )
+    }
 
     if (isAudio) {
       await conn.sendMessage(
@@ -846,12 +874,13 @@ async function play(m, { conn, usedPrefix }) {
 
     setCache(`video:${data.videoId}`, data)
     await menu(m, conn, usedPrefix, data)
-  } catch (e) {
+  } catch (error) {
+    console.error('[PLAY] pencarian gagal:', String(error?.message || error).slice(0, 160))
     await conn.sendMessage(
       m.chat,
-      { text: errorBox(e.message || 'Gagal mencari video.') },
+      { text: errorBox(friendlyError(error, 'video')) },
       { quoted: m.raw },
-    )
+    ).catch(() => { })
   }
 }
 
@@ -887,14 +916,43 @@ async function action(m, { conn }, type) {
 
     await sendMedia(m, conn, data, type)
     m.limit?.success()
-  } catch (e) {
+  } catch (error) {
+    /*
+     * 25-10-2026 (laporan log): pesan galat mentah seperti "HTTP 400" tidak
+     * memberi tahu apa-apa ke pengguna, dan `throw` di akhir membuat handler
+     * menolak promise tanpa penanganan (muncul sebagai unhandledRejection di
+     * log panel). Sekarang: alasan diterjemahkan, dicatat sekali dengan
+     * konteks, dan tidak dilempar ulang.
+     */
+    const friendly = friendlyError(error, type)
+    console.error('[PLAY] gagal:', `${type} ${id}`, '→', String(error?.message || error).slice(0, 160))
     await conn.sendMessage(
       m.chat,
-      { text: errorBox(e.message || `Gagal mengunduh ${type}.`) },
+      { text: errorBox(friendly) },
       { quoted: m.raw },
-    )
-    throw e
+    ).catch(() => { })
+    try { m.limit?.fail?.() } catch { }
+    return null
   }
+}
+
+/** Terjemahkan galat jaringan/HTTP menjadi kalimat yang bisa ditindak. */
+function friendlyError(error, type) {
+  const raw = String(error?.message || error || '')
+  const media = type === 'audio' ? 'audio' : 'video'
+  if (/HTTP 404|HTTP 410/.test(raw)) return `Video tidak tersedia lagi (${raw}). Coba video lain.`
+  if (/HTTP 400/.test(raw)) return 'Video tidak ditemukan atau dibatasi (privat, usia, atau wilayah). Coba judul/link lain.'
+  if (/HTTP 403/.test(raw)) {
+    return type === 'audio'
+      ? 'Video ini menolak unduhan audio (biasanya karena dibatasi pemiliknya). Coba gunakan .play lalu pilih audio, atau video lain.'
+      : 'Video ini menolak unduhan (dibatasi pemilik/wilayah). Coba video lain.'
+  }
+  if (/HTTP 429|Too Many Requests/i.test(raw)) return `Server YouTube sedang membatasi permintaan. Tunggu satu menit lalu coba lagi.`
+  if (/ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|fetch failed|socket hang up/i.test(raw)) {
+    return 'Koneksi ke server YouTube terputus. Coba lagi sebentar lagi.'
+  }
+  if (/tidak ditemukan|not found/i.test(raw)) return 'Video tidak ditemukan. Periksa judul atau tautannya.'
+  return String(raw || `Gagal mengunduh ${media}.`).slice(0, 180)
 }
 
 const handler = async (m, { conn, usedPrefix }) => {

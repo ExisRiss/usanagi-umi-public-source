@@ -14,13 +14,16 @@ import {
     useMultiFileAuthState,
     fetchLatestBaileysVersion,
     makeCacheableSignalKeyStore,
-    DisconnectReason,
-    Browsers
-} from '@rexxhayanasi/elaina-baileys';
+    DisconnectReason
+} from './baileys.js';
+import { opsiSocket } from './socket-options.js';
 
 import {
     makeWASocket
 } from './simple.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { jidTujuan } from './jid-guard.js';
 import { installAutoTyping } from './auto-typing.js';
 import {
     loadJadibotConfig,
@@ -91,11 +94,33 @@ function clearJadibotReconnect(number, resetAttempts = true) {
     if (resetAttempts) jadibotReconnectAttempts.delete(number);
 }
 
+/* Task187 — penoleran 401 per nomor: sesi TIDAK dihapus pada 401 pertama;
+ * dicoba sambung ulang sampai 3 kali. Reset saat koneksi benar-benar open. */
+const jadibotLoggedOutHits = new Map();
+
+/** Catat sesi yang ditolak WA (403) ke data/jadibot-perlu-pairing.json. */
+function catatPerluPairing(number, alasan) {
+    try {
+        const file = path.join(process.cwd(), 'data', 'jadibot-perlu-pairing.json');
+        let data = {};
+        try { data = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* mulai kosong */ }
+        const nomor = String(number || '').replace(/\D/g, '');
+        if (!nomor) return;
+        data[nomor] = { alasan, waktu: Date.now() };
+        fs.writeFileSync(file, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
+    } catch { /* best effort */ }
+}
+
 function scheduleJadibotReconnect({ number, sessionPath, mainConn }) {
     if (jadibotReconnectTimers.has(number)) return;
     const attempt = (jadibotReconnectAttempts.get(number) || 0) + 1;
     jadibotReconnectAttempts.set(number, attempt);
-    const delay = Math.min(30000, 1200 * (2 ** Math.min(attempt - 1, 4))) + Math.floor(Math.random() * 350);
+    /* Percobaan awal cepat (1.2s…19.2s, maks30dtk seperti lama); setelah5
+     * kali gagal dinaikkan ke5 menit — mengejar WA tiap30dtk justru memicu
+     * penolakan terus (laporan6/11: sesi "terputus" karena403 loop). */
+    const dasar = 1200 * (2 ** Math.min(attempt - 1, 4));
+    const batas = attempt >= 5 ? 600000 : 30000;
+    const delay = Math.max(Math.min(dasar, batas), attempt >= 5 ? 300000 : 0) + Math.floor(Math.random() * 350);
     const timer = setTimeout(async () => {
         jadibotReconnectTimers.delete(number);
         // A newer connection won the race while this timer waited.
@@ -156,6 +181,15 @@ function trackSentMessages(conn) {
     conn.sendMessage =
         async (...args) => {
 
+            /* Task131 — jaring pengaman terakhir. Kalau ada kode yang mengirim
+             * objek pesan sebagai tujuan (`conn.sendMessage(m, …)`, kebiasaan
+             * bot lain), ambil id chat-nya. Tanpa ini baileys melempar
+             * "TypeError: jid?.endsWith is not a function" dan pesan hilang. */
+            if (typeof args[0] !== 'string') {
+                const tujuan = jidTujuan(args[0]);
+                if (tujuan) args[0] = tujuan;
+            }
+
             const result =
                 await originalSendMessage(...args);
 
@@ -209,68 +243,25 @@ async function buildSubConn(sessionPath) {
     const subConn =
         trackSentMessages(
             installAutoTyping(
-                makeWASocket({
-
-                version,
-
-                logger:
-                    pino({
-                        level: 'silent'
-                    }),
-
-                printQRInTerminal:
-                    false,
-
-                browser:
-                    Browsers.ubuntu('Edge'),
-
-                auth: {
-
-                    creds:
-                        state.creds,
-
-                    keys:
-                        makeCacheableSignalKeyStore(
-                            state.keys,
-
-                            pino()
-                                .child({
+                makeWASocket(
+                    opsiSocket({
+                        auth: {
+                            creds: state.creds,
+                            keys: makeCacheableSignalKeyStore(
+                                state.keys,
+                                pino().child({
                                     level: 'silent',
                                     stream: 'store'
                                 })
-                        )
-                },
-
-                generateHighQualityLinkPreview:
-                    true,
-
-                connectTimeoutMs:
-                    Number(performance.connectTimeoutMs) || 60000,
-
-                defaultQueryTimeoutMs:
-                    0,
-
-                syncFullHistory:
-                    false,
-
-                shouldSyncHistoryMessage:
-                    () => false,
-
-                markOnlineOnConnect:
-                    true,
-
-                keepAliveIntervalMs:
-                    Number(performance.keepAliveIntervalMs) || 30000,
-
-                retryRequestDelayMs:
-                    Number(performance.retryRequestDelayMs) || 250,
-
-                maxMsgRetryCount:
-                    Number(performance.maxMessageRetries) || 5,
-
-                shouldIgnoreJid:
-                    () => false
-                })
+                            )
+                        },
+                        version,
+                        logger: pino({ level: 'silent' }),
+                        performance,
+                        /* Task214 — opsi identik dengan bot utama (lib/socket-options.js). */
+                        tambahan: { shouldIgnoreJid: () => false }
+                    })
+                )
             )
         );
 
@@ -491,10 +482,13 @@ async function connectSubBot({
 
                 pairingRequested =
                     true;
+                /* Task200 — retry saat WA membalas "over limit" (kode pairing
+                 * diminta terlalu cepat). Dulu sesi dibuang begitu saja sehingga
+                 * di website jadibot muncul "over limit" dan user gagal terus. */
+                let percobaanPairingLimit = 0;
 
 
-                setTimeout(
-                    async () => {
+                const mintaKode = async () => {
 
                         try {
 
@@ -504,55 +498,82 @@ async function connectSubBot({
                                 );
 
 
-                            code =
+                                code =
                                 code
-                                    ?.match(
-                                        /.{1,4}/g
-                                    )
-                                    ?.join('-') ||
+                                ?.match(
+                                    /.{1,4}/g
+                                )
+                                ?.join('-') ||
                                 code;
 
 
-                            console.log(
-                                `[JADIBOT] Pairing ${number}: ${code}`
-                            );
+                                /*
+                                * Task104: kode pairing dan nomor lengkap TIDAK
+                                * dicetak ke log. Sebelumnya baris ini menulis
+                                * `[JADIBOT] Pairing 62812xxxx: ABCD-EFGH`, sehingga
+                                * siapa pun yang bisa membaca log panel (atau berkas
+                                * log lama) bisa melihat nomor pelanggan + kode
+                                * tautan yang masih berlaku. Kode asli tetap
+                                * dikirim ke pemanggil lewat onPairingCode.
+                                */
+                                console.log(
+                                    `[JADIBOT] Kode pairing diterbitkan untuk nomor berakhiran ${String(number).slice(-4)}`
+                                );
 
-                            if (typeof onPairingCode === 'function') {
-                                await onPairingCode(code, subConn);
-                            }
+                                if (typeof onPairingCode === 'function') {
+                                    await onPairingCode(code, subConn);
+                                }
 
 
-                            if (
-                                notifyChat &&
-                                mainConn
-                            ) {
+                                if (
+                                    notifyChat &&
+                                    mainConn
+                                ) {
 
-                                await mainConn
+                                    await mainConn
                                     .sendMessage(
                                         notifyChat,
                                         {
-                                            text:
-                                                `🔑 *KODE PAIRING JADIBOT*\n\n` +
-                                                `Nomor: *${number}*\n\n` +
-                                                `Kode:\n` +
-                                                `*${code}*\n\n` +
-                                                `Buka WhatsApp > Perangkat Tertaut > ` +
-                                                `Tautkan dengan nomor telepon, ` +
-                                                `lalu masukkan kode di atas.`
+                                            text: `🔑 *KODE PAIRING JADIBOT*\n\n` +
+                                            `Nomor: *${number}*\n\n` +
+                                            `Kode:\n` +
+                                            `*${code}*\n\n` +
+                                            `Buka WhatsApp > Perangkat Tertaut > ` +
+                                            `Tautkan dengan nomor telepon, ` +
+                                            `lalu masukkan kode di atas.`
                                         }
                                     )
                                     .catch(() => {});
-                            }
+                                }
 
                         } catch (e) {
 
                             console.error(
-                                `[JADIBOT] Gagal request pairing ${number}:`,
+                                `[JADIBOT] Gagal request pairing …${String(number).slice(-4)}:`,
                                 e
                             );
 
+                            const teksError = String(e?.message || e);
+                            const kenaLimit = /over.?limit|rate.?limit/i.test(teksError);
+                            if (kenaLimit && percobaanPairingLimit < 3) {
+                                percobaanPairingLimit += 1;
+                                const tundaMs = 30000 * percobaanPairingLimit;
+                                console.log(
+                                    `[JADIBOT] Pairing …${String(number).slice(-4)} kena limit — jadwal ulang ${tundaMs / 1000}s (percobaan ${percobaanPairingLimit}/3)`
+                                );
+                                setTimeout(mintaKode, tundaMs);
+                                return;
+                            }
+
                             if (typeof onPairingError === 'function') {
-                                try { await onPairingError(e, subConn); } catch {}
+                                try {
+                                    await onPairingError(
+                                        kenaLimit
+                                            ? new Error('WhatsApp membatasi permintaan kode pairing (rate limit). Tunggu ±5 menit lalu coba lagi — jangan diulang cepat-cepat.')
+                                            : e,
+                                        subConn
+                                    );
+                                } catch {}
                             }
 
 
@@ -566,10 +587,8 @@ async function connectSubBot({
                                 rmSync(
                                     sessionPath,
                                     {
-                                        recursive:
-                                            true,
-                                        force:
-                                            true
+                                        recursive: true,
+                                        force: true
                                     }
                                 );
 
@@ -586,17 +605,19 @@ async function connectSubBot({
                                         notifyChat,
                                         {
                                             text:
-                                                `❌ Gagal membuat kode pairing untuk *${number}*.\n` +
-                                                `Silakan coba lagi.`
+                                                kenaLimit
+                                                    ? `⛔ WhatsApp membatasi permintaan kode pairing (*rate limit*) untuk *${number}*.\nTunggu ±5 menit lalu ketik perintah jadibot lagi.`
+                                                    : `❌ Gagal membuat kode pairing untuk *${number}*.\n` +
+                                                      `Silakan coba lagi.`
                                         }
                                     )
                                     .catch(() => {});
                             }
                         }
 
-                    },
-                    2500
-                );
+                };
+
+                setTimeout(mintaKode, 2500);
             }
 
 
@@ -613,6 +634,7 @@ async function connectSubBot({
                 clearJadibotWatchdog(number);
                 clearJadibotReconnect(number);
                 noteSessionOnline(number);
+                jadibotLoggedOutHits.delete(number); // Task187 — sehat: reset penoleran 401
                 global.jadibotConns.set(
                     number,
                     subConn
@@ -690,6 +712,10 @@ async function connectSubBot({
                     `[JADIBOT] ${number} disconnected (${statusCode || 'unknown'})`
                 );
 
+                //403 = WA menolak sesi (dicabut/over-limit) → catat ke daftar
+                // "perlu pairing" supaya terlihat, bukan putus diam-diam.
+                if (statusCode === 403) catatPerluPairing(number, 'forbidden-403');
+
                 // Mulai hitung mundur pembersihan otomatis (15 menit).
                 noteSessionOffline(number);
 
@@ -707,6 +733,22 @@ async function connectSubBot({
                     statusCode ===
                     DisconnectReason.loggedOut
                 ) {
+
+                    /* Task187 — jangan langsung buang sesi. 401 bisa transient;
+                     * coba sambung ulang dengan file yang sama sampai 3 kali.
+                     * Hitungan kegiatan juga direset supaya cleaner tidak ikut
+                     * menghapus sesi selama penoleran berjalan. */
+                    const hit = (jadibotLoggedOutHits.get(number) || 0) + 1;
+                    if (hit <= 3) {
+                        jadibotLoggedOutHits.set(number, hit);
+                        console.log(
+                            `[JADIBOT] ${number} terima 401 (percobaan ${hit}/3) — sesi dipertahankan, mencoba sambung ulang...`
+                        );
+                        noteSessionActivity(number);
+                        scheduleJadibotReconnect({ number, sessionPath, mainConn });
+                        return;
+                    }
+                    jadibotLoggedOutHits.delete(number);
 
                     try {
 
@@ -733,7 +775,7 @@ async function connectSubBot({
 
 
                     console.log(
-                        `[JADIBOT] ${number} logout, session dihapus`
+                        `[JADIBOT] ${number} logout permanen (401 x3), session dihapus`
                     );
 
 
@@ -861,19 +903,11 @@ export async function startSubBot(
         );
 
 
-        try {
-
-            rmSync(
-                sessionPath,
-                {
-                    recursive:
-                        true,
-                    force:
-                        true
-                }
-            );
-
-        } catch {}
+        /* Task189 — sesi TIDAK dihapus saat start gagal. Error transient
+         * (jaringan/RPC/groupMetadata) dulu ikut menghapus kredensial valid
+         * sehingga jadibot terasa "log out sendiri". Kredensial dipertahankan
+         * (prinsip Task187); kalau memang rusak permanen, owner bisa
+         * .deljadibot lalu pairing ulang. */
 
 
         return m.reply(
@@ -905,7 +939,8 @@ export async function startSubBotForApi(rawNumber, mainConn = global.conn) {
         resolveCode = resolve;
         rejectCode = reject;
     });
-    const timeout = setTimeout(() => rejectCode(new Error('Timeout menunggu pairing code WhatsApp.')), 40000);
+    /* Task200 — retry over-limit (30+60+90s) butuh waktu →300s (dulu40s). */
+    const timeout = setTimeout(() => rejectCode(new Error('Timeout menunggu pairing code WhatsApp.')), 300000);
 
     try {
         await connectSubBot({
@@ -936,6 +971,9 @@ export async function disconnectSubBot(rawNumber, { deleteSession = false } = {}
         global.jadibotConns.delete(number);
     }
     if (deleteSession) {
+        /* Task200 — beri waktu write creds.json antrean (auth state) selesai
+         * sebelum folder dihapus, agar tak muncul ENOENT creds.json. */
+        await new Promise(resolve => setTimeout(resolve, 700));
         try { rmSync(join(SESSIONS_DIR, number), { recursive: true, force: true }); } catch {}
         try { rmSync(join('sessions-backup', number), { recursive: true, force: true }); } catch {}
         forgetSession(number);

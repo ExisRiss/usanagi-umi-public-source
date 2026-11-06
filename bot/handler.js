@@ -9,9 +9,13 @@ import { planAutoAI, shouldAutoAITrigger, isSelfAIRequest } from './lib/auto-ai.
 import { schedulePluginCommand } from './lib/auto-ai-scheduler.js';
 import { runWithBotConnection } from './lib/bot-connection-context.js';
 import { smsg } from './lib/simple.js';
-import { generateWAMessageFromContent, proto } from '@rexxhayanasi/elaina-baileys'
+import { generateWAMessageFromContent, proto } from '@whiskeysockets/baileys'
 import { format } from 'util';
-import { recordError } from './lib/error-hub.js';
+import { recordError } from './lib/error-hub.js'
+/* Task132: daftar akses per sesi (fitur OURIN `.addakses`). */
+import syncUserDatabase from './lib/database.js';
+import { errorReplyText } from './lib/umi-error.js';
+import { pantauPerintah } from './lib/pengawas-lambat.js';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import fs, { unwatchFile, watchFile } from 'fs';
@@ -24,15 +28,27 @@ import {
 } from './lib/awang-cekakses.js'
 import { collectUserIdentityKeys, mergeUserIdentityRecords } from './lib/user-identity.js'
 import { getActivePrefix } from './core/awang-prefix.js'
-import { prefixStorageKey, isPluginDisabled } from './lib/bot-config.js'
+import { getMainBotConfig, prefixStorageKey, isPluginDisabled } from './lib/bot-config.js'
+import { normalizePrefixMode, resolveIncomingPrefix } from './lib/prefix-policy.js'
+import { botKind, sanitizeActivePrefix, normalizeIncoming, splitDoublePrefix } from './lib/prefix-bot.js'
+import { nomorOwnerUtama as daftarNomorOwnerUtama } from './lib/owner-utama.js';
+/* Task147: jangan pernah diam saat pesan berbentuk perintah dibuang gerbang. */
+import { cariPesanPrefix, bolehHint } from './lib/prefix-hint.js';
+/* Task205: gerbang akses onlygc/onlypc/off + mesin peringatan. */
+import { getAccessModeState } from './core/awang-mode.js';
+import { modeEfektif, flagMode, putusanAkses, muatConfig, catatPeringatan, resetHitungan, teksTindakan, tindakanLabel, terapkanTindakan } from './lib/access-warn.js';
+/* Task150: mode privat = bot diam total kecuali developer/owner utama/owner bot. */
+import { apakahPrivat, putusanModePrivat, roleDari, catatanDiam } from './lib/mode-privat.js';
 import { limitsEnabled } from './lib/limit-mode.js'
-import { canUseOwnerPlugin } from './lib/owner-policy.js'
+import { canUseOwnerPlugin, platformOnlyReason } from './lib/owner-policy.js'
 import { isPremiumFeatureLocked, premiumOwnerContact } from './lib/premium-mode.js'
 import {
   isGroupAdmin as resolveGroupAdmin,
   isBotAdmin as resolveBotGroupAdmin,
 } from './lib/awang-aksesgrub.js'
+import { powerNyala, perintahPower, scopeDariConfig, setPower, powerInfo } from './lib/bot-power.js'
 import { parseCommandInput } from './lib/command-parser.js'
+import { cariAksi } from './lib/pending-aksi.js'
 import { sendInteractive } from './lib/awang-tombol.js'
 import {
   getSessionWelcomeTemplate,
@@ -153,7 +169,39 @@ function renderGroupEventTemplate(template, {
  * @param {import('baileys').BaileysEventMap<unknown>['messages.upsert']} groupsUpdate
  */
 export async function handler(chatUpdate) {
+    // Task119: pesan masuk berarti database hampir pasti berubah, jadi penanda
+    // ini membuat penyimpanan periodeik tidak menulis saat bot benar-benar sepi.
+    global.__umiDbKotor = true;
     return runWithBotConnection(this, () => withMessageResponses(this, () => handleMessage.call(this, chatUpdate)));
+}
+
+/* Task150 — log "pesan diabaikan karena mode privat" dibatasi 1×/10 menit per
+ * chat, supaya console tidak dibanjiri saat banyak orang mencoba memakai bot
+ * yang sedang private. */
+const logDiamTerakhir = new Map()
+function bolehLogDiam(chat, sekarang = Date.now()) {
+    const kunci = String(chat || '')
+    const terakhir = logDiamTerakhir.get(kunci) || 0
+    if (sekarang - terakhir < 10 * 60 * 1000) return false
+    if (logDiamTerakhir.size > 500) {
+        for (const [k, waktu] of logDiamTerakhir) if (sekarang - waktu > 10 * 60 * 1000) logDiamTerakhir.delete(k)
+    }
+    logDiamTerakhir.set(kunci, sekarang)
+    return true
+}
+
+/* Cache 1 detik: cukup untuk menyegarkan prefix tanpa membaca berkas di
+ * setiap pesan yang masuk beruntun. */
+let mainConfigCache = { at: 0, value: null }
+function mainBotConfigSnapshot() {
+    const now = Date.now()
+    if (mainConfigCache.value && now - mainConfigCache.at < 1000) return mainConfigCache.value
+    try {
+        mainConfigCache = { at: now, value: getMainBotConfig() }
+    } catch {
+        mainConfigCache = { at: now, value: mainConfigCache.value }
+    }
+    return mainConfigCache.value
 }
 
 async function handleMessage(chatUpdate) {
@@ -189,7 +237,17 @@ if (m.isBaileys) return
 // ==================
 // WhatsApp dapat mengirim pengirim sebagai PN (@s.whatsapp.net) atau LID
 // (@lid). Selalu selesaikan ke nomor telepon sebelum memeriksa akses owner.
-const resolvedSenderNumber = await resolveTargetPhoneNumber(m.sender, this, m.chat).catch(() => '')
+/* Task124: sertakan petunjuk nomor dari kunci pesan. WhatsApp kadang mengirim
+ * pengirim sebagai `@lid`; nomor aslinya biasanya ikut di senderPn /
+ * participantPn / participantAlt, sehingga owner tetap dikenali. */
+const senderNumberHints = [
+    m.key?.senderPn,
+    m.key?.participantPn,
+    m.key?.participantAlt,
+    m.senderPn,
+    m.participantAlt,
+]
+const resolvedSenderNumber = await resolveTargetPhoneNumber(m.sender, this, m.chat, senderNumberHints).catch(() => '')
 const lockedDeveloperNumbers = [
   normalizeAccessNumber(global.jadibotPlatform?.lockedOwnerNumber || 'OWNER_PHONE_PLACEHOLDER'),
   ...(global.owner || []).map(([id]) => normalizeAccessNumber(id))
@@ -197,18 +255,73 @@ const lockedDeveloperNumbers = [
 const allOwnerNumbers = getAllOwnerNumbers(this)
 
 const staticOwnerFallback = (global.owner || []).some(([id]) => sameUser(cleanJid(id), m.sender))
-// Owner yang dipilih user memperoleh akses owner biasa. Akses rowner/developer
-// tetap hanya untuk nomor permanen yang dikunci di config.js.
+// isROwner = owner PLATFORM/developer (nomor yang dikunci di config.js).
 const isROwner = Boolean(
   m.fromMe ||
   (resolvedSenderNumber && lockedDeveloperNumbers.includes(resolvedSenderNumber)) ||
   staticOwnerFallback
 )
-const isOwner = Boolean(
-  isROwner ||
-  (resolvedSenderNumber && allOwnerNumbers.includes(resolvedSenderNumber))
+/*
+ * Task143 — OWNER UTAMA.
+ * Nomor di data/owner-utama.json (atau global.ownerUtama di config.js) punya
+ * akses SETARA developer: semua perintah, termasuk yang bertanda `rowner`.
+ * Daftar developer sendiri tetap terkunci (Task113).
+ */
+const nomorOwnerUtama = daftarNomorOwnerUtama()
+const isOwnerUtama = Boolean(resolvedSenderNumber && nomorOwnerUtama.includes(resolvedSenderNumber))
+/* aksesPenuh dipakai seluruh gerbang perintah di bawah. */
+const aksesPenuh = Boolean(isROwner || isOwnerUtama)
+/*
+ * Task124 — OWNER BOT, bukan cuma "owner biasa".
+ *
+ * Nomor yang diisi pemilik bot di setelan bot (website Jadibot `owner_number`
+ * maupun setelan bot utama) adalah PEMILIK bot itu. Sebelumnya nomor tersebut
+ * hanya mendapat `owner`, sehingga seluruh perintah bertanda `rowner`
+ * (.addowner, .addstok, .setpp, .selfthisgc, …) menjawab "khusus developer".
+ * Sekarang owner bot memakai akses penuh ke fitur bot miliknya; yang tetap
+ * dikunci hanya fitur platform/lintas akun di lib/owner-policy.js.
+ */
+const isBotOwner = Boolean(
+  resolvedSenderNumber && allOwnerNumbers.includes(resolvedSenderNumber)
 )
+const isOwner = Boolean(aksesPenuh || isBotOwner)
 const isMods = isOwner || global.mods?.some(v => m.sender.includes(v))
+
+/*
+ * Task135 — saklar bot per sesi (.bot off / .bot on).
+ * Saat OFF, bot TIDAK membalas apa pun di sesi itu. Pengecualian hanya
+ * owner/developer yang mengetik .bot on / .bot off / .bot status, supaya
+ * sesi bisa dinyalakan lagi dari WhatsApp maupun dari website Jadibot.
+ */
+try {
+    const _scopePower = scopeDariConfig(botConfig)
+    if (!powerNyala(_scopePower)) {
+        const _aksiPower = perintahPower(m.text)
+        const _bolehPower = Boolean(aksesPenuh || isOwner || m.fromMe)
+        if (!_bolehPower) return
+        /* Owner/developer: tangani langsung supaya tetap jalan apa pun
+         * prefix-nya (".bot on", "..bot on", "/bot on") tanpa lewat dispatch
+         * plugin — plugin tidak akan dieksekusi saat saklar mati. */
+        if (_aksiPower === 'on') {
+            setPower(_scopePower, true, String(m.sender || '').split('@')[0])
+            await this.reply(m.chat, `✅ Bot *ON* untuk sesi ${_scopePower}.\nSemua perintah dijawab lagi.`, m)
+            return
+        }
+        if (_aksiPower === 'off') {
+            setPower(_scopePower, false, String(m.sender || '').split('@')[0])
+            await this.reply(m.chat, `⛔ Bot sudah *OFF* untuk sesi ${_scopePower}.`, m)
+            return
+        }
+        if (_aksiPower === 'status') {
+            const _info = powerInfo(_scopePower)
+            await this.reply(m.chat, `⚙️ Saklar bot sesi ${_scopePower}: *${_info.enabled ? 'ON' : 'OFF'}*`, m)
+            return
+        }
+        return
+    }
+} catch (powerError) {
+    console.log(`[bot-power] gagal memeriksa saklar: ${powerError?.message || powerError}`)
+}
 
 // ==================
 // 🚫 USER BLACKLIST
@@ -231,6 +344,7 @@ if (isBlacklistedUser && !isOwner && !blacklistCmd) {
     return
 }
 
+
 // ==================
 // 📊 DATABASE INIT
 // ==================
@@ -238,11 +352,135 @@ if (isBlacklistedUser && !isOwner && !blacklistCmd) {
 // dapat terdaftar di private chat tetapi terlihat belum terdaftar di grup.
 const userIdentityKeys = collectUserIdentityKeys(m, resolvedSenderNumber)
 const prefixKey = prefixStorageKey(this, m.chat)
-const activePrefix = await getActivePrefix(prefixKey, botConfig.defaultPrefix)
+/*
+ * Default prefix harus SELALU dibaca ulang.
+ *
+ * `botConfig` bot utama adalah snapshot saat bot dinyalakan (main.js menyetel
+ * global.conn.botConfig sekali). Dulu nilai itu yang dipakai sebagai default,
+ * sehingga `.setprefix global !` hanya mengubah chat yang sudah punya baris
+ * prefix di database; chat lain tetap memakai prefix lama sampai bot restart.
+ * Sekarang default diambil dari berkas setelan terbaru (di-cache 1 detik).
+ */
+let runDefaultPrefix = botConfig.defaultPrefix
+if (botConfig.type !== 'jadibot') {
+    const freshMainConfig = mainBotConfigSnapshot()
+    if (freshMainConfig && freshMainConfig.defaultPrefix) runDefaultPrefix = freshMainConfig.defaultPrefix
+}
+let activePrefix = await getActivePrefix(prefixKey, runDefaultPrefix)
+/*
+ * Task117 — ATURAN PREFIX PER JENIS BOT (keras):
+ *   bot utama  → hanya `$`
+ *   jadibot    → simbol apa pun KECUALI `$`
+ * Prefix aktif dipaksa sesuai jenis bot, jadi setelan lama (mis. `.` di bot
+ * utama) tidak bisa lagi melanggar aturan ini.
+ */
+const prefixBotKind = botKind(botConfig)
+activePrefix = sanitizeActivePrefix(prefixBotKind, activePrefix, runDefaultPrefix)
+/*
+ * Task112 — HANYA prefix yang disetel yang berlaku (mode ketat, bawaan).
+ * Sebelumnya setiap simbol prefix diterima selama sisa teksnya nama perintah,
+ * sehingga bot tetap menjawab ".menu" walaupun owner menyetel prefix "/".
+ * Pemilik bot masih bisa memakai perilaku lama lewat `.setprefix mode loose`.
+ * Bot utama tetap ketat: hanya `$`.
+ */
+const prefixMode = prefixBotKind === 'jadibot'
+    ? normalizePrefixMode((botConfig && botConfig.prefixMode) || (global.mainBot && global.mainBot.prefixMode))
+    : 'strict'
+const incomingPrefix = resolveIncomingPrefix({
+    text: m.text,
+    plugins: global.plugins,
+    activePrefix,
+    mode: prefixMode,
+    /* Task154 — jadibot juga menerima `/` sebagai alias prefix. Bot utama
+     * tetap hanya `$` (Task117). */
+    aliasPrefixes: prefixBotKind === 'jadibot' ? ['/'] : [],
+})
+if (incomingPrefix.alternate) {
+    activePrefix = incomingPrefix.prefix
+    m.__detectedPrefix = incomingPrefix.prefix
+}
+/*
+ * Task117 — prefix GANDA (`$$menu`, `//menu`) berarti minta tampilan RICH.
+ * Pesan dinormalisasi ke prefix tunggal supaya seluruh pencocokan plugin
+ * berjalan seperti biasa; penanda tampilan disimpan di `m.__richMenu`.
+ */
+const incomingNormalized = normalizeIncoming({
+    text: m.text,
+    botType: prefixBotKind,
+    activePrefix,
+})
+activePrefix = incomingNormalized.prefix
+if (incomingNormalized.rich) {
+    m.__richMenu = true
+    /* Task136 — plugin non-menu (mis. .statusmc / .mcmenu) memakai penanda
+     * __richRequest. Sebelumnya penanda itu dipasang di blok lain yang baru
+     * berjalan SETELAH teks dinormalkan, jadi tidak pernah aktif dan
+     * "..statusmc" selalu dibalas teks biasa. */
+    m.__richRequest = true
+    m.__originalText = m.text
+    m.text = incomingNormalized.text
+}
+m.__botKind = prefixBotKind
+m.__prefixMode = prefixMode
 // Activity clears AFK before private/premium/registration/only-group command gates.
 // Do this before profile merging, so a stale PN/LID field cannot overwrite the status.
-const afkNotify = (isOwner || m.fromMe || (botConfig.type === 'jadibot' ? botConfig.public !== false : global.db.data.settings?.[this.user.jid]?.public !== false)) && !isPluginDisabled(botConfig, '_system/_afk.js')
-await handleAfkMessage(m, this, { prefix: activePrefix, aliases: userIdentityKeys, type: chatUpdate.type, notify: afkNotify })
+/* Task205 — notifikasi AFK dibungkam hanya di permukaan yang DIBATASI
+ * (PC saat onlygc/off; group saat onlypc/off). Permukaan yang dilayani
+ * tetap mendapat notis seperti biasa. */
+let gcOnlyUntukNotif = true
+try {
+    const modeNotif = modeEfektif({ onlyGroup: botConfig.onlyGroup === true, mode: getAccessModeState().mode })
+    const flagNotif = flagMode(modeNotif)
+    gcOnlyUntukNotif = m.isGroup ? flagNotif.gc : flagNotif.pc
+} catch {
+    gcOnlyUntukNotif = m.isGroup || !(botConfig.onlyGroup === true)
+}
+const afkNotify = (isOwner || m.fromMe || (botConfig.type === 'jadibot' ? botConfig.public !== false : global.db.data.settings?.[this.user.jid]?.public !== false)) && !isPluginDisabled(botConfig, '_system/_afk.js') && gcOnlyUntukNotif
+/* Task204 — kegagalan pemeriksaan AFK tidak boleh mematikan seluruh
+ * pemrosesan pesan (dulu throw di sini = bot tidak merespon chat sama sekali). */
+try {
+    await handleAfkMessage(m, this, { prefix: activePrefix, aliases: userIdentityKeys, type: chatUpdate.type, notify: afkNotify })
+} catch (afkError) {
+    console.log(`[afk] pemeriksaan dilewati: ${afkError?.message || afkError}`)
+}
+
+// ==================
+/* Task203 — Blok ini DIGESER dari sebelum-ke-setelah handleAfkMessage:
+ * Task150 menaruhnya paling awal sehingga aktivitas user saat mode private
+ * tidak pernah mencapai clear-AFK → AFK basi (stale) selamanya (uji
+ * afk-dispatch #11). Setelah geser: AFK tetap di-clear DULU (notify:false
+ * saat private = tanpa balasan), baru bot membungkam semua balasan.
+ * Balasan pertama (registrasi/onlyGroup/prefix hint) tetap SETELAH blok ini. */
+// 🔒 MODE PRIVAT — BOT DIAM (Task150)
+// ==================
+/*
+ * Diletakkan SEDINI MUNGKIN: sebelum database user disentuh, sebelum AFK,
+ * sebelum aksi tertunda (.deploysubdomain), dan sebelum petunjuk prefix.
+ * Ketiganya dulu bisa mengirim balasan ke pengguna yang tidak berhak saat
+ * bot disetel private — itulah yang membuat "bot masih bales".
+ */
+try {
+    const setelanUtama = global.db?.data?.settings?.[this.user?.jid]
+    const privatSesi = apakahPrivat(botConfig, setelanUtama)
+    if (privatSesi) {
+        // Diagnostik: sumber mana yang membuat sesi dianggap privat
+        // (laporan Task207: owner bilang mode public tapi bot diam).
+        if (bolehLogDiam(m.chat)) {
+            console.log(`[mode-privat-debug] type=${botConfig?.type} managed=${botConfig?.managedSettings} publicCfg=${botConfig?.public} dbPublic=${setelanUtama?.public} dbAdaPublik=${Boolean(setelanUtama && 'public' in setelanUtama)} jidBot=${this.user?.jid}`)
+        }
+        const putusan = putusanModePrivat({
+            privat: true,
+            fromMe: Boolean(m.fromMe || m.key?.fromMe),
+            ...roleDari({ isROwner, isOwnerUtama, isOwner }),
+        })
+        if (!putusan.dilayani) {
+            if (bolehLogDiam(m.chat)) console.log(catatanDiam(putusan, { sender: m.sender, chat: m.chat }))
+            return
+        }
+    }
+} catch (modeError) {
+    console.log(`[mode-privat] gagal memeriksa setelan: ${modeError?.message || modeError}`)
+}
 const mergedUser = mergeUserIdentityRecords(global.db.data.users, userIdentityKeys)
 global.db.data.users[m.sender] ||= mergedUser
 
@@ -289,6 +527,14 @@ if (!Number.isFinite(userData.limit))
 // ==================
 const isGroup = m.key?.remoteJid?.endsWith('@g.us')
 
+/* Task189 — pesan masuk dari grup = bot masih anggota grup itu. Kalau cache
+ * metadata sempat memblokir grup (403/404 sesaat), blokir dibuka & query
+ * dicoba ulang (debounce 30 dtk di dalam cache) supaya tidak error
+ * GROUP_FORBIDDEN terus-menerus. */
+if (isGroup) {
+	try { this.noteIncomingGroupMetadata?.(m.chat) } catch { /* non-kritis */ }
+}
+
 // ==================
 // 💎 PREMIUM
 // ==================
@@ -301,10 +547,103 @@ const isStatus = m.key?.remoteJid === 'status@broadcast' || m.key?.participant =
 if (isStatus) return
 
 // ==================
+// ⏳ AKSI YANG MENUNGGU BALASAN USER
+// ==================
+/* Task136 — `.deploysubdomain` menunggu user mengirim berkas .zip / .html.
+ * Berkas tanpa caption TIDAK punya prefix, jadi harus diperiksa di sini:
+ * sebelum gerbang "chat pribadi tanpa prefix" di bawah yang membuat handler
+ * berhenti diam-diam (bot seolah tidak membalas). */
+try {
+    const _aksiPending = cariAksi(m)
+    if (_aksiPending) {
+        const _hasilPending = await _aksiPending.jalankan.call(this, m)
+        if (_hasilPending !== false) return
+    }
+} catch (_pendingError) {
+    console.log(`[pending] gagal memproses: ${_pendingError?.message || _pendingError}`)
+}
+
+// ==================
 // 🚫 PRIVATE CHAT
 // ==================
 const realmAccessCommand = isRealmAccessCommand(m.text, activePrefix)
 const prefix = { test: text => String(text || '').startsWith(activePrefix) }
+
+/* Task205 — GERBANG AKSES + MESIN PERINGATAN (permintaan owner):
+ *   - owner/developer: selalu dilayani;
+ *   - permukaan dibatasi + bukan command → DIAM (tanpa respon, tanpa hint);
+ *   - chat pribadi dibatasi + command → WARNING dulu, lewat batas →
+ *     tindakan (block/blacklist); bila warning OFF → langsung tindakan;
+ *   - group dibatasi + command → DIAM (tanpa respon);
+ *   - pengecualian lama realmAccessCommand di chat pribadi tetap berlaku.
+ * Clear-AFK sudah berjalan diam-diri di atas (Task203); mode privat (Task150)
+ * juga sudah diblokir lebih awal — jadi peringatan tidak pernah bocor ke
+ * mode private. */
+try {
+    const modeAkses = modeEfektif({ onlyGroup: botConfig.onlyGroup === true, mode: getAccessModeState().mode })
+    const teksCommand = activePrefix && String(m.text || '').startsWith(activePrefix)
+        ? String(m.text).slice(activePrefix.length).trim()
+        : ''
+    const putusan = putusanAkses({
+        mode: modeAkses,
+        isGroup: Boolean(isGroup),
+        isOwner: Boolean(isOwner || m.fromMe),
+        isCommand: Boolean(teksCommand),
+        realmAccess: Boolean(realmAccessCommand),
+    })
+    if (putusan === 'diam') return
+    if (putusan === 'peringatan') {
+        const config = muatConfig(global.db.data)
+        const hasil = catatPeringatan(global.db.data, m.sender)
+        const kenaTindakan = !config.enabled || hasil.lewat
+        const pesan = kenaTindakan
+            ? teksTindakan(config, config.action)
+            : '⚠️ *PERINGATAN ' + hasil.count + '/' + hasil.threshold + '*\n' + config.text +
+              '\n\nSetelah ' + hasil.threshold + ' peringatan → ' + tindakanLabel(config.action) + '.'
+        try {
+            await this.reply(m.chat, pesan, m)
+        } catch (warnError) {
+            console.log('[akses] gagal kirim peringatan: ' + (warnError?.message || warnError))
+        }
+        if (kenaTindakan) {
+            const aksi = await terapkanTindakan({ conn: this, dbData: global.db.data }, m.sender, config.action)
+            resetHitungan(global.db.data, m.sender)
+            console.log('[akses] tindakan ' + config.action + ' → ' + String(m.sender).split('@')[0] + ' (' + aksi.jalur + ')')
+        }
+        return
+    }
+} catch (aksesError) {
+    console.log('[akses] gagal memeriksa: ' + (aksesError?.message || aksesError))
+}
+
+/*
+ * Task147 — BOT TIDAK BOLEH DIAM.
+ *
+ * Dulu pesan pribadi yang memakai prefix lain (mis. `.menu` pada sesi
+ * ber-prefix `/`, `,`, atau `★`) dibuang tanpa penjelasan, sehingga pemilik
+ * bot mengira botnya mati. Sekarang di chat pribadi bot menjelaskan prefix
+ * yang benar sekali (maks. 1×/10 menit per chat). Prefix yang benar tetap
+ * diproses dispatcher seperti biasa — aturan Task112 tidak dilanggar.
+ */
+if (!isGroup) {
+    try {
+        const hintPrefix = cariPesanPrefix({
+            text: m.text,
+            activePrefix,
+            plugins: global.plugins,
+            botType: botConfig.type,
+            isDisabled: (nama, perintah) => isPluginDisabled(botConfig, nama, perintah),
+            /* cache 5 detik per sesi — 2.100 plugin tidak dipindai tiap pesan */
+            kunci: botConfig,
+        })
+        if (hintPrefix && bolehHint(m.chat, 'prefix')) {
+            await this.reply(m.chat, hintPrefix.pesan, m)
+            return
+        }
+    } catch (hintError) {
+        console.log(`[prefix-hint] gagal memeriksa: ${hintError?.message || hintError}`)
+    }
+}
 
 // AutoAI di chat pribadi: percakapan 1:1 tidak perlu mention seperti di grup.
 const autoAIEnabledForBot = (cfg = {}) => {
@@ -346,18 +685,25 @@ m.exp = 0;
 m.limit = false;
 
 		if (m.sender.endsWith('@broadcast') || m.sender.endsWith('@newsletter')) return;
-		await (await import(`./lib/database.js?v=${Date.now()}`)).default(m, this);
+		syncUserDatabase(m, this);
 
 		if (typeof m.text !== 'string') m.text = '';
 
-	// Mode akses per-session Jadibot:
-	// - onlyGroup: seluruh command ditolak di private chat.
-	// - self: hanya owner session, developer terkunci, atau bot sendiri.
-	// Bot utama juga menghormati Only Group bila owner mengaktifkannya dari web.
-	if (botConfig.onlyGroup === true && !m.isGroup && !realmAccessCommand) return;
+	/* Task204 — gerbang onlygc dipindah ke atas (setelah clear-AFK, sebelum
+	 * hint prefix): chat pribadi benar-benar diam saat mode onlygc menyala.
+	 * Petunjuk Task147 sengaja dihapus sesuai permintaan owner terbaru. */
 	const instancePublic = botConfig.type === 'jadibot' || botConfig.managedSettings === true
 		? botConfig.public !== false
 		: global.db.data.settings[this.user.jid].public
+	/*
+	 * Task150 — sabuk kedua. Gerbang utama sudah jalan di atas (sebelum AFK dan
+	 * aksi tertunda). Di sini TIDAK ADA balasan apa pun: mode privat berarti
+	 * diam, bukan pesan "bot sedang privat".
+	 *
+	 * Beda dengan Task132: daftar akses sesi (`.addakses`) TIDAK lagi membuka
+	 * mode privat. Nomor yang memang perlu memakai bot saat private dijadikan
+	 * owner lewat `.addowner`, supaya kewenangannya utuh (bukan setengah).
+	 */
 	if (!instancePublic && !m.fromMe && !isOwner) return;
 if (m.isBaileys) return;
 m.exp += Math.ceil(Math.random() * 10);
@@ -390,11 +736,22 @@ let isBotAdmin = ['admin', 'superadmin'].includes(bot?.admin)
 // the socket is identified by a phone JID (or the reverse). The legacy local
 // lookup above then misses the bot even though it is an admin. Only when the
 // fast lookup misses, use the LID-aware group access resolver as a fallback.
-if (m.isGroup && (!isAdmin || !isBotAdmin)) {
+/* Task119 — jalur LID hanya dipakai kalau memang ada kemungkinan salah cocok:
+ * metadata kosong (gagal diambil) atau ada peserta/ID berbentuk @lid.
+ * Kalau metadata berisi peserta normal dan bot/user tidak ada di situ, artinya
+ * memang bukan admin — tidak perlu memanggil WhatsApp per peserta. */
+const adaPeserta = participants.length > 0
+const adaLid = participants.some(peserta => {
+  const id = String(peserta?.id || peserta?.jid || peserta?.lid || '')
+  return id.endsWith('@lid')
+}) || String(m.sender || '').endsWith('@lid') || String(botJid || '').endsWith('@lid')
+const perluCekUlang = !adaPeserta || adaLid
+
+if (m.isGroup && perluCekUlang && (!isAdmin || !isBotAdmin)) {
   // Metadata is normally already enough. Bound the exceptional LID lookup so
   // a WhatsApp metadata delay never blocks a command indefinitely.
   const quickAccessCheck = task => new Promise(resolve => {
-    const timer = setTimeout(() => resolve(false), 2200)
+    const timer = setTimeout(() => resolve(false), 1200)
     Promise.resolve(task)
       .then(value => resolve(Boolean(value)))
       .catch(() => resolve(false))
@@ -428,7 +785,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
         const selfAIRequest = isSelfAIRequest(m, botConfig);
         const aiPlan = await planAutoAI({
             m, conn: this, botConfig, activePrefix, bot, plugins: global.plugins,
-            isROwner, isOwner, isMods, isAdmin, isBotAdmin, isPrems,
+            isROwner: aksesPenuh, isOwner, isOwnerUtama, isDeveloper: isROwner, isMods, isAdmin, isBotAdmin, isPrems,
             userData: _user, chatData: chat,
             isCommandDisabled: (name, command) => isPluginDisabled(botConfig, name, command)
         });
@@ -476,6 +833,27 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
                     : note;
             }
         }
+        /*
+         * Task135 — prefix ganda. `.statusmc` = teks + foto, `..statusmc` =
+         * rich message (kartu + tombol). Prefix berulang dinormalisasi di sini
+         * supaya parser perintah tetap membaca nama perintah yang sama, lalu
+         * plugin mengecek m.__richRequest untuk memilih tampilan.
+         */
+        /*
+         * Task139 — prefix ganda HANYA sah kalau memakai prefix sesi ini.
+         * Dulu blok ini memakai /^([.\/!#]{2,})/ sehingga `//pingmc` juga
+         * dijalankan oleh bot yang prefix-nya `.` atau `★`. Aturan deteksi
+         * sekarang ada di lib/prefix-bot.js (splitDoublePrefix) supaya bisa
+         * diuji langsung tanpa WhatsApp.
+         */
+        try {
+            const _ganda = splitDoublePrefix(m.text, activePrefix)
+            if (_ganda.rich) {
+                m.__richRequest = true
+                m.text = _ganda.text
+            }
+        } catch (prefixError) { }
+
         const aiDispatchText = aiDispatchPlan ? `${activePrefix}${aiDispatchPlan.command}${aiDispatchPlan.args ? ' ' + aiDispatchPlan.args : ''}` : selfAIRequest ? '' : m.text;
         if (aiPlan.kind === 'answer') { m.__autoAIHandled = true; m.__autoAIAnswer = aiPlan.answer; m.__autoAIConversation = aiPlan.conversation; }
         if (aiDispatchPlan) {
@@ -579,8 +957,10 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 						groupMetadata,
 						user: groupUser ,
 						bot,
-						isROwner,
+						isROwner: aksesPenuh,
 						isOwner,
+						isOwnerUtama,
+						isDeveloper: isROwner,
 						isRAdmin,
 						isAdmin,
 						isBotAdmin,
@@ -684,29 +1064,32 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 				// plugin, data lintas akun) tetap milik owner platform. Pemilik
 				// sesi Jadibot tidak boleh memakainya walau punya akses penuh
 				// ke fitur bot miliknya.
-				if (plugin.platformOnly && botConfig?.type === 'jadibot' && !isROwner) {
+				if (plugin.platformOnly && botConfig?.type === 'jadibot' && !aksesPenuh) {
 					fail('platform', m, this);
 					continue;
 				}
-				if (plugin.rowner && plugin.owner && !(isROwner || isOwner)) {
+				if (plugin.rowner && plugin.owner && !(aksesPenuh || isOwner)) {
 					// Both Owner
 					fail('owner', m, this);
 					continue;
 				}
-                // Owner sesi Jadibot memakai seluruh fitur bot miliknya,
-                // termasuk perintah rowner seperti .sitagrup / .kudeta.
-                // Pengecualian hanya plugin di lib/owner-policy.js.
+                // Owner bot (bot utama MAUPUN Jadibot) memakai seluruh fitur bot
+                // miliknya, termasuk perintah rowner seperti .addowner/.sitagrup.
+                // Pengecualian hanya plugin platform di lib/owner-policy.js.
                 const jadibotOwnerAllowed =
-                    plugin.jadibotOwner === true && botConfig?.type === 'jadibot' && isOwner &&
-                    !plugin.platformOnly;
-                const jadibotOwnerFull = canUseOwnerPlugin(pluginBasename, {
-                    isROwner,
-                    isJadibot: botConfig?.type === 'jadibot',
+                    plugin.jadibotOwner === true && isOwner &&
+                    (botConfig?.type !== 'jadibot' || !plugin.platformOnly);
+                const botOwnerAccess = canUseOwnerPlugin(pluginBasename, {
+                    isROwner: aksesPenuh,
                     isOwner,
+                    botUtama: botConfig?.type !== 'jadibot',
                 });
-				if (plugin.rowner && !isROwner && !jadibotOwnerAllowed && !jadibotOwnerFull) {
-					// Real Owner
-					fail('rowner', m, this);
+				if (plugin.rowner && !aksesPenuh && !jadibotOwnerAllowed && !botOwnerAccess) {
+					// Real Owner / fitur platform
+					m.__ownerDeniedReason = isOwner
+                        ? platformOnlyReason(pluginBasename) || 'fitur platform'
+                        : '';
+					fail(isOwner ? 'platform' : 'rowner', m, this);
 					continue;
 				}
 				if ((plugin.owner || plugin.ownerOnly) && !isOwner) {
@@ -835,8 +1218,10 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 					groupMetadata,
 					user: groupUser ,
 					bot,
-					isROwner,
+					isROwner: aksesPenuh,
 					isOwner,
+					isOwnerUtama,
+					isDeveloper: isROwner,
 					isRAdmin,
 					isAdmin,
 					isBotAdmin,
@@ -865,7 +1250,9 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
                             if(isUsanagiPlugin)Object.defineProperty(pluginMessage,'quotedMessage',{value:null,writable:true,configurable:true});
                         }
                     }
-                    const executePlugin = () => plugin.call(this, pluginMessage, extra);
+                    /* Task177 — ukur durasi perintah; kirim kabar kalau > 20 detik
+                     * (penyebab "kadang engga respon" = menunggu API tanpa timeout). */
+                    const executePlugin = () => pantauPerintah(`${name}:${command}`, pluginMessage, this, () => plugin.call(this, pluginMessage, extra));
                     const isRpgMutation = name.startsWith('rpg/') || (Array.isArray(plugin.tags) && plugin.tags.includes('rpg'));
                     const messageId = m.key?.id || m.id;
                     const pluginResult = await (unifiedRpg()
@@ -909,7 +1296,10 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 					m.error = e;
 					console.error(e);
 					if (e) {
-						let text = format(e);
+						// Teks mentah (format(e)) hanya untuk log & laporan owner. Yang dikirim
+						// ke pengguna memakai pesan yang bisa dipahami (Task110).
+						const rawText = format(e);
+						let text = errorReplyText(e, format);
 						// Kirim juga ke halaman Feedback di website supaya jejaknya tidak hilang
 						// bersama log container. Dijalankan lebih dulu (tanpa menunggu) agar tidak
 						// menahan balasan ke pengguna; laporan yang sama digabung dalam 10 menit.
@@ -929,7 +1319,7 @@ if (m.isGroup && chat.adminOnly && !isAdmin && !isOwner && isCmd) {
 							for (let [jid] of global.owner.filter(([number, _, isDeveloper]) => isDeveloper && number)) {
 								let data = (await conn.onWhatsApp(jid))[0] || {};
 								if (data.exists) {
-                                    const errorReport = `*🗂️ Plugin:* ${m.plugin}\n*👤 Sender:* ${m.sender}\n*💬 Chat:* ${m.chat}\n*💻 Command:* ${usedPrefix}${command} ${args.join(' ')}\n📄 *Error Logs:*\n\n\`\`\`${text}\`\`\``.trim();
+                                    const errorReport = `*🗂️ Plugin:* ${m.plugin}\n*👤 Sender:* ${m.sender}\n*💬 Chat:* ${m.chat}\n*💻 Command:* ${usedPrefix}${command} ${args.join(' ')}\n📄 *Error Logs:*\n\n\`\`\`${rawText}\`\`\``.trim();
                                     // Jangan quote message user ke chat developer. Context quote dapat
                                     // membawa externalAdReply/URL serta karakter invisible dari pesan
                                     // asal ke laporan error.
@@ -1438,7 +1828,11 @@ global.dfail = (type, m, conn) => {
 
     owner: (m, conn) => conn.reply(m.chat, `Nee~ command ini khusus owner`, m),
 
-    platform: (m, conn) => conn.reply(m.chat, `Ara~ fitur ini bagian dari website/platform, jadi hanya developer bot yang bisa memakai`, m),
+    platform: (m, conn) => conn.reply(
+      m.chat,
+      `Ara~ fitur ini bagian dari website/platform: ${String(m.__ownerDeniedReason || 'data lintas akun').trim()}.\nHanya developer platform yang boleh memakainya, bukan owner bot.`,
+      m
+    ),
 
     mods: (m, conn) => conn.reply(m.chat, `Hehe~ hanya moderator yang boleh pakai fitur ini`, m),
 
@@ -1478,8 +1872,9 @@ global.dfail = (type, m, conn) => {
   return msg(m, conn)
 }
 let file = global.__filename(import.meta.url, true);
-watchFile(file, async () => {
+const watcherHandler = watchFile(file, async () => {
 	unwatchFile(file);
 	console.log(chalk.redBright("Update 'handler.js'"));
 	if (global.reloadHandler) console.log(await global.reloadHandler());
 });
+watcherHandler.unref?.()

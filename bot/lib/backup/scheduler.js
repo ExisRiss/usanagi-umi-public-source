@@ -1,252 +1,246 @@
-/* By AlzRiss - Usanagi Umi AI
+/* Task171 — penjadwal backup otomatis + unggah ke upload.gwenna.my.id
+ * dan notifikasi link ke nomor owner.
  *
- * Scheduler backup otomatis.
+ * Alur satu putaran (`jalankanBackup`):
+ *   1. cek sisa disk (BACKUP_MIN_FREE_BYTES)
+ *   2. buat arsip tar.gz (lib/backup/arsip.js)
+ *   3. enkripsi + unggah ke upload.gwenna.my.id (lib/backup/unggah.js)
+ *   4. kirim link + ukuran + sha256 ke owner lewat WhatsApp (lib/backup/kirim.js)
+ *   5. rapikan arsip lama (lokal & folder unggah)
  *
- * - Default setiap 10 menit (6x/jam, 144x/hari), bisa diubah administrator.
- * - Tidak bergantung pada dashboard/browser: berjalan di proses bot.
- * - Slot dihitung dari jam dinding (UTC), jadi tidak bergeser walau proses
- *   restart; slot yang terlewat dicatat, bukan dikejar dengan proses paralel.
- * - Saat start, bila backup terakhir sudah terlalu lama, satu catch-up
- *   dijalankan (tetap lewat lock yang sama, jadi tidak menumpuk).
+ * Status terakhir disimpan di `data/backup-system/otomatis.json` sehingga bisa
+ * dibaca dari WhatsApp (`.backup status`) tanpa membuka log server.
  */
+
+import fs from 'fs'
+import path from 'path'
 import { backupConfig } from './config.js'
-import { logEvent } from './log.js'
-import { readState, updateState, paths, ensureLayout } from './store.js'
-import { runBackup, isBackupRunning } from './pipeline.js'
+import { buatArsip, bersihkanArsipLokal, ruangBebasByte } from './arsip.js'
+import { unggahArsip } from './unggah.js'
+import { kirimKeOwner, kirimAntre } from './kirim.js'
+import { folderBackup } from './unggah.js'
 
-const TICK_MS = 15 * 1000
-const START_DELAY_MS = 60 * 1000
-const runtime = {
-  timer: null,
-  startedAt: null,
-  lastTickAt: null,
-  running: false,
-  busy: false,
-  lastResult: null,
-  lastError: null,
-}
-
-export function schedulerIntervalMinutes(cfg = backupConfig()) {
-  const state = readState(cfg)
-  const value = Number(state.settings.intervalMinutes || state.scheduler.intervalMinutes || cfg.intervalMinutes)
-  return Number.isFinite(value) && value >= 1 && value <= 1440 ? Math.round(value) : cfg.defaultIntervalMinutes
-}
-
-export function schedulerEnabled(cfg = backupConfig()) {
-  const state = readState(cfg)
-  return state.scheduler.enabled !== false
-}
-
-/** Slot berikutnya setelah waktu tertentu (UTC), dibulatkan ke kelipatan interval. */
-export function nextSlotAfter(now, intervalMinutes) {
-  const interval = Math.max(1, Number(intervalMinutes) || 10) * 60 * 1000
-  const stamp = now.getTime()
-  const slot = (Math.floor(stamp / interval) + 1) * interval
-  return new Date(slot + 5000)
-}
-
-/** Berapa slot yang terlewat antara dua waktu. */
-export function countMissedSlots(lastRunAt, now, intervalMinutes) {
-  if (!lastRunAt) return 0
-  const last = new Date(lastRunAt).getTime()
-  if (!Number.isFinite(last)) return 0
-  const interval = Math.max(1, Number(intervalMinutes) || 10) * 60 * 1000
-  const gap = now.getTime() - last
-  if (gap <= interval * 1.5) return 0
-  return Math.max(0, Math.floor(gap / interval) - 1)
-}
-
-async function persist(cfg, patch) {
-  return await updateState(cfg, state => {
-    Object.assign(state.scheduler, patch)
-    return state
-  })
-}
-
-/** Jalankan backup terjadwal dengan semua penjagaan. */
-export async function runScheduled(reason = 'scheduled', cfg = backupConfig()) {
-  if (!schedulerEnabled(cfg) && reason === 'scheduled') {
-    return { skipped: true, reason: 'scheduler-disabled' }
-  }
-  const lock = isBackupRunning(cfg)
-  if (lock.running) {
-    const state = await updateState(cfg, current => {
-      current.scheduler.skippedBusy = Number(current.scheduler.skippedBusy || 0) + 1
-      current.scheduler.missedSlots = Number(current.scheduler.missedSlots || 0) + 1
-      return current
-    })
-    logEvent(cfg, {
-      level: 'warn',
-      type: 'scheduler',
-      message: `Slot ${reason} dilewati: backup lain masih berjalan sejak ${lock.holder?.startedAt || 'tidak diketahui'}.`,
-      meta: { skippedBusy: state.scheduler.skippedBusy },
-    })
-    return { skipped: true, reason: 'busy' }
-  }
-
-  runtime.busy = true
-  runtime.lastTickAt = new Date().toISOString()
+export function waktuWita(ms = Date.now()) {
   try {
-    const record = await runBackup(cfg, { type: 'full', reason, actor: 'scheduler' })
-    runtime.lastResult = { id: record.id, at: record.completedAt, bytes: record.sizeBytes }
-    runtime.lastError = null
-    await updateState(cfg, state => {
-      state.scheduler.lastRunAt = new Date().toISOString()
-      state.scheduler.lastSuccessAt = new Date().toISOString()
-      state.scheduler.lastFailureAt = state.scheduler.lastFailureAt
-      state.scheduler.lastError = null
-      state.counters.success = Number(state.counters.success || 0) + 1
-      return state
-    })
-    return { ok: true, id: record.id }
+    return new Date(ms).toLocaleString('id-ID', { timeZone: 'Asia/Makassar', hour12: false }) + ' WITA'
   } catch (error) {
-    runtime.lastError = String(error.message || 'unknown')
-    await updateState(cfg, state => {
-      state.scheduler.lastRunAt = new Date().toISOString()
-      state.scheduler.lastFailureAt = new Date().toISOString()
-      state.scheduler.lastError = String(error.message || 'unknown').slice(0, 300)
-      state.counters.failed = Number(state.counters.failed || 0) + 1
-      return state
-    })
-    logEvent(cfg, { level: 'error', type: 'scheduler', message: `Backup terjadwal gagal: ${error.message}` })
-    return { ok: false, error: String(error.message || 'unknown') }
-  } finally {
-    runtime.busy = false
+    return new Date(ms).toISOString()
   }
 }
 
-async function tick(cfg) {
-  const interval = schedulerIntervalMinutes(cfg)
-  const state = readState(cfg)
-  const now = new Date()
-  const nextRunAt = state.scheduler.nextRunAt ? new Date(state.scheduler.nextRunAt) : null
+function mb(byte) {
+  const n = Number(byte) || 0
+  if (n >= 1048576) return `${(n / 1048576).toFixed(2)} MB`
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${n} B`
+}
 
-  if (!nextRunAt || !Number.isFinite(nextRunAt.getTime()) || nextRunAt.getTime() <= now.getTime()) {
-    const next = nextSlotAfter(now, interval)
-    await persist(cfg, { nextRunAt: next.toISOString(), intervalMinutes: interval })
-    if (!nextRunAt) return
+export function mbTeks(byte) { return mb(byte) }
+
+export function bacaStatus(cfg = null) {
+  const konf = cfg || backupConfig()
+  try {
+    return JSON.parse(fs.readFileSync(konf.otomatisFile, 'utf8'))
+  } catch (error) {
+    return { terakhir: null, riwayat: [], jumlah: { sukses: 0, gagal: 0 } }
   }
+}
 
-  const target = state.scheduler.nextRunAt ? new Date(state.scheduler.nextRunAt) : null
-  if (!target || now.getTime() < target.getTime()) return
-  if (!schedulerEnabled(cfg)) {
-    await persist(cfg, { nextRunAt: nextSlotAfter(now, interval).toISOString() })
-    return
+function simpanStatus(cfg, data) {
+  try {
+    fs.mkdirSync(cfg.dir, { recursive: true })
+    fs.writeFileSync(cfg.otomatisFile, JSON.stringify(data, null, 2), { mode: 0o600 })
+  } catch (error) { }
+}
+
+/** Hapus arsip unggahan lama (hanya berkas backup milik nomor owner). */
+function bersihkanUnggahan(cfg) {
+  let dihapus = 0
+  try {
+    const folderId = folderBackup(cfg)
+    if (!folderId) return 0
+    const folder = path.join(cfg.root, 'data', 'upload-publik', folderId)
+    if (!fs.existsSync(folder)) return 0
+    const daftar = fs.readdirSync(folder)
+      .filter((n) => n.startsWith('backup_') && (n.endsWith('.tar.gz') || n.endsWith('.tar.gz.enc')))
+      .map((n) => ({ n, w: fs.statSync(path.join(folder, n)).mtimeMs }))
+      .sort((a, b) => b.w - a.w)
+    for (const item of daftar.slice(Math.max(1, cfg.lokalSimpan))) {
+      try { fs.rmSync(path.join(folder, item.n), { force: true }); dihapus += 1 } catch (error) { }
+    }
+  } catch (error) { }
+  return dihapus
+}
+
+let sedangJalan = false
+
+/* Kunci berkas: mencegah dua putaran berjalan bersamaan (mis. plugin dimuat
+ * ulang saat backup sedang menulis arsip). Kunci lebih tua dari 15 menit
+ * dianggap sisa proses mati dan boleh diambil alih. */
+function ambilKunci(cfg) {
+  try {
+    const st = fs.statSync(cfg.kunciFile)
+    if (Date.now() - st.mtimeMs < 15 * 60 * 1000) return false
+  } catch (error) { }
+  try {
+    fs.mkdirSync(path.dirname(cfg.kunciFile), { recursive: true })
+    fs.writeFileSync(cfg.kunciFile, String(process.pid), { mode: 0o600 })
+    return true
+  } catch (error) {
+    return true
   }
+}
 
-  // Jadwalkan slot berikutnya lebih dulu supaya tick terlambat tidak menumpuk.
-  await persist(cfg, { nextRunAt: nextSlotAfter(now, interval).toISOString(), intervalMinutes: interval })
-  runScheduled('scheduled', cfg).catch(() => {})
+function lepasKunci(cfg) {
+  try { fs.rmSync(cfg.kunciFile, { force: true }) } catch (error) { }
 }
 
 /**
- * Nyalakan layanan backup (scheduler). Idempoten.
- * @param {object} [cfg]
+ * Jalankan satu siklus backup.
+ * @returns {Promise<object>} ringkasan hasil
  */
-export async function startBackupScheduler(cfg = backupConfig()) {
-  if (runtime.timer) return schedulerSnapshot(cfg)
-  ensureLayout(cfg)
-  runtime.startedAt = new Date().toISOString()
-
-  const interval = schedulerIntervalMinutes(cfg)
-  const state = readState(cfg)
-  const now = new Date()
-  const missed = countMissedSlots(state.scheduler.lastRunAt, now, interval)
-  const next = nextSlotAfter(now, interval)
-
-  await updateState(cfg, current => {
-    current.scheduler.intervalMinutes = interval
-    current.scheduler.nextRunAt = next.toISOString()
-    if (missed > 0) current.scheduler.missedSlots = Number(current.scheduler.missedSlots || 0) + missed
-    if (!current.scheduler.lastSlot) current.scheduler.lastSlot = next.toISOString()
-    return current
-  })
-
-  logEvent(cfg, {
-    level: 'info',
-    type: 'scheduler',
-    message: schedulerEnabled(cfg)
-      ? `Scheduler backup aktif: setiap ${interval} menit, slot berikutnya ${next.toISOString()}.`
-      : 'Scheduler backup nonaktif (dinonaktifkan administrator).',
-    meta: { missedSlots: missed, paths: paths(cfg).root },
-  })
-
-  if (missed > 0) {
-    logEvent(cfg, { level: 'warn', type: 'scheduler', message: `${missed} slot backup terlewat saat scheduler tidak berjalan.` })
+export async function jalankanBackup({ alasan = 'jadwal', cfg = null } = {}) {
+  const konf = cfg || backupConfig()
+  if (sedangJalan) return { ok: false, alasan: 'backup lain sedang berjalan' }
+  if (!ambilKunci(konf)) return { ok: false, alasan: 'backup lain sedang berjalan (kunci aktif)' }
+  sedangJalan = true
+  const mulai = Date.now()
+  const status = bacaStatus(konf)
+  const hasil = {
+    waktu: mulai,
+    waktuTeks: waktuWita(mulai),
+    alasan,
+    ok: false,
+    tahap: 'mulai',
+    arsip: null,
+    unggah: null,
+    notif: null,
+    galat: null,
   }
 
-  const lastSuccess = state.scheduler.lastSuccessAt ? new Date(state.scheduler.lastSuccessAt).getTime() : 0
-  const tooOld = !lastSuccess || now.getTime() - lastSuccess > interval * 2 * 60 * 1000
-  if (schedulerEnabled(cfg) && tooOld) {
-    setTimeout(() => {
-      runScheduled('catch-up', cfg).catch(() => {})
-    }, START_DELAY_MS).unref?.()
-  }
+  try {
+    const bebas = ruangBebasByte(konf.root)
+    hasil.diskBebas = bebas
+    if (bebas < konf.minFreeByte) throw new Error(`disk terlalu penuh (bebas ${mb(bebas)}, minimum ${mb(konf.minFreeByte)})`)
 
-  runtime.timer = setInterval(() => {
-    try {
-      Promise.resolve(tick(cfg)).catch(error => {
-        runtime.lastError = error.message
-        logEvent(cfg, { level: 'error', type: 'scheduler', message: `Tick scheduler gagal: ${error.message}` })
-      })
-    } catch (error) {
-      runtime.lastError = error.message
-      logEvent(cfg, { level: 'error', type: 'scheduler', message: `Tick scheduler gagal: ${error.message}` })
+    hasil.tahap = 'arsip'
+    const arsip = await buatArsip(konf)
+    hasil.arsip = {
+      nama: arsip.nama,
+      ukuran: arsip.ukuran,
+      ukuranTeks: mb(arsip.ukuran),
+      sha256: arsip.sha256,
+      entri: arsip.jumlahBerkas,
+      komponen: arsip.komponen,
+      situs: arsip.jumlahSitus,
+      jadibot: arsip.jumlahJadibot,
+      tunnel: arsip.komponen.includes('.tunnel.env'),
+      durasiMs: arsip.durasiMs,
     }
-  }, TICK_MS)
-  runtime.timer.unref?.()
 
-  return schedulerSnapshot(cfg)
-}
-
-export function stopBackupScheduler() {
-  if (runtime.timer) clearInterval(runtime.timer)
-  runtime.timer = null
-}
-
-export function schedulerSnapshot(cfg = backupConfig()) {
-  const state = readState(cfg)
-  const interval = schedulerIntervalMinutes(cfg)
-  const lock = isBackupRunning(cfg)
-  return {
-    enabled: state.scheduler.enabled !== false,
-    intervalMinutes: interval,
-    defaultIntervalMinutes: cfg.defaultIntervalMinutes,
-    provider: 'in-process scheduler (server-side)',
-    processStartedAt: runtime.startedAt,
-    lastTickAt: runtime.lastTickAt,
-    running: lock.running || runtime.busy,
-    lockHolder: lock.holder,
-    nextRunAt: state.scheduler.nextRunAt,
-    lastRunAt: state.scheduler.lastRunAt,
-    lastSuccessAt: state.scheduler.lastSuccessAt,
-    lastFailureAt: state.scheduler.lastFailureAt,
-    missedSlots: Number(state.scheduler.missedSlots || 0),
-    skippedBusy: Number(state.scheduler.skippedBusy || 0),
-    lastError: state.scheduler.lastError,
-    lastResult: runtime.lastResult,
-  }
-}
-
-/** Ubah pengaturan scheduler. Interval berubah => slot dihitung ulang. */
-export async function configureScheduler(cfg, { enabled, intervalMinutes }) {
-  const patch = {}
-  if (typeof enabled === 'boolean') patch.enabled = enabled
-  let interval = null
-  if (intervalMinutes !== undefined && intervalMinutes !== null) {
-    const value = Number(intervalMinutes)
-    if (!Number.isFinite(value) || value < 1 || value > 1440) {
-      throw Object.assign(new Error('Interval harus antara 1 dan 1440 menit.'), { status: 400 })
+    hasil.tahap = 'unggah'
+    if (konf.unggah) {
+      const unggah = await unggahArsip(konf, arsip)
+      hasil.unggah = unggah
     }
-    interval = Math.round(value)
-    patch.intervalMinutes = interval
+
+    hasil.tahap = 'notif'
+    const baris = [
+      '🗄️ *BACKUP BOT — SELESAI*',
+      '',
+      `Waktu    : ${hasil.waktuTeks}`,
+      `Arsip    : ${arsip.nama}`,
+      `Ukuran   : ${mb(arsip.ukuran)} (${arsip.jumlahBerkas} entri)`,
+      `Isi      : ${arsip.komponen.join(', ')}`,
+      `Website  : ${arsip.jumlahSitus} situs deploy ikut (folder situs/)`,
+      `Jadibot  : ${arsip.jumlahJadibot} sesi jadibot ikut (sessions/jadibot/)`,
+      `Tunnel   : ${arsip.komponen.includes('.tunnel.env') ? 'token .tunnel.env ikut' : '⚠️ .tunnel.env TIDAK ada'}`,
+      `SHA-256  : ${arsip.sha256.slice(0, 32)}…`,
+      `Durasi   : ${Date.now() - mulai} ms`,
+    ]
+    if (hasil.unggah) {
+      baris.push('', '🔗 *Link unduhan*', hasil.unggah.url)
+      baris.push('', '📦 Arsip tidak dienkripsi — langsung ekstrak pakai tar.')
+      baris.push(`📥 Unduh langsung: ${hasil.unggah.urlUnduh}`)
+      baris.push('', '⚠️ Link ini berisi sesi WhatsApp + token tunnel. Jangan dibagikan.')
+    } else {
+      baris.push('', '⚠️ Unggah dimatikan (BACKUP_UPLOAD=0) — arsip hanya di server.')
+    }
+    hasil.notif = await kirimKeOwner(konf, baris.join('\n'))
+    hasil.ok = true
+    hasil.tahap = 'selesai'
+  } catch (error) {
+    hasil.ok = false
+    hasil.galat = error.message
+    hasil.notif = await kirimKeOwner(konf, [
+      '⚠️ *BACKUP GAGAL*',
+      '',
+      `Waktu : ${waktuWita()}`,
+      `Tahap : ${hasil.tahap}`,
+      `Sebab : ${error.message}`,
+    ].join('\n'))
+  } finally {
+    hasil.durasiMs = Date.now() - mulai
+    /* antrean pesan lama dikirim dulu supaya tidak menumpuk */
+    try { hasil.antre = await kirimAntre(konf) } catch (error) { }
+    hasil.lokalDihapus = bersihkanArsipLokal(konf)
+    hasil.unggahanDihapus = bersihkanUnggahan(konf)
+
+    const baru = bacaStatus(konf)
+    baru.terakhir = hasil
+    baru.riwayat = [hasil, ...(Array.isArray(baru.riwayat) ? baru.riwayat : [])].slice(0, 20)
+    baru.jumlah = {
+      sukses: Number(baru?.jumlah?.sukses || 0) + (hasil.ok ? 1 : 0),
+      gagal: Number(baru?.jumlah?.gagal || 0) + (hasil.ok ? 0 : 1),
+    }
+    baru.diperbarui = Date.now()
+    simpanStatus(konf, baru)
+    lepasKunci(konf)
+    sedangJalan = false
   }
-  const next = nextSlotAfter(new Date(), interval || schedulerIntervalMinutes(cfg))
-  patch.nextRunAt = next.toISOString()
-  await updateState(cfg, state => {
-    Object.assign(state.scheduler, patch)
-    if (interval) state.settings.intervalMinutes = interval
-    return state
-  })
-  return schedulerSnapshot(cfg)
+  return hasil
 }
+
+let timer = null
+let bootTimer = null
+
+/** Mulai penjadwal. Aman dipanggil berulang (timer lama dibersihkan). */
+export function mulaiPenjadwal(cfg = null) {
+  const konf = cfg || backupConfig()
+  if (!konf.autostart) return { aktif: false, alasan: 'BACKUP_AUTOSTART=0' }
+
+  /* Aman saat plugin dimuat ulang: timer lama (modul lama) dibersihkan. */
+  const lama = globalThis.__umiBackupTimer
+  if (lama && lama.interval) clearInterval(lama.interval)
+  if (lama && lama.boot) clearTimeout(lama.boot)
+  if (timer) clearInterval(timer)
+  if (bootTimer) clearTimeout(bootTimer)
+
+  const putaran = () => {
+    jalankanBackup({ alasan: 'jadwal', cfg: konf }).then((hasil) => {
+      console.log(`[BACKUP] ${hasil.ok ? 'sukses' : 'gagal'} — ${hasil.ok ? hasil.unggah?.url || hasil.arsip.nama : hasil.galat}`)
+    }).catch((error) => console.warn('[BACKUP]', error.message))
+  }
+
+  /* Putaran pertama 90 detik setelah start (menunggu WhatsApp tersambung). */
+  bootTimer = setTimeout(() => {
+    const st = bacaStatus(konf)
+    const terakhir = Number(st?.terakhir?.waktu || 0)
+    const formatLama = Boolean(st?.terakhir?.unggah && st.terakhir.unggah.enkripsi)
+    /* Task172 — arsip versi lama (terenkripsi) dianggap belum ada: langsung
+     * buat arsip baru berformat sekarang sesudah bot naik.
+     * Task206 — backup terakhir GAGAL juga langsung diulang saat boot
+     * (dulu menunggu satu jam penuh hanya untuk gagal lagi). */
+    const perlu = !terakhir || formatLama || st?.terakhir?.ok === false || Date.now() - terakhir >= konf.intervalMs
+    if (perlu) putaran()
+  }, 90_000)
+  bootTimer.unref?.()
+
+  timer = setInterval(putaran, konf.intervalMs)
+  timer.unref?.()
+  globalThis.__umiBackupTimer = { interval: timer, boot: bootTimer }
+
+  return { aktif: true, intervalMenit: konf.intervalMenit, owner: konf.owner, unggah: konf.unggah }
+}
+
+export default { jalankanBackup, mulaiPenjadwal, bacaStatus, waktuWita, mbTeks }

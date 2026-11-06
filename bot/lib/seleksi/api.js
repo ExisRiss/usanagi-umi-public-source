@@ -1,0 +1,824 @@
+/* By AlzRiss - Usanagi Umi AI
+ *
+ * Task190 — penyaji & API "Umi Alz Seleksi" (umi-alz-seleksi.gwenna.my.id).
+ * Dipanggil paling awal dari lib/jadibot-platform-api.js#route.
+ *
+ * Jalur:
+ *   GET  /                              → SPA
+ *   GET  /<idAkun>/<slug>               → SPA (form publik seleksi)
+ *   GET  /<idAkun>/<slug>/seleksi       → SPA (panel seleksi, wajib akses)
+ *   /api/*                             → REST (lihat bawah)
+ *
+ * Sinkron bot↔web memakai header X-Sinkron-Secret (data/seleksi-sync.json).
+ */
+
+import crypto from 'crypto'
+import fs from 'fs'
+import path from 'path'
+import {
+    db, simpan, catatLog, idAkunDariNomor, idAcak, slugAman, cocokPassword,
+    buatAkun, cariAkun, roleDariNomor, buatGrup, grupBySlug, idAkunPemilik,
+    punyaAksesSeleksi, buatPendaftar, pendaftarByKode, pendaftarById,
+    selesaikanPendaftaran, chatTerakhir, chatTambah, bacaFoto, simpanFoto,
+    helperNomor, nomorDeveloper,
+} from './store.js'
+
+const HOST_BAWAAN = 'umi-alz-seleksi.gwenna.my.id'
+const BERKAS_SINKRON = path.join(process.cwd(), 'data', 'seleksi-sync.json')
+const SPA_PATH = path.join(process.cwd(), 'situs', 'umi-alz-seleksi', 'index.html')
+
+let cacheSpa = { waktu: 0, isi: '' }
+let cacheSinkron = { waktu: 0, secret: '' }
+
+function hostSeleksi() {
+    try {
+        const isi = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data', 'seleksi', 'db.json'), 'utf8'))
+        if (isi?.pengaturan?.host) return String(isi.pengaturan.host).toLowerCase()
+    } catch { /* pakai bawaan */ }
+    return HOST_BAWAAN
+}
+
+function secretSinkron() {
+    if (Date.now() - cacheSinkron.waktu < 5000) return cacheSinkron.secret
+    let secret = ''
+    try { secret = String(JSON.parse(fs.readFileSync(BERKAS_SINKRON, 'utf8')).secret || '') } catch { /* kosong */ }
+    cacheSinkron = { waktu: Date.now(), secret }
+    return secret
+}
+
+export function hostDikenali(host) {
+    const bersih = s => String(s || '').split(':')[0].toLowerCase().replace(/\.$/, '')
+    return bersih(host) === bersih(hostSeleksi())
+}
+
+function send(res, kode, isi, header = {}) {
+    const body = Buffer.isBuffer(isi) ? isi : Buffer.from(typeof isi === 'string' ? isi : JSON.stringify(isi))
+    const tipe = header['Content-Type']
+        || (Buffer.isBuffer(isi) ? 'application/octet-stream' : typeof isi === 'string' ? 'text/html; charset=utf-8' : 'application/json; charset=utf-8')
+    res.writeHead(kode, { 'Content-Type': tipe, 'Content-Length': body.length, ...header })
+    res.end(kode === 204 ? undefined : body)
+}
+
+function bacaBody(req, maks = 8 * 1024 * 1024) {
+    return new Promise((resolve, reject) => {
+        let total = 0
+        const potongan = []
+        req.on('data', chunk => {
+            total += chunk.length
+            if (total > maks) { reject(new Error('BODY_TOO_LARGE')); req.destroy(); return }
+            potongan.push(chunk)
+        })
+        req.on('end', () => resolve(Buffer.concat(potongan)))
+        req.on('error', reject)
+    })
+}
+
+async function jsonBody(req) {
+    const raw = await bacaBody(req)
+    if (!raw.length) return {}
+    try { return JSON.parse(raw.toString('utf8')) } catch { return {} }
+}
+
+function ambilToken(req) {
+    const cookie = String(req.headers.cookie || '').split(';').map(s => s.trim())
+    const dariCookie = cookie.find(s => s.startsWith('umi_sel='))?.slice('umi_sel='.length)
+    const auth = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
+    return auth || dariCookie || ''
+}
+
+function akunDariReq(req) {
+    const token = ambilToken(req)
+    if (!token || token.length < 12) return null
+    for (const akun of Object.values(db().akun)) {
+        if (akun.token === token) return akun
+    }
+    return null
+}
+
+function headerCookie(token) {
+    return { 'Set-Cookie': `umi_sel=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${30 * 24 * 3600}` }
+}
+
+/** Task192 — hanya URL http(s) yang valid dipasang di grup seleksi. */
+function urlAman(t) {
+    const v = String(t || '').trim()
+    return /^https?:\/\/\S{8,300}$/.test(v) ? v : ''
+}
+
+function namaFileSafe(nama) {
+    return String(nama || '').replace(/[^\w.-]/g, '_').slice(0, 60) || 'foto.jpg'
+}
+
+/* ── SPA ───────────────────────────────────────────────────────────────── */
+
+function spa() {
+    if (Date.now() - cacheSpa.waktu < 3000) return cacheSpa.isi
+    try {
+        cacheSpa = { waktu: Date.now(), isi: fs.readFileSync(SPA_PATH, 'utf8') }
+    } catch {
+        cacheSpa = { waktu: 0, isi: '<h1>Umi Alz Seleksi — berkas SPA belum terpasang.</h1>' }
+    }
+    return cacheSpa.isi
+}
+
+/* ── REST ──────────────────────────────────────────────────────────────── */
+
+async function routeApi(req, res, url) {
+    const p = url.pathname
+    const method = req.method
+    const d = db()
+
+    /* Status publik */
+    if (p === '/api/status' && method === 'GET') {
+        let ramMb = 0
+        try { ramMb = Math.round(process.memoryUsage().rss / 1048576) } catch { /* abaikan */ }
+        const totalPendaftar = Object.values(d.pendaftar).filter(x => x.status === 'menunggu').length
+        return send(res, 200, {
+            ok: true,
+            server: { online: true, uptime: Math.round(process.uptime()), ramMb },
+            jumlahGrup: Object.keys(d.grup).length,
+            pendaftarMenunggu: totalPendaftar,
+            pesanSambutan: d.pengaturan.pesanSambutan,
+            waktu: new Date().toISOString(),
+        })
+    }
+
+    /* ── akun ── */
+    if (p === '/api/akun/daftar' && method === 'POST') {
+        const b = await jsonBody(req)
+        const username = String(b.username || '').toLowerCase().replace(/[^\w]/g, '').slice(0, 24)
+        const nomor = String(b.nomor || '').replace(/\D/g, '')
+        if (username.length < 3) return send(res, 400, { error: 'Username minimal 3 huruf (hanya huruf/angka).' })
+        if (String(b.password || '').length < 6) return send(res, 400, { error: 'Password minimal 6 karakter.' })
+        if (cariAkun(username) || (nomor && Object.values(d.akun).some(a => a.nomor === nomor))) {
+            return send(res, 409, { error: 'Username/nomor itu sudah terdaftar.' })
+        }
+        const akun = buatAkun({ username, password: b.password, nomor, nama: b.nama || username, role: roleDariNomor(nomor) })
+        catatLog('akun', `Akun web baru: ${akun.username}`, { akunId: akun.id })
+        simpan()
+        return send(res, 200, { ok: true, akun: ringkasAkun(akun) }, headerCookie(akun.token))
+    }
+
+    if (p === '/api/akun/masuk' && method === 'POST') {
+        const b = await jsonBody(req)
+        const akun = cariAkun(b.username || '')
+        if (!akun || !cocokPassword(b.password, akun.salt, akun.hash)) {
+            return send(res, 401, { error: 'Username atau password salah.' })
+        }
+        /* Rekanisasi role developer dari config bot. */
+        if (roleDariNomor(akun.nomor) === 'owner' && akun.role !== 'owner') akun.role = 'owner'
+        simpan()
+        return send(res, 200, { ok: true, akun: ringkasAkun(akun) }, headerCookie(akun.token))
+    }
+
+    if (p === '/api/akun/keluar' && method === 'POST') {
+        return send(res, 200, { ok: true }, { 'Set-Cookie': 'umi_sel=; Path=/; HttpOnly; Max-Age=0' })
+    }
+
+    if (p === '/api/akun/profil' && method === 'GET') {
+        const akun = akunDariReq(req)
+        if (!akun) return send(res, 401, { error: 'Belum masuk.' })
+        return send(res, 200, { ok: true, akun: { ...ringkasAkun(akun), bio: akun.bio, token: akun.token, foto: akun.foto ? '/api/foto/akun/' + akun.foto : '' } })
+    }
+
+    if (p === '/api/akun/profil' && method === 'POST') {
+        const akun = akunDariReq(req)
+        if (!akun) return send(res, 401, { error: 'Belum masuk.' })
+        const b = await jsonBody(req)
+        if (typeof b.nama === 'string' && b.nama.trim()) akun.nama = b.nama.trim().slice(0, 40)
+        if (typeof b.bio === 'string') akun.bio = b.bio.slice(0, 200)
+        if (b.passwordBaru) {
+            if (!cocokPassword(b.passwordLama, akun.salt, akun.hash)) return send(res, 400, { error: 'Password lama salah.' })
+            if (String(b.passwordBaru).length < 6) return send(res, 400, { error: 'Password baru minimal 6 karakter.' })
+            const baru = buatAkun({ username: akun.username + '_x', password: b.passwordBaru })
+            akun.salt = baru.salt; akun.hash = baru.hash
+            delete d.akun[baru.id]
+        }
+        if (typeof b.fotoBase64 === 'string' && b.fotoBase64.length > 100) {
+            const nama = simpanFoto(b.fotoBase64)
+            if (nama) akun.foto = nama
+        }
+        if (b.rolToken === 'putar') akun.token = (await import('./store.js')).tokenAcak()
+        simpan()
+        return send(res, 200, { ok: true, akun: ringkasAkun(akun), token: akun.token })
+    }
+
+    /* ── foto publik ── */
+    if (p.startsWith('/api/foto/') && method === 'GET') {
+        const bagian = p.split('/').filter(Boolean)  // api, foto, jenis, nama
+        if (bagian.length !== 4) return send(res, 404, { error: 'Tidak ditemukan.' })
+        const buffer = bacaFoto(bagian[3])
+        if (!buffer) return send(res, 404, { error: 'Foto tidak ditemukan.' })
+        const ext = path.extname(bagian[3]).toLowerCase()
+        const tipe = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg'
+        return send(res, 200, buffer, { 'Content-Type': tipe, 'Cache-Control': 'public, max-age=3600' })
+    }
+
+    /* ── grup publik ── */
+    if (p === '/api/grup/publik' && method === 'GET') {
+        /* Task192 — PRIVATE: tanpa idAkun pemilik tidak ada daftar apa pun;
+         * seleksi hanya bisa diakses lewat link langsung. */
+        const idAkun = String(url.searchParams.get('idAkun') || '')
+        if (!idAkun) return send(res, 200, { ok: true, grup: [] })
+        const semua = Object.values(d.grup).filter(g => !g.banned && g.daftarAktif)
+        const punyaId = semua.filter(g => idAkunPemilik(g) === idAkun)
+        return send(res, 200, {
+            ok: true,
+            grup: punyaId.map(g => ({
+                slug: g.slug, nama: g.nama, deskripsi: g.deskripsi,
+                idAkun: idAkunPemilik(g),
+                menunggu: Object.values(d.pendaftar).filter(x => x.grupSlug === g.slug && x.status === 'menunggu').length,
+            })),
+        })
+    }
+
+    if (p === '/api/grup/form' && method === 'GET') {
+        const idAkun = String(url.searchParams.get('idAkun') || '')
+        const slug = String(url.searchParams.get('slug') || '')
+        const g = grupBySlug(slug)
+        if (!g || g.banned || idAkunPemilik(g) !== idAkun) return send(res, 404, { error: 'Grup seleksi tidak ditemukan.' })
+        return send(res, 200, {
+            ok: true,
+            grup: { slug: g.slug, nama: g.nama, deskripsi: g.deskripsi, linkGrup: g.linkGrup || '', linkUtama: g.linkUtama || '' },
+            fields: g.fields.map(f => ({ kunci: f.kunci, label: f.label, tipe: f.tipe, wajib: Boolean(f.wajib) })),
+        })
+    }
+
+    /* ── pendaftaran ── */
+    if (p === '/api/pendaftaran' && method === 'POST') {
+        const b = await jsonBody(req)
+        const idAkun = String(b.idAkun || '')
+        const slug = String(b.slug || '')
+        const g = grupBySlug(slug)
+        if (!g || g.banned || idAkunPemilik(g) !== idAkun) return send(res, 404, { error: 'Grup seleksi tidak ditemukan.' })
+        if (!g.daftarAktif) return send(res, 400, { error: 'Pendaftaran untuk grup ini sedang ditutup.' })
+
+        let pendaftar = null
+        if (b.kode) {
+            if (!/^\d{8}$/.test(String(b.kode).trim())) return send(res, 400, { error: 'Kode harus 8 digit angka. Jalankan /seleksi dulu di grup untuk mendapat kode.' })
+            pendaftar = pendaftarByKode(b.kode)
+            if (!pendaftar || pendaftar.grupSlug !== slug) return send(res, 400, { error: 'Kode tidak valid atau sudah dipakai. Jalankan /seleksi dulu di grup untuk kode baru.' })
+        } else {
+            const nomor = String(b.nomor || '').replace(/\D/g, '')
+            pendaftar = buatPendaftar({ grupSlug: slug, kode: idAcak(6).toUpperCase(), nomor, serverKey: g.serverKey })
+        }
+
+        const data = {}
+        for (const f of g.fields) {
+            const nilai = String(b.data?.[f.kunci] ?? '').trim().slice(0, 300)
+            if (f.wajib && !nilai) return send(res, 400, { error: `Kolom "${f.label}" wajib diisi.` })
+            data[f.kunci] = nilai
+        }
+        pendaftar.data = data
+        if (typeof b.fotoBase64 === 'string' && b.fotoBase64.length > 100) {
+            const nama = simpanFoto(b.fotoBase64)
+            if (nama) pendaftar.foto = nama
+        }
+        pendaftar.status = 'menunggu'
+        pendaftar.antar = true
+        catatLog('pendaftar', `Pendaftar baru di ${g.nama}: ${data.nama || pendaftar.nomor || pendaftar.id}`, { grupSlug: slug })
+        simpan()
+        return send(res, 200, {
+            ok: true, id: pendaftar.id,
+            pesan: 'Pendaftaran terkirim! Admin grup akan meninjau datamu.',
+            linkUtama: g.linkUtama || '', linkGrup: g.linkGrup || '',
+        })
+    }
+
+    /* Task194 — daftar grup seleksi milik/akses akun ini (multi-grup per akun) */
+    if (p === '/api/grup/saya' && method === 'GET') {
+        const akun = akunDariReq(req)
+        if (!akun) return send(res, 401, { error: 'Masuk dulu.' })
+        const nomorAkun = String(akun.nomor || '')
+        /* Task195 — daftar hanya grup milik/undangan; role owner tak lagi
+         * melihat semua grup seleksi. */
+        const daftar = Object.values(d.grup).filter(g => {
+            if (g.pemilikJid === akun.jid || (nomorAkun && g.pemilikJid === nomorAkun + '@s.whatsapp.net')) return true
+            return Boolean(g.helper[akun.jid] || (nomorAkun && Object.values(g.helper).some(h => h.nomor === nomorAkun)))
+        }).map(g => {
+            const idPemilik = idAkunPemilik(g)
+            const pemilik = g.pemilikJid === akun.jid || (nomorAkun && g.pemilikJid === nomorAkun + '@s.whatsapp.net')
+            return {
+                slug: g.slug, nama: g.nama,
+                peran: pemilik ? 'pemilik' : 'helper',
+                daftarAktif: g.daftarAktif, banned: g.banned,
+                url: `https://${hostSeleksi()}/${idPemilik}/${g.slug}`,
+                panelUrl: `https://${hostSeleksi()}/${idPemilik}/${g.slug}/seleksi`,
+            }
+        })
+        return send(res, 200, { ok: true, grup: daftar })
+    }
+
+    /* ── panel seleksi ── */
+    if (p === '/api/seleksi/list' && method === 'GET') {
+        const akun = akunDariReq(req)
+        if (!akun) return send(res, 401, { error: 'Masuk dulu untuk membuka panel.' })
+        const idAkun = String(url.searchParams.get('idAkun') || '')
+        const slug = String(url.searchParams.get('slug') || '')
+        const g = grupBySlug(slug)
+        if (!g || idAkunPemilik(g) !== idAkun) return send(res, 404, { error: 'Grup tidak ditemukan.' })
+        if (!punyaAksesSeleksi(akun, g)) return send(res, 403, { error: 'Kamu tidak punya akses seleksi di grup ini. Minta ke pemilik grup seleksi.' })
+        const status = String(url.searchParams.get('status') || '')
+        let daftar = Object.values(d.pendaftar).filter(x => x.grupSlug === slug)
+        if (status) daftar = daftar.filter(x => x.status === status)
+        daftar.sort((a, b2) => String(b2.waktu).localeCompare(String(a.waktu)))
+        return send(res, 200, {
+            ok: true,
+            grup: { slug: g.slug, nama: g.nama, deskripsi: g.deskripsi, fields: g.fields, statistik: g.statistik, daftarAktif: g.daftarAktif, banned: g.banned },
+            akses: g.pemilikJid === akun.jid ? 'pemilik' : 'helper',   // Task195
+            pendaftar: daftar.map(p => ({ ...p, foto: p.foto ? '/api/foto/pendaftar/' + p.foto : '' })),
+        })
+    }
+
+    if (p === '/api/seleksi/aksi' && method === 'POST') {
+        const akun = akunDariReq(req)
+        if (!akun) return send(res, 401, { error: 'Masuk dulu.' })
+        const b = await jsonBody(req)
+        const pendaftar = pendaftarById(b.idPendaftar)
+        if (!pendaftar) return send(res, 404, { error: 'Pendaftar tidak ditemukan.' })
+        const g = grupBySlug(pendaftar.grupSlug)
+        if (!g || !punyaAksesSeleksi(akun, g)) return send(res, 403, { error: 'Tidak punya akses seleksi. Minta ke pemilik grup seleksi.' })
+        if (!['acc', 'tolak'].includes(b.aksi)) return send(res, 400, { error: 'Aksi tidak dikenal.' })
+        if (pendaftar.status === 'diterima' || pendaftar.status === 'ditolak') return send(res, 400, { error: 'Sudah ditangani sebelumnya.' })
+        terapkanAksi(pendaftar, g, b.aksi, akun)
+        catatLog('aksi', `${akun.nama} ${b.aksi === 'acc' ? 'MENERIMA' : 'MENOLAK'} pendaftar ${pendaftar.data?.nama || pendaftar.id}`, { grupSlug: g.slug })
+        simpan()
+        return send(res, 200, { ok: true, status: pendaftar.status, perintah: b.aksi === 'acc' ? 'Terkirim ke bot: menambahkan ke grup.' : 'Terkirim ke bot: penolakan dicatat.' })
+    }
+
+    /* ── Task193 — halaman pengaturan grup seleksi ── */
+    if (p === '/api/grup/setting' && method === 'GET') {
+        const akun = akunDariReq(req)
+        if (!akun) return send(res, 401, { error: 'Masuk dulu.' })
+        const idAkun = String(url.searchParams.get('idAkun') || '')
+        const slug = String(url.searchParams.get('slug') || '')
+        const g = grupBySlug(slug)
+        if (!g || idAkunPemilik(g) !== idAkun) return send(res, 404, { error: 'Grup tidak ditemukan.' })
+        /* Task195 — pemilik grup saja; role owner sistem tak lagi ikut. */
+        const pemilik = g.pemilikJid === akun.jid || (akun.nomor && g.pemilikJid === akun.nomor + '@s.whatsapp.net')
+        if (!pemilik) return send(res, 403, { error: 'Hanya pemilik grup seleksi yang boleh membuka pengaturan.' })
+        return send(res, 200, {
+            ok: true,
+            grup: {
+                slug: g.slug, nama: g.nama, deskripsi: g.deskripsi,
+                linkGrup: g.linkGrup || '', linkUtama: g.linkUtama || '',
+                daftarAktif: g.daftarAktif, banned: g.banned,
+                tujuanJid: g.grupTujuanJid,
+            },
+            fields: g.fields.map(f => ({ kunci: f.kunci, label: f.label, tipe: f.tipe, wajib: Boolean(f.wajib) })),
+            akses: Object.values(g.helper).map(h => ({ nomor: h.nomor, nama: h.nama || '', username: h.username || '' })),
+            urlPublik: `https://${hostSeleksi()}/${idAkunPemilik(g)}/${g.slug}`,
+            panelUrl: `https://${hostSeleksi()}/${idAkunPemilik(g)}/${g.slug}/seleksi`,
+        })
+    }
+
+    if (p === '/api/grup/setting' && method === 'POST') {
+        const akun = akunDariReq(req)
+        if (!akun) return send(res, 401, { error: 'Masuk dulu.' })
+        const b = await jsonBody(req)
+        const slug = String(b.slug || '')
+        const g = grupBySlug(slug)
+        if (!g) return send(res, 404, { error: 'Grup tidak ditemukan.' })
+        const pemilik = g.pemilikJid === akun.jid || (akun.nomor && g.pemilikJid === akun.nomor + '@s.whatsapp.net')
+        if (!pemilik) return send(res, 403, { error: 'Hanya pemilik grup seleksi yang boleh mengubah pengaturan.' })
+        const perubahan = []
+
+        if (typeof b.linkGrup === 'string') { g.linkGrup = urlAman(b.linkGrup); perubahan.push('link grup seleksi') }
+        if (typeof b.linkUtama === 'string') { g.linkUtama = urlAman(b.linkUtama); perubahan.push('link grup utama') }
+        if (typeof b.deskripsi === 'string') { g.deskripsi = b.deskripsi.slice(0, 300); perubahan.push('deskripsi') }
+        if (typeof b.daftarAktif === 'boolean') { g.daftarAktif = b.daftarAktif; perubahan.push('status pendaftaran') }
+
+        /* nomor akses penuh (helper) — tambah / hapus */
+        const nomorTambah = String(b.tambahAkses || '').replace(/\D/g, '')
+        if (nomorTambah && nomorTambah.length >= 8) {
+            const jid = nomorTambah + '@s.whatsapp.net'
+            if (g.pemilikJid === jid) return send(res, 400, { error: 'Itu pemilik sendiri — sudah punya akses penuh.' })
+            g.helper[jid] = { jid, nomor: nomorTambah, username: '', nama: b.tambahAksesNama || '', oleh: akun.id, waktu: new Date().toISOString() }
+            perubahan.push(`akses ditambahkan ••••${nomorTambah.slice(-4)}`)
+        }
+        const nomorHapus = String(b.hapusAkses || '').replace(/\D/g, '')
+        if (nomorHapus) {
+            for (const [k, h] of Object.entries(g.helper)) {
+                if (h.nomor === nomorHapus || k === nomorHapus + '@s.whatsapp.net') delete g.helper[k]
+            }
+            perubahan.push(`akses ••••${nomorHapus.slice(-4)} dihapus`)
+        }
+
+        /* kolom isian seleksi — tambah / hapus */
+        if (b.fieldBaru) {
+            const label = String(b.fieldBaru.label || '').trim().slice(0, 40)
+            if (label) {
+                const kunci = slugAman(label).replace(/-/g, '_').slice(0, 24) || idAcak(6)
+                const ada = g.fields.find(f => f.kunci === kunci)
+                if (ada) { ada.label = label; ada.wajib = Boolean(b.fieldBaru.wajib) }
+                else g.fields.push({ kunci, label, tipe: b.fieldBaru.tipe === 'angka' ? 'angka' : 'teks', wajib: Boolean(b.fieldBaru.wajib) })
+                perubahan.push(`kolom "${label}" disimpan`)
+            }
+        }
+        if (b.fieldHapus) {
+            const idx = g.fields.findIndex(f => f.kunci === String(b.fieldHapus))
+            if (idx >= 0 && g.fields.length > 1) {
+                const [x] = g.fields.splice(idx, 1)
+                perubahan.push(`kolom "${x.label}" dihapus`)
+            } else if (g.fields.length <= 1) return send(res, 400, { error: 'Minimal satu kolom isian.' })
+        }
+        if (Array.isArray(b.fieldWajib)) {
+            for (const f of g.fields) f.wajib = b.fieldWajib.includes(f.kunci)
+            perubahan.push('aturan wajib kolom')
+        }
+
+        catatLog('setting', `${akun.username} ubah pengaturan ${g.nama}: ${perubahan.join(', ') || 'tidak ada perubahan'}`, { slug: g.slug })
+        simpan()
+        return send(res, 200, {
+            ok: true, perubahan,
+            linkGrup: g.linkGrup, linkUtama: g.linkUtama,
+            fields: g.fields.map(f => ({ kunci: f.kunci, label: f.label, wajib: f.wajib })),
+            akses: Object.values(g.helper).map(h => ({ nomor: h.nomor, nama: h.nama || '', username: h.username || '' })),
+            daftarAktif: g.daftarAktif,
+        })
+    }
+
+    /* ── chat ── */
+    if (p === '/api/chat' && method === 'GET') {
+        const akun = akunDariReq(req)
+        if (!akun) return send(res, 401, { error: 'Masuk dulu untuk chat.' })
+        return send(res, 200, { ok: true, pesan: chatTerakhir() })
+    }
+
+    if (p === '/api/chat' && method === 'POST') {
+        const akun = akunDariReq(req)
+        if (!akun) return send(res, 401, { error: 'Masuk dulu untuk chat.' })
+        const b = await jsonBody(req)
+        const teks = String(b.teks || '').trim().slice(0, 1000)
+        if (!teks) return send(res, 400, { error: 'Pesan kosong.' })
+        const pesan = chatTambah({ dari: akun.id, nama: akun.nama || akun.username, teks })
+        simpan()
+        return send(res, 200, { ok: true, pesan })
+    }
+
+    /* ── pemilik sistem ── */
+    if (p === '/api/owner/ringkasan' && method === 'GET') {
+        const akun = akunDariReq(req)
+        if (!akun || akun.role !== 'owner') return send(res, 403, { error: 'Hanya pemilik sistem.' })
+        const semuaPendaftar = Object.values(d.pendaftar)
+        return send(res, 200, {
+            ok: true,
+            jumlahGrup: Object.keys(d.grup).length,
+            jumlahAkun: Object.keys(d.akun).length,
+            acc: semuaPendaftar.filter(x => x.status === 'diterima').length,
+            tolak: semuaPendaftar.filter(x => x.status === 'ditolak').length,
+            menunggu: semuaPendaftar.filter(x => x.status === 'menunggu').length,
+            grup: Object.values(d.grup).map(g => ({
+                slug: g.slug, nama: g.nama, banned: g.banned, daftarAktif: g.daftarAktif,
+                pemilikJid: g.pemilikJid, statistik: g.statistik, helper: Object.keys(g.helper).length,
+                tujuan: g.grupTujuanJid, serverKey: g.serverKey,
+                linkGrup: g.linkGrup || '', linkUtama: g.linkUtama || '',
+            })),
+            akun: Object.values(d.akun).map(a => ({ id: a.id, username: a.username, nama: a.nama, role: a.role, nomor: a.nomor })),
+            pesanSambutan: d.pengaturan.pesanSambutan,
+            log: d.log.slice(0, 40),
+            developer: nomorDeveloper().map(n => n.slice(-4) && ('••••' + n.slice(-4))),
+        })
+    }
+
+    if (p === '/api/owner/grup' && method === 'POST') {
+        const akun = akunDariReq(req)
+        if (!akun || akun.role !== 'owner') return send(res, 403, { error: 'Hanya pemilik sistem.' })
+        const b = await jsonBody(req)
+        const grupTujuanJid = String(b.grupTujuanJid || '').trim()
+        if (!b.nama) return send(res, 400, { error: 'Nama grup wajib diisi.' })
+        const pemilikJid = String(b.pemilikJid || akun.jid || '')
+        const g = buatGrup({ nama: b.nama, slug: b.slug, pemilikJid, deskripsi: b.deskripsi, grupTujuanJid, serverKey: b.serverKey || '' })
+        catatLog('grup', `Owner membuat grup seleksi "${g.nama}"`, { slug: g.slug })
+        simpan()
+        return send(res, 200, { ok: true, grup: { slug: g.slug, url: `https://${hostSeleksi()}/${idAkunPemilik(g)}/${g.slug}` } })
+    }
+
+    if (p === '/api/owner/grup' && method === 'PATCH') {
+        const akun = akunDariReq(req)
+        if (!akun || akun.role !== 'owner') return send(res, 403, { error: 'Hanya pemilik sistem.' })
+        const b = await jsonBody(req)
+        if (typeof b.pesanSambutan === 'string' && b.pesanSambutan.trim() && !b.slug) {
+            d.pengaturan.pesanSambutan = b.pesanSambutan.trim().slice(0, 300)
+            simpan()
+            return send(res, 200, { ok: true })
+        }
+        const g = grupBySlug(b.slug)
+        if (!g) return send(res, 404, { error: 'Grup tidak ditemukan.' })
+        if (typeof b.banned === 'boolean') { g.banned = b.banned; catatLog('grup', `Owner ${b.banned ? 'BAN' : 'unban'} grup "${g.nama}"`, { slug: g.slug }) }
+        if (typeof b.daftarAktif === 'boolean') g.daftarAktif = b.daftarAktif
+        if (typeof b.deskripsi === 'string') g.deskripsi = b.deskripsi.slice(0, 300)
+        if (typeof b.linkGrup === 'string') g.linkGrup = urlAman(b.linkGrup)
+        if (typeof b.linkUtama === 'string') g.linkUtama = urlAman(b.linkUtama)
+        if (typeof b.pesanSambutan === 'string' && b.pesanSambutan.trim()) d.pengaturan.pesanSambutan = b.pesanSambutan.trim().slice(0, 300)
+        simpan()
+        return send(res, 200, { ok: true })
+    }
+
+    if (p === '/api/owner/role' && method === 'POST') {
+        const akun = akunDariReq(req)
+        if (!akun || akun.role !== 'owner') return send(res, 403, { error: 'Hanya pemilik sistem.' })
+        const b = await jsonBody(req)
+        const target = cariAkun(b.akunId || b.username || '')
+        if (!target) return send(res, 404, { error: 'Akun tidak ditemukan.' })
+        if (!['user', 'owner'].includes(b.role)) return send(res, 400, { error: 'Role hanya user/owner.' })
+        target.role = b.role
+        catatLog('role', `Owner mengubah role ${target.username} → ${b.role}`)
+        simpan()
+        return send(res, 200, { ok: true })
+    }
+
+    /* ── sinkron bot (secret) ── */
+    if (p.startsWith('/api/sinkron/')) {
+        const secret = String(req.headers['x-sinkron-secret'] || '')
+        const expected = secretSinkron()
+        const aman = expected && secret.length === expected.length
+            && crypto.timingSafeEqual(Buffer.from(secret), Buffer.from(expected))
+        if (!aman) return send(res, 401, { error: 'Sinkron secret salah.' })
+
+        /* Bot minta kode pendaftaran untuk sebuah grup WA */
+        if (p === '/api/sinkron/kode' && method === 'POST') {
+            const b = await jsonBody(req)
+            const g = b.grupSlug
+                ? grupBySlug(b.grupSlug)
+                : Object.values(d.grup).find(x => x.grupTujuanJid === String(b.chatJid || ''))
+            if (!g) return send(res, 404, { error: 'Grup seleksi belum dibuat. Pemilik jalankan /buatseleksi dulu di grup.' })
+            const pendaftar = buatPendaftar({ grupSlug: g.slug, jid: b.senderJid, serverKey: g.serverKey || b.serverKey || '' })
+            simpan()
+            return send(res, 200, {
+                ok: true, kode: pendaftar.kode, idAkun: idAkunPemilik(g), slug: g.slug,
+                url: `https://${hostSeleksi()}/${idAkunPemilik(g)}/${g.slug}`,
+                namaGrup: g.nama,
+                fields: g.fields.map(f => f.label),        // Task194 — pesan /seleksi dinamis
+            })
+        }
+
+        /* Bot minta pendaftar yang perlu dikirim ke grup WA */
+        if (p === '/api/sinkron/pending' && method === 'GET') {
+            /* Task192 — TANPA filter server: serverKey pembuat sering bukan bot
+             * yang punya grup (jadibot vs bot utama) sehingga notif tidak pernah
+             * terkirim. Penyaring sekarang: plugin hanya mengirim bila botnya
+             * memang anggota grup tujuan (groupMetadata) + klaim antar dulu. */
+            const daftar = Object.values(d.pendaftar).filter(x => x.antar && x.status === 'menunggu')
+            return send(res, 200, {
+                ok: true,
+                pendaftar: daftar.map(p => {
+                    const g = grupBySlug(p.grupSlug)
+                    return {
+                        id: p.id, kode: p.kode, data: p.data, nomor: p.nomor, jid: p.jid, waktu: p.waktu,
+                        foto: p.foto ? '/api/foto/pendaftar/' + p.foto : '',
+                        grup: g ? { slug: g.slug, nama: g.nama, tujuanJid: g.grupTujuanJid, seleksiJid: g.grupSeleksiJid || '', idAkun: idAkunPemilik(g), url: `https://${hostSeleksi()}/${idAkunPemilik(g)}/${g.slug}` } : null,
+                    }
+                }),
+            })
+        }
+
+        /* Bot menandai pendaftar sudah terkirim ke grup */
+        if (p === '/api/sinkron/antar' && method === 'POST') {
+            const b = await jsonBody(req)
+            const pendaftar = pendaftarById(b.idPendaftar)
+            if (pendaftar) { pendaftar.antar = false; pendaftar.antarPada = new Date().toISOString(); simpan() }
+            return send(res, 200, { ok: true })
+        }
+
+        /* Task192 — klaim gagal: kembalikan antar supaya dicoba lagi */
+        if (p === '/api/sinkron/antar-batal' && method === 'POST') {
+            const b2 = await jsonBody(req)
+            const x = pendaftarById(b2.idPendaftar)
+            if (x && x.status === 'menunggu') { x.antar = true; x.antarPada = null; simpan() }
+            return send(res, 200, { ok: true })
+        }
+
+        /* Aksi acc/tolak dari tombol bot */
+        if (p === '/api/sinkron/aksi' && method === 'POST') {
+            const b = await jsonBody(req)
+            const pendaftar = pendaftarById(b.idPendaftar)
+            if (!pendaftar) return send(res, 404, { error: 'Pendaftar tidak ditemukan.' })
+            const g = grupBySlug(pendaftar.grupSlug)
+            if (!g) return send(res, 404, { error: 'Grup tidak ditemukan.' })
+            const olehJid = String(b['olehJid'] || b['oleh'] || '')
+            if (!['acc', 'tolak'].includes(b.aksi)) return send(res, 400, { error: 'Aksi tidak dikenal.' })
+            if (pendaftar.status === 'diterima' || pendaftar.status === 'ditolak') return send(res, 409, { error: 'Sudah ditangani.', status: pendaftar.status })
+            terapkanAksi(pendaftar, g, b.aksi, { jid: olehJid, nama: b.olehNama || olehJid })
+            catatLog('aksi', `Bot: ${b.olehNama || olehJid || 'tombol'} ${b.aksi === 'acc' ? 'MENERIMA' : 'MENOLAK'} ${pendaftar.data?.nama || pendaftar.id}`, { grupSlug: g.slug })
+            simpan()
+            return send(res, 200, {
+                ok: true, status: pendaftar.status,
+                pendaftar: { id: pendaftar.id, jid: pendaftar.jid, nomor: pendaftar.nomor, data: pendaftar.data },
+                grup: { slug: g.slug, nama: g.nama, tujuanJid: g.grupTujuanJid, linkUtama: g.linkUtama || '' },
+            })
+        }
+
+        /* Task192 — daftar pendaftar diterima yang belum masuk grup */
+        if (p === '/api/sinkron/acc-pending' && method === 'GET') {
+            const daftar = Object.values(d.pendaftar).filter(x => x.status === 'diterima' && x.accPending && x.jid)
+            return send(res, 200, {
+                ok: true,
+                pendaftar: daftar.map(x => {
+                    const g = grupBySlug(x.grupSlug)
+                    return {
+                        id: x.id, jid: x.jid, nomor: x.nomor, nama: x.data?.nama || '',
+                        grup: g ? { slug: g.slug, nama: g.nama, tujuanJid: g.grupTujuanJid, linkUtama: g.linkUtama || '', linkGrup: g.linkGrup || '' } : null,
+                    }
+                }),
+            })
+        }
+
+        /* Task192 — penanda: bot sudah menambahkan pendaftar ke grup */
+        if (p === '/api/sinkron/acc-selesai' && method === 'POST') {
+            const b2 = await jsonBody(req)
+            const x = pendaftarById(b2.idPendaftar)
+            if (x) { x.accPending = false; simpan() }
+            return send(res, 200, { ok: true })
+        }
+
+        /* Tambah helper (dari /addanggotaseleksi) */
+        if (p === '/api/sinkron/helper' && method === 'POST') {
+            const b = await jsonBody(req)
+            const g = grupBySlug(b.grupSlug || '')
+            if (!g) return send(res, 404, { error: 'Grup seleksi tidak ditemukan.' })
+            const nomor = String(b.nomor || '').replace(/\D/g, '')
+            if (!nomor) return send(res, 400, { error: 'Nomor tidak valid.' })
+            const jid = nomor + '@s.whatsapp.net'
+            if (g.pemilikJid === jid) return send(res, 400, { error: 'Itu pemilik grup seleksi sendiri.' })
+            g.helper[jid] = { jid, nomor, username: String(b.username || '').toLowerCase(), nama: b.nama || '', oleh: b.olehJid || '', waktu: new Date().toISOString() }
+            /* Task194 — akun web dibuat otomatis untuk yang diundang akses. */
+            const akun = Object.values(d.akun).find(a => a.nomor === nomor)
+            let akunBaru = null
+            if (!akun) {
+                const password = idAcak(10)
+                const baru = buatAkun({ username: 'u' + nomor.slice(-10), password, nomor, jid, nama: b.nama || '', role: roleDariNomor(nomor) })
+                akunBaru = { username: baru.username, password }
+            }
+            catatLog('helper', `Helper ditambahkan ke ${g.nama}: ••••${nomor.slice(-4)}${akunBaru ? ' (akun web dibuat)' : ''}`, { slug: g.slug })
+            simpan()
+            return send(res, 200, { ok: true, akunWebDitemukan: Boolean(akun), akunBaru, helper: g.helper[jid] })
+        }
+
+        /* Buat grup seleksi (/buatseleksi) ATAU tandai grup WA sebagai grup
+         * seleksi (/grupseleksi → aksi aturSeleksi, Task194). Body dibaca sekali. */
+        if (p === '/api/sinkron/grup' && method === 'POST') {
+            const b = await jsonBody(req)
+
+            if (b.aksi === 'aturSeleksi') {
+                /* Task195 — tanpa bypass developer: hanya pemilik/helper grup. */
+                const olehJid = String(b.olehJid || '')
+                const nomor = olehJid.split('@')[0].replace(/\D/g, '')
+                let kandidat = Object.values(d.grup).filter(g =>
+                    g.pemilikJid === olehJid ||
+                    Boolean(g.helper[olehJid] || Object.values(g.helper).some(h => h.nomor === nomor)))
+                if (b.grupSlug) kandidat = kandidat.filter(g => g.slug === String(b.grupSlug))
+                else if (b.nama) {
+                    const nc = String(b.nama).toLowerCase()
+                    kandidat = kandidat.filter(g => g.nama.toLowerCase().includes(nc) || g.slug === slugAman(b.nama))
+                }
+                if (!kandidat.length) return send(res, 404, { error: 'Kamu belum punya grup seleksi. Buat dulu dengan /buatseleksi.' })
+                if (kandidat.length > 1) return send(res, 200, { ok: false, perluPilih: true, kandidat: kandidat.map(g => ({ slug: g.slug, nama: g.nama })) })
+                const g = kandidat[0]
+                g.grupSeleksiJid = String(b.seleksiJid || '')
+                catatLog('grup', `Grup WA resmi jadi grup seleksi untuk "${g.nama}"`, { slug: g.slug })
+                simpan()
+                return send(res, 200, { ok: true, slug: g.slug, nama: g.nama, url: `https://${hostSeleksi()}/${idAkunPemilik(g)}/${g.slug}` })
+            }
+
+            const chatJid = String(b.chatJid || '')
+            const pemilikJid = String(b.pemilikJid || '')
+            const sudah = Object.values(d.grup).find(g => g.grupTujuanJid === chatJid)
+            if (sudah) return send(res, 200, { ok: true, sudah: true, slug: sudah.slug, idAkun: idAkunPemilik(sudah), url: `https://${hostSeleksi()}/${idAkunPemilik(sudah)}/${sudah.slug}` })
+            const g = buatGrup({ nama: b.nama || chatJid.split('@')[0], slug: b.slug, pemilikJid, deskripsi: b.deskripsi || '', grupTujuanJid: chatJid, serverKey: b.serverKey || '', linkGrup: urlAman(b.linkGrup), linkUtama: urlAman(b.linkUtama) })
+            /* Akun web pemilik dibuat otomatis (khusus yang mau — pemilik grup). */
+            const nomor = pemilikJid.split('@')[0].replace(/\D/g, '')
+            let akun = Object.values(d.akun).find(a => a.nomor === nomor)
+            let passwordSementara = ''
+            if (!akun) {
+                passwordSementara = idAcak(10)
+                akun = buatAkun({ username: 'u' + nomor.slice(-10), password: passwordSementara, nomor, jid: pemilikJid, nama: b.pemilikNama || '', role: roleDariNomor(nomor) })
+            }
+            catatLog('grup', `Grup seleksi "${g.nama}" dibuat via bot`, { slug: g.slug })
+            simpan()
+            return send(res, 200, {
+                ok: true, slug: g.slug, idAkun: idAkunPemilik(g),
+                url: `https://${hostSeleksi()}/${idAkunPemilik(g)}/${g.slug}`,
+                panelUrl: `https://${hostSeleksi()}/${idAkunPemilik(g)}/${g.slug}/seleksi`,
+                akunWeb: { id: akun.id, username: akun.username, passwordSementara, baru: Boolean(passwordSementara) },
+            })
+        }
+
+        /* Pemilik menambah field kustom (via bot: /fieldseleksi) */
+        if (p === '/api/sinkron/field' && method === 'POST') {
+            const b = await jsonBody(req)
+            const g = grupBySlug(b.grupSlug || '')
+            if (!g) return send(res, 404, { error: 'Grup tidak ditemukan.' })
+            if (b.aksi === 'hapus') {
+                const idx = g.fields.findIndex(f => f.kunci === b.kunci)
+                if (idx < 0) return send(res, 404, { error: 'Field tidak ditemukan.' })
+                if (g.fields.length <= 1) return send(res, 400, { error: 'Minimal satu kolom.' })
+                const [hapus] = g.fields.splice(idx, 1)
+                simpan()
+                return send(res, 200, { ok: true, dihapus: hapus.kunci })
+            }
+            const kunci = slugAman(b.kunci || b.label).replace(/-/g, '_').slice(0, 24)
+            if (!kunci) return send(res, 400, { error: 'Nama kolom tidak valid.' })
+            const ada = g.fields.find(f => f.kunci === kunci)
+            if (ada) { ada.label = String(b.label || ada.label).slice(0, 40); ada.wajib = Boolean(b.wajib) }
+            else g.fields.push({ kunci, label: String(b.label || kunci).slice(0, 40), tipe: b.tipe === 'angka' ? 'angka' : 'teks', wajib: Boolean(b.wajib) })
+            simpan()
+            return send(res, 200, { ok: true, fields: g.fields.map(f => f.kunci) })
+        }
+
+        /* Info grup seleksi sebuah chat WA + bolehkah menambah helper */
+        if (p === '/api/sinkron/grup-info' && method === 'GET') {
+            const chatJid = String(url.searchParams.get('chatJid') || '')
+            const jid = String(url.searchParams.get('jid') || '')
+            let g = Object.values(d.grup).find(x => x.grupTujuanJid === chatJid)
+            let peranGrup = 'tujuan'
+            if (!g) {
+                g = Object.values(d.grup).find(x => x.grupSeleksiJid === chatJid)
+                peranGrup = 'seleksi'
+            }
+            if (!g) return send(res, 200, { ok: true, grup: null, boleh: false, fields: [] })
+            const nomorPengirim = jid.split('@')[0].replace(/\D/g, '')
+            /* Task194/195 — helper (punya akses) juga boleh; Task195: TANPA
+             * bypass developer — hanya pemilik grup atau helper terundang. */
+            const boleh = g.pemilikJid === jid ||
+                Boolean(g.helper[jid] || Object.values(g.helper).some(h => h.nomor === nomorPengirim))
+            return send(res, 200, {
+                ok: true, slug: g.slug, grup: g.slug, boleh, peranGrup,
+                fields: g.fields.map(f => f.kunci), labels: g.fields.map(f => f.label),
+                nama: g.nama, url: `https://${hostSeleksi()}/${idAkunPemilik(g)}/${g.slug}`,
+            })
+        }
+
+        /* Cek akses pemilik seleksi untuk pesan bot */
+        if (p === '/api/sinkron/akses' && method === 'GET') {
+            const jid = String(url.searchParams.get('jid') || '')
+            const grupSlug = String(url.searchParams.get('grup') || '')
+            const g = grupBySlug(grupSlug)
+            if (!g) return send(res, 200, { ok: false, akses: 'tidak' })
+            const nomor = jid.split('@')[0].replace(/\D/g, '')
+            if (nomorDeveloper().includes(nomor)) return send(res, 200, { ok: true, akses: 'owner' })
+            if (g.pemilikJid === jid) return send(res, 200, { ok: true, akses: 'pemilik' })
+            if (g.helper[jid] || Object.values(g.helper).some(h => h.nomor === nomor)) return send(res, 200, { ok: true, akses: 'helper' })
+            return send(res, 200, { ok: false, akses: 'tidak' })
+        }
+
+        return send(res, 404, { error: 'Endpoint sinkron tidak dikenal.' })
+    }
+
+    return false
+}
+
+function g_serverKey(pendaftar) {
+    const g = grupBySlug(pendaftar.grupSlug)
+    return g ? String(g.serverKey || '') : ''
+}
+
+function terapkanAksi(pendaftar, grup, aksi, oleh) {
+    pendaftar.status = aksi === 'acc' ? 'diterima' : 'ditolak'
+    pendaftar.oleh = oleh?.jid || oleh?.username || ''
+    pendaftar.ditangani = new Date().toISOString()
+    pendaftar.antar = false
+    /* Task192 — ACC dari mana pun (web/tombol): bot diminta menambahkan
+     * pendaftar ke grup; flag dibersihkan lewat /api/sinkron/acc-selesai.
+     * Pendaftar form web hanya punya nomor → derive jid supaya ikut
+     * ditambahkan bot (Task193). */
+    if (aksi === 'acc' && !pendaftar.jid && pendaftar.nomor) pendaftar.jid = pendaftar.nomor + '@s.whatsapp.net'
+    pendaftar.accPending = aksi === 'acc' && Boolean(pendaftar.jid)
+    if (aksi === 'acc') grup.statistik.acc += 1
+    else grup.statistik.tolak += 1
+}
+
+function ringkasAkun(akun) {
+    return { id: akun.id, username: akun.username, nama: akun.nama, role: akun.role, nomor: akun.nomor, bio: akun.bio, foto: akun.foto ? '/api/foto/akun/' + akun.foto : '' }
+}
+
+/* ── penyaji utama ─────────────────────────────────────────────────────── */
+
+export async function layaniSeleksi(req, res) {
+    if (!hostDikenali(req.headers ? req.headers.host : '')) return false
+    if (req.method !== 'GET' && req.method !== 'POST' && req.method !== 'PATCH') {
+        send(res, 405, { error: 'Metode tidak didukung.' })
+        return true
+    }
+    let jalur = '/'
+    try { jalur = decodeURIComponent(String(req.url || '/').split('?')[0].split('#')[0]) } catch { jalur = '/' }
+    const url = (() => { try { return new URL(req.url || '/', 'http://lokal') } catch { return null } })()
+    if (!url) { send(res, 400, { error: 'URL tidak valid.' }); return true }
+
+    if (jalur.startsWith('/api/')) {
+        try {
+            const hasil = await routeApi(req, res, url)
+            if (hasil === false) send(res, 404, { error: 'Endpoint tidak ditemukan.' })
+        } catch (error) {
+            console.log('[SELEKSI-API]', error?.message || error)
+            try { send(res, 500, { error: 'Kesalahan server.' }) } catch { /* sudah terkirim */ }
+        }
+        return true
+    }
+
+    /* SPA untuk semua jalur halaman: /, /<idAkun>/<slug>, /<idAkun>/<slug>/seleksi */
+    send(res, 200, spa(), { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' })
+    return true
+}
+
+export default { layaniSeleksi, hostDikenali }

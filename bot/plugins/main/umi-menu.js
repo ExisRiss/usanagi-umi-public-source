@@ -1,0 +1,245 @@
+/* By AlzRiss - Usanagi Umi AI
+ *
+ * MENU UMI — kartu HTML + navigasi native.
+ *
+ * Pembagian perintah (Task105c, permintaan owner):
+ *
+ *   .menu                  → KARTU HTML (background foto) + daftar menu native
+ *   .umimenu / .lmenu      → sama dengan .menu
+ *   .menu_all [_halaman]   → All Menu versi HTML (BARU, terpisah)
+ *   .menu_owner|group|game|tools → menu lama seperti semula (teks kategori)
+ *
+ * Task122 — aturan tampilan mengikuti jumlah prefix (tanpa setting tambahan):
+ *   `.menu`  (satu prefix) → teks (sapaan + info) + TOMBOL interaktif
+ *                            (daftar "MENU UTAMA 1–6" sudah dihapus total)
+ *   `..menu` (prefix ganda) → menu RICH: kartu HTML live seperti `.ping3`
+ *   `.umimenu tombol`       → sama dengan `.menu` (tombol interaktif)
+ *
+ * Perintah lama TIDAK diambil alih lagi:
+ *   .allmenu                → tetap milik plugins/main/usanagi-allmenu.js
+ *   .kategori / .listmenu   → tetap milik plugins/main/usanagi-kategori.js
+ *
+ * Kenapa kartu selalu diikuti daftar native: WebView WhatsApp tidak punya
+ * jaringan maupun bridge untuk mengirim pesan, jadi tombol di dalam HTML
+ * tidak bisa menjalankan perintah. Daftar native di bawah kartu yang bisa.
+ */
+
+import {
+  dispatchMenuCommand, handleNumericSelection, parseActionId, sendTextMenu,
+  readMenuSettings, writeMenuSettings, richEnabled,
+} from '../../lib/umi-menu/router.js'
+import { mulaiReactLoading } from '../../lib/loading-react.js'
+import { buildCatalogue } from '../../lib/umi-menu/registry.js'
+import { isOwner } from '../../lib/awang-cekakses.js'
+import { sendModernMenu, teksMenuBaru } from '../../lib/awang-menu.js'
+import { kirimMenuLive, konfirmasiKartuTampil } from '../../lib/umi-menu/live-menu.js'
+
+/* Task122: `menu_refresh` ditambahkan — baris "Refresh Status" di tombol
+ * mengirim id itu, dan tanpa ini plugin tidak pernah menerimanya. */
+const COMMAND_RE = /^(umimenu|lmenu|menu|menu_all(?:_\d+)?|menu_(?:owner|group|game|tools|refresh))$/i
+
+async function handleSettings(m, { conn, args }) {
+  let allowed = m.fromMe === true
+  if (!allowed) {
+    try { allowed = await isOwner(m.sender, conn) } catch { allowed = false }
+  }
+  if (!allowed) {
+    await m.reply('⛔ Hanya owner yang boleh mengubah pengaturan menu.')
+    return { ok: false, mode: 'denied' }
+  }
+
+  const field = String(args?.[0] || '').toLowerCase()
+  const value = String(args?.[1] || '').toLowerCase()
+  const current = readMenuSettings()
+
+  if (!field) {
+    await m.reply([
+      '⚙️ *PENGATURAN MENU*',
+      '',
+      `Gaya    : ${current.style} (html = kartu Liquid Glass, text = menu teks)`,
+      `Sistem  : ${current.system}`,
+      '',
+      '.umimenu style html|text',
+      '.umimenu system umi|legacy',
+    ].join('\n'))
+    return { ok: true, mode: 'info' }
+  }
+
+  if (field === 'style') {
+    if (!['html', 'text'].includes(value)) {
+      await m.reply('Pilihan gaya: html atau text.\nContoh: .umimenu style text')
+      return { ok: false, mode: 'invalid' }
+    }
+    const saved = writeMenuSettings({ style: value })
+    if (!saved.ok) {
+      await m.reply(`❌ Gagal menyimpan: ${saved.error}`)
+      return { ok: false, mode: 'error' }
+    }
+    await m.reply(value === 'html'
+      ? '✅ Menu kembali memakai kartu HTML Liquid Glass (fallback teks tetap otomatis).'
+      : '✅ Menu memakai tampilan teks. Kembalikan dengan `.umimenu style html`.')
+    return { ok: true, mode: 'style' }
+  }
+
+  if (field === 'system') {
+    if (!['umi', 'legacy'].includes(value)) {
+      await m.reply('Menu lama sudah dihapus — nilai yang berlaku hanya `umi`.\nGunakan `.umimenu style text` bila ingin tampilan teks.')
+      return { ok: false, mode: 'invalid' }
+    }
+    writeMenuSettings({ system: value })
+    await m.reply('✅ Sistem menu: ' + value)
+    return { ok: true, mode: 'system' }
+  }
+
+  await m.reply('Pilihan: style | system.\nContoh: .umimenu style html')
+  return { ok: false, mode: 'invalid' }
+}
+
+/** Teks cadangan kalau kartu rich gagal dikirim (tidak boleh kosong). */
+function teksCadangan(m, prefix) {
+  try {
+    return teksMenuBaru({
+      prefix,
+      pushName: m?.pushName || 'Kak',
+      contactNumber: '-',
+      isOwnerUser: m?.fromMe === true,
+    })
+  } catch {
+    return `📋 *MENU UTAMA*\n\n${prefix}menu_all\n${prefix}menu_owner\n${prefix}menu_group`
+  }
+}
+
+let handler = async function (m, extra = {}) {
+  const conn = extra.conn || this
+  const prefix = extra.usedPrefix || global.prefix || '.'
+  const command = String(m.command || extra.command || '').toLowerCase().replace(/[^a-z0-9_]/g, '')
+  const args = Array.isArray(extra.args) ? extra.args : String(extra.text || '').trim().split(/\s+/).filter(Boolean)
+  /*
+   * Task117 — DUA SISTEM MENU:
+   *   prefix tunggal (`$menu`, `/menu`) → menu TEKS
+   *   prefix ganda    (`$$menu`, `//menu`) → menu RICH (kartu HTML + daftar native)
+   * Penanda `rich` dipasang handler.js saat pesan diawali prefix dua kali.
+   */
+  /* Task120: prefix GANDA selalu berarti rich — tidak lagi bergantung pada
+   * setelan `.umimenu style`. Sebelumnya setelan `style: text` membuat
+   * `..menu` tetap mengirim menu teks (keluhan owner). */
+  const rich = m.__richMenu === true
+  // Kartu HTML (`.menu_all` / dashboard) tetap menghormati setelan style.
+  const richHtml = rich && richEnabled()
+
+  // .umimenu system|style …
+  if ((command === 'umimenu' || command === 'lmenu') && ['system', 'style'].includes(String(args[0] || '').toLowerCase())) {
+    return handleSettings(m, { conn, args })
+  }
+
+  // .umimenu [aksi]
+  if (command === 'umimenu' || command === 'lmenu') {
+    const wanted = String(args[0] || '').trim()
+    // Varian bertombol tetap tersedia untuk owner (mis. saat kartu rich ditolak).
+    if (wanted.toLowerCase() === 'tombol') return sendModernMenu(conn, m, prefix)
+    const parsed = wanted ? parseActionId(wanted) : null
+    if (parsed) {
+      /* Task177 — tombol kartu ditekan = kartunya benar-benar tampil di HP itu.
+       * Tandai chat ini mampu supaya kiriman berikutnya tidak digandakan teks. */
+      try { konfirmasiKartuTampil(m.chat) } catch { /* jangan ganggu menu */ }
+      return dispatchMenuCommand(m, { conn, prefix, action: parsed.action, page: parsed.page })
+    }
+    return rich
+      ? kirimMenuLive(conn, m, { prefix, teksCadangan: teksCadangan(m, prefix) })
+      : sendMenuTeksBaru(conn, m, { prefix })
+  }
+
+  /* Task122 — owner minta daftar "📋 MENU UTAMA 1–6" dihapus total:
+   *   .menu  → isi teks (sapaan + info bot/pengguna) + TOMBOL interaktif
+   *   ..menu → kartu rich seperti .ping3
+   * Daftar pilihannya hanya ada di tombol; kalau tombol ditolak WhatsApp,
+   * barulah versi teks (berisi daftar) dikirim sebagai cadangan. */
+  if (command === 'menu') {
+    return rich
+      ? kirimMenuLive(conn, m, { prefix, teksCadangan: teksCadangan(m, prefix) })
+      : sendModernMenu(conn, m, prefix)
+  }
+
+  // .menu_all [halaman] → All Menu teks / HTML sesuai jenis prefix
+  if (command === 'menu_all' || /^menu_all_\d+$/.test(command)) {
+    const fromCommand = Number((command.match(/_all_(\d+)$/) || [])[1]) || 0
+    const page = Number(String(args[0] || '').replace(/\D/g, '')) || fromCommand || null
+    return richHtml
+      ? dispatchMenuCommand(m, { conn, prefix, action: 'menu_all', page })
+      : sendTextMenu(conn, m, { prefix, action: 'menu_all', page })
+  }
+
+  /*
+   * .menu_owner / .menu_group / .menu_game / .menu_tools → menu LAMA, apa
+   * adanya: plugin kategori yang sama dengan `.kategori <nama>` (teks +
+   * tombol navigasi), bukan halaman HTML baru.
+   */
+  const legacyMenu = command.match(/^menu_(owner|group|game|tools)$/)
+  if (legacyMenu) {
+    const category = legacyMenu[1]
+    /* Task127 — dulu kalau handler kategori melempar error, tombol "Owner Menu"
+     * tidak membalas apa pun (keluhan owner). Sekarang ada cadangan: router
+     * menyusun menunya sendiri dari daftar plugin, jadi tombol selalu menjawab. */
+    try {
+      const { default: kategoriHandler } = await import('./usanagi-kategori.js')
+      if (typeof kategoriHandler === 'function') {
+        const hasil = await kategoriHandler({ ...m, args: [category], text: category }, {
+          conn,
+          usedPrefix: prefix,
+          command: 'kategori',
+          args: [category],
+          text: category,
+        })
+        if (hasil?.ok !== false) return hasil
+      }
+    } catch (error) {
+      console.warn(`[UMI-MENU] kategori "${category}" gagal:`, error?.message || error)
+    }
+    return dispatchMenuCommand(m, { conn, prefix, action: `menu_${category}` })
+  }
+
+  // ID tombol/list/native-flow
+  const parsed = parseActionId(command)
+  if (!parsed) return
+  return dispatchMenuCommand(m, { conn, prefix, action: parsed.action, page: parsed.page })
+}
+
+/* Task186 — animasi reaction 1️⃣→🔟 selama menu diproses. */
+const jalankanMenu = handler
+handler = async function (m, extra = {}) {
+  const anim = mulaiReactLoading(extra.conn || this, m)
+  try {
+    return await jalankanMenu.call(this, m, extra)
+  } catch (error) {
+    await anim.stop('⚠️')
+    throw error
+  } finally {
+    await anim.stop('✅')
+  }
+}
+
+handler.command = COMMAND_RE
+handler.help = ['menu', 'menu_all', 'menu_owner', 'menu_group', 'menu_game', 'menu_tools']
+handler.tags = ['main']
+handler.category = 'main'
+handler.description = 'Menu utama Umi Usanagi AI — .menu = menu teks, ..menu = kartu rich (gaya ping3)'
+handler.limit = false
+
+/**
+ * Hook ringan: hanya bereaksi pada balasan angka 1–6 DAN hanya bila menu baru
+ * saja yang dikirim ke chat itu (state di router, kedaluwarsa 2 menit).
+ */
+handler.all = async function (m) {
+  try {
+    if (!m?.text || m.isBaileys) return
+    if (m.text.startsWith('.')) return
+    if (!/^[1-6]$/.test(m.text.trim())) return
+    return await handleNumericSelection(m, { conn: this, prefix: global.prefix || '.' })
+  } catch (error) {
+    console.error('[UMI-MENU] hook angka gagal:', error?.message || error)
+    return false
+  }
+}
+
+export { buildCatalogue }
+export default handler

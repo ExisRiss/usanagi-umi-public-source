@@ -1,114 +1,176 @@
-import * as baileys from '@rexxhayanasi/elaina-baileys'
+/* By AlzRiss - Usanagi Umi AI
+ *
+ * .swgroup — kirim STATUS grup (group status) ke grup yang dipilih.
+ *
+ * Perbaikan Task110:
+ *  1. Daftar grup diambil dari grup yang benar-benar diikuti bot
+ *     (`groupFetchAllParticipating`, fallback: metadata per chat). Dulu daftar
+ *     diambil dari `conn.chats` yang masih menyimpan grup lama/ sudah ditinggal,
+ *     sehingga memilih nomor tersebut langsung gagal `Error: forbidden (403)`.
+ *  2. Setiap grup diperiksa metadata-nya lebih dulu; grup yang tidak bisa
+ *     diakses (403/404) dilewati dan tidak ditampilkan sebagai pilihan.
+ *  3. Semua pengiriman dibungkus try/catch → pengguna menerima pesan jelas,
+ *     bukan stack panjang di laporan error.
+ */
+
+import * as baileys from '@whiskeysockets/baileys'
 import crypto from 'node:crypto'
 import { PassThrough } from 'stream'
 import ffmpeg from 'fluent-ffmpeg'
 
-// Fungsi jeda untuk mencegah spam request (rate-limit)
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
-let handler = async (m, { conn, text }) => {
-  const groups = Object.keys(conn.chats).filter(v => v.endsWith('@g.us'))
+/* Task206 — semua balasan dibungkus catch: saat metadata dibatasi (429),
+ * mengirim balasan ke grup pun bisa gagal; jangan biarkan itu lolos sebagai
+ * unhandledRejection yang masuk laporan error owner (bukti: dobel di
+ * data/errors — plugin/owner/owner-swgc + process.unhandledRejection). */
+const balas = (m, teks) => Promise.resolve(m.reply(teks)).catch(() => {})
 
-  if (!text) {
-    let list = []
+/** Cache daftar grup per koneksi, umur 60 detik. */
+const groupListCache = new Map()
 
-    for (let i = 0; i < groups.length; i++) {
-      const jid = groups[i]
-      let subject = ''
+function cacheKey(conn) {
+  return String(conn?.user?.id || conn?.user?.jid || 'conn')
+}
 
-      // 1. Prioritaskan ambil nama dari cache (agar tidak membebani server WA)
-      const chatInfo = conn.chats[jid]
-      if (chatInfo && (chatInfo.subject || chatInfo.name)) {
-        subject = chatInfo.subject || chatInfo.name
-      } else {
-        // 2. Jika tidak ada di cache, request ke WA dengan jeda 1.5 detik
-        try {
-          await delay(1500) 
-          const meta = await conn.groupMetadata(jid)
-          subject = meta.subject
-        } catch {
-          subject = jid
-        }
-      }
+async function listMyGroups(conn, { force = false } = {}) {
+  const key = cacheKey(conn)
+  const cached = groupListCache.get(key)
+  if (!force && cached && Date.now() - cached.at < 60000) return cached.groups
 
-      list.push(`${i + 1}. ${subject}`)
+  const groups = []
+  const push = (jid, subject) => {
+    const id = String(jid || '').trim()
+    if (!id.endsWith('@g.us')) return
+    if (groups.some((item) => item.jid === id)) return
+    groups.push({ jid: id, subject: String(subject || '').trim() || id })
+  }
+
+  // 1) Sumber paling akurat: hanya grup tempat bot masih menjadi anggota.
+  try {
+    if (typeof conn?.groupFetchAllParticipating === 'function') {
+      const map = await conn.groupFetchAllParticipating()
+      for (const [jid, meta] of Object.entries(map || {})) push(jid, meta?.subject)
     }
-
-    return m.reply(`
-📢 LIST GRUP
-
-${list.join('\n')}
-
-Contoh:
-.swgroup 1|Halo semua
-
-Reply gambar/video/audio:
-.swgroup 1
-`.trim())
+  } catch (error) {
+    console.warn('[SWGROUP] groupFetchAllParticipating gagal:', error?.message || error)
   }
 
-  const parts = text.split('|')
-  const nomor = Number(parts[0]?.trim()) - 1
-
-  if (isNaN(nomor) || !groups[nomor]) {
-    throw 'Nomor grup tidak valid'
+  // 2) Cadangan: metadata per chat (dibatasi supaya tidak membanjiri WhatsApp).
+  if (!groups.length) {
+    const chats = Object.keys(conn?.chats || {}).filter((jid) => String(jid).endsWith('@g.us'))
+    for (const jid of chats.slice(0, 40)) {
+      try {
+        const meta = await conn.groupMetadata(jid)
+        if (meta?.participants) push(jid, meta.subject)
+      } catch {
+        /* grup tidak bisa diakses → lewati */
+      }
+      await delay(400)
+    }
   }
 
-  const target = groups[nomor]
+  groupListCache.set(key, { at: Date.now(), groups })
+  return groups
+}
+
+let handler = async (m, { conn, text }) => {
+  const raw = String(text || '').trim()
+
+  // ── .swgroup list ──────────────────────────────────────────
+  if (!raw || /^(list|daftar)$/i.test(raw)) {
+    const groups = await listMyGroups(conn, { force: Boolean(raw) })
+    if (!groups.length) {
+      return balas(m, '📢 Bot belum mengikuti grup apa pun (atau metadata grup tidak bisa dibaca).')
+    }
+    const list = groups.map((item, index) => `${index + 1}. ${item.subject}`).join('\n')
+    return balas(m, 
+      `📢 *LIST GRUP*\n\n${list}\n\n` +
+      `Contoh:\n.swgroup 1|Halo semua\n\n` +
+      `Reply gambar/video/audio:\n.swgroup 1\n\n` +
+      `_Daftar diambil dari grup yang benar-benar diikuti bot._`
+    )
+  }
+
+  const parts = raw.split('|')
+  const nomor = Number(String(parts[0] || '').trim()) - 1
+  const groups = await listMyGroups(conn)
+
+  if (!Number.isInteger(nomor) || nomor < 0 || !groups[nomor]) {
+    return balas(m, 
+      `Nomor grup tidak valid.\n\n` +
+      `Lihat daftar dulu: .swgroup list\n` +
+      `Jumlah grup yang bisa dipakai: ${groups.length}`
+    )
+  }
+
+  const target = groups[nomor].jid
   const quoted = m.quoted || m
   const mime = quoted?.mimetype || ''
+  const caption = parts.slice(1).join('|').trim() || quoted?.caption || ''
 
-  const caption =
-    parts.slice(1).join('|').trim() ||
-    quoted?.caption ||
-    ''
+  // ── Pastikan grup benar-benar bisa diakses sebelum mengirim ──
+  try {
+    const meta = await conn.groupMetadata(target)
+    if (!Array.isArray(meta?.participants)) throw new Error('metadata grup kosong')
+  } catch (error) {
+    /* Task206 —429/503 (metadata dibatasi) BUKAN grup rusak: balas dengan
+     * hitung mundur, jangan tampilkan seakan-akan bot dikeluarkan. */
+    const status = Number(error?.statusCode || error?.output?.statusCode || error?.data || 0)
+    if (status === 429 || status === 503 || /dibatasi sementara|belum merespons|timeout/i.test(String(error?.message || ''))) {
+      const detik = Math.max(1, Math.ceil(Number(error?.retryAfterMs || 60000) / 1000))
+      return balas(m, `⏳ *Metadata WhatsApp dibatasi sementara* oleh WhatsApp (normal, biasanya ±${detik} detik).\nCoba kirim ulang perintahnya sebentar lagi ya.`)
+    }
+    const code = error?.code || error?.data
+    return balas(m,
+      `❌ Grup *${groups[nomor].subject}* tidak bisa diakses bot (${code || 'gagal'}).\n\n` +
+      `Kemungkinan bot sudah keluar dari grup itu. Coba \`.swgroup list\` lagi untuk daftar terbaru.`
+    )
+  }
 
-  if (/image|video|audio/.test(mime)) {
-    const buffer = await quoted.download().catch(() => null)
+  // ── Kirim status ───────────────────────────────────────────
+  try {
+    if (/image|video|audio/.test(mime)) {
+      const buffer = await quoted.download().catch(() => null)
+      if (!buffer) return balas(m, '❌ Gagal mengunduh media yang kamu reply.')
 
-    if (!buffer) throw 'Gagal download media'
-
-    let content = {}
-
-    if (/image/.test(mime)) {
-      content = {
-        image: buffer,
-        caption
+      let content = {}
+      if (/image/.test(mime)) {
+        content = { image: buffer, caption }
+      } else if (/video/.test(mime)) {
+        content = { video: buffer, caption }
+      } else {
+        const vn = await toVN(buffer)
+        content = { audio: vn, ptt: true, mimetype: 'audio/ogg; codecs=opus' }
       }
-    } else if (/video/.test(mime)) {
-      content = {
-        video: buffer,
-        caption
-      }
-    } else if (/audio/.test(mime)) {
-      const vn = await toVN(buffer)
 
-      content = {
-        audio: vn,
-        ptt: true,
-        mimetype: 'audio/ogg; codecs=opus'
-      }
+      await groupStatus(conn, target, content)
+      return balas(m, '✅ Status grup berhasil dikirim')
     }
 
-    await groupStatus(conn, target, content)
-    return m.reply('✅ Status grup berhasil dikirim')
+    if (!caption) {
+      return balas(m, 
+        `Contoh:\n.swgroup 1|Halo semua\n\nAtau reply media:\n.swgroup 1`
+      )
+    }
+
+    await groupStatus(conn, target, { text: caption })
+    return balas(m, '✅ Status grup berhasil dikirim')
+  } catch (error) {
+    const code = error?.code || error?.data || error?.output?.statusCode || ''
+    const pesan = String(error?.message || error || '')
+    /* Task206 —429/503 saat mengirim: pesan ramah + hitung mundur (bukan stack). */
+    const alasan = String(code) === '429' || String(code) === '503'
+      ? `Metadata WhatsApp dibatasi sementara — coba lagi ±${Math.max(1, Math.ceil(Number(error?.retryAfterMs || 60000) / 1000))} detik.`
+      : String(code) === '403' || /forbidden/i.test(pesan)
+        ? 'WhatsApp menolak (403 forbidden). Pastikan bot masih anggota grup dan kamu admin grup.'
+        : String(code) === '404'
+          ? 'Grup tidak ditemukan (404). Kemungkinan grup sudah dibubarkan.'
+          : /dibatasi sementara|belum merespons/i.test(pesan)
+            ? pesan.slice(0, 180)
+            : pesan.slice(0, 180) || 'Alasan tidak diketahui.'
+    return balas(m, `❌ Gagal mengirim status grup.\n\n${alasan}`)
   }
-
-  if (!caption) {
-    throw `
-Contoh:
-.swgroup 1|Halo semua
-
-Atau reply media:
-.swgroup 1
-`.trim()
-  }
-
-  await groupStatus(conn, target, {
-    text: caption
-  })
-
-  m.reply('✅ Status grup berhasil dikirim')
 }
 
 async function groupStatus(conn, jid, content) {
@@ -169,8 +231,7 @@ async function toVN(buffer) {
 
 handler.help = ['swgroup']
 handler.tags = ['owner']
-handler.command = /^(swgroup|swgc2)$/i // <-- Tambahan: Mendukung pemanggilan .swgc
-
+handler.command = /^(swgroup|swgc2)$/i
 handler.owner = true
 
 export default handler

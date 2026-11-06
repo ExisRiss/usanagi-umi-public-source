@@ -30,7 +30,7 @@ export const FEATURE_CREDIT = "Fitur By: Anita Putri Azzahra\nFitur SC Bot Rimur
 
 
 import axios from 'axios'
-import { generateWAMessageContent } from "@rexxhayanasi/elaina-baileys"
+import { generateWAMessageContent } from "@whiskeysockets/baileys"
 
 const pluginConfig = {
   name: "clip",

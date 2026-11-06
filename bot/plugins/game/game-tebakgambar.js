@@ -13,13 +13,13 @@ if (id in conn.game)
 return conn.reply(
 m.chat,
 '❀ Masih ada game yang belum selesai',
-conn.game[id][0]
+m
 )
 
 let src = JSON.parse(fs.readFileSync('./json/tebakgambar.json'))
 let json = src[Math.floor(Math.random() * src.length)]
 
-let caption = `
+const susunCaption = () => `
 🖼 「 *TEBAK GAMBAR* 」
 
 ${json.deskripsi}
@@ -28,20 +28,64 @@ Waktu : ${timeout/1000} detik
 Bonus : ${poin} XP
 `.trim()
 
-conn.game[id] = [
-await conn.sendMessage(
+/* Task133/134 — server bot sometimes cannot reach the image host.
+ * `cademedia.com` is behind Cloudflare and the bot server got
+ * "ConnectTimeoutError ... 172.67.181.81:443" for every attempt, so one
+ * unloadable image killed the whole command. Now every image is tried from
+ * two places (direct, then a public image proxy) and, kalau dua-duanya gagal,
+ * soal tetap dikirim sebagai teks tanpa gambar supaya game tetap bisa dimainkan.
+ */
+const sumberGambar = (soal) => [
+soal.img,
+`https://wsrv.nl/?url=${encodeURIComponent(soal.img)}&w=1000&output=jpg`,
+]
+
+let pesanSoal = null
+for (let coba = 0; coba < 2 && !pesanSoal; coba++) {
+for (const url of sumberGambar(json)) {
+try {
+pesanSoal = await conn.sendMessage(
 m.chat,
 {
-image:{ url: json.img },
-caption
+image:{ url },
+caption: susunCaption()
 },
 { quoted:m }
-),
+)
+break
+} catch (error) {
+console.warn(`[TEBAKGAMBAR] gambar gagal (${new URL(url).host}):`, error?.message || error)
+}
+}
+if (!pesanSoal) json = src[Math.floor(Math.random() * src.length)]
+}
+
+if (!pesanSoal) {
+/* Tanpa gambar pun tetap jadi soal: deskripsi + jawaban sudah ada. */
+pesanSoal = await conn.reply(
+m.chat,
+`🖼 「 *TEBAK GAMBAR* 」
+
+${json.deskripsi}
+
+⚠️ Gambar tidak bisa dimuat dari server ini (host gambar tidak terjangkau), soal tetap bisa dijawab.
+
+Waktu : ${timeout/1000} detik
+Bonus : ${poin} XP`,
+m
+).catch(() => null)
+if (!pesanSoal) return
+}
+
+conn.game[id] = [
+pesanSoal,
 json,
 poin,
 setTimeout(()=>{
 if(conn.game[id]){
 
+/* Task132 — jangan kutip hasil sendMessage (proto mentah): getter `.chat`
+ * pada objek itu tidak punya conn dan mematikan proses. Kutip `m` saja. */
 conn.reply(
 m.chat,
 `❀ Waktu habis!
@@ -50,7 +94,7 @@ m.chat,
 
 Jawaban :
 ${json.jawaban}`,
-conn.game[id][0]
+m
 )
 
 delete conn.game[id]
@@ -93,7 +137,7 @@ m.chat,
 
 Jawaban :
 ${json.jawaban}`,
-room[0]
+m
 )
 
 delete this.game[id]
@@ -117,7 +161,7 @@ m.chat,
 🖼 Game : Tebak Gambar
 
 +${exp} XP`,
-room[0]
+m
 )
 
 delete this.game[id]

@@ -1,0 +1,911 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Space+Grotesk:wght@600;700&display=swap" rel="stylesheet">
+<title>Umi Alz Seleksi</title>
+<style>
+:root{
+  --bg:#FAFAFA; --kartu:#FFFFFF;
+  --garis:#E5E5E8; --garis-input:#D4D4D8;
+  --teks:#0A0A0A; --redup:#6B6B73; --redup2:#9A9AA3;
+  --aksen:#0A0A0A; --invers:#FFFFFF;
+  --hijau:#16A34A; --merah:#DC2626; --amber:#D97706;
+  --r-kartu:16px; --r-input:12px; --r-badge:8px;
+  --sh-kartu:0 1px 2px rgba(0,0,0,.04);
+  --sh-hover:0 4px 12px rgba(0,0,0,.07);
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
+  --dur:.25s; --ease:cubic-bezier(.2,.8,.2,1);
+  --font:'Manrope','Inter Tight',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,monospace;
+}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+body{
+  min-height:100vh;font-family:var(--font);color:var(--teks);
+  background:var(--bg);padding-bottom:88px;-webkit-font-smoothing:antialiased;
+}
+a{color:var(--teks);text-decoration:none;border-bottom:1px solid #C9C9CF}
+a:hover{border-bottom-color:var(--teks)}
+:focus-visible{outline:2px solid var(--aksen);outline-offset:2px;border-radius:6px}
+.wrap{max-width:880px;margin:0 auto;padding:16px var(--s4)}
+
+/* ── header ── */
+header.top{display:flex;align-items:center;gap:var(--s3);margin-bottom:var(--s5)}
+header.top .logo{display:flex;align-items:center;gap:10px;font-size:16px;font-weight:700;letter-spacing:-.02em}
+header.top .logo .mono{
+  width:32px;height:32px;border-radius:var(--r-badge);background:var(--aksen);color:#fff;
+  display:grid;place-items:center;font-size:12px;font-weight:800;letter-spacing:-.02em;flex:none;
+}
+header.top .spacer{flex:1}
+header.top #akun-pil{
+  font-size:11px;font-weight:600;color:var(--redup);background:#F1F1F3;
+  border:1px solid var(--garis);border-radius:var(--r-badge);padding:5px 10px;
+  max-width:46vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:none;letter-spacing:0;
+}
+main#app{min-height:40vh}
+
+/* ── kartu ── */
+.kartu{
+  background:var(--kartu);border:1px solid var(--garis);border-radius:var(--r-kartu);
+  padding:var(--s4);margin-bottom:var(--s3);box-shadow:var(--sh-kartu);
+  transition:box-shadow var(--dur) var(--ease),transform var(--dur) var(--ease);
+}
+.kartu:hover{box-shadow:var(--sh-hover);transform:translateY(-1px)}
+.kartu h2{font-size:16px;font-weight:600;letter-spacing:-.01em;margin-bottom:var(--s2);display:flex;align-items:center;gap:8px}
+.kartu h3{
+  font-size:12px;font-weight:600;letter-spacing:.04em;color:var(--redup);
+  text-transform:none;margin-bottom:var(--s2);
+}
+.kartu h3 .ic{color:var(--redup)}
+.sub{color:var(--redup);font-size:14px;line-height:1.55}
+.section{margin-bottom:var(--s5)}
+
+/* ── statistik: grid teratur, tanpa rotasi ── */
+.grid{display:grid;gap:var(--s3);grid-template-columns:repeat(6,1fr)}
+.grid>.stat{grid-column:span 2}
+/* Owner: 2 utama (3 kolom) + 3 status (2 kolom) sejajar satu baris */
+.owner-grid>.stat:nth-child(1),.owner-grid>.stat:nth-child(2){grid-column:span 3}
+.owner-grid>.stat:nth-child(n+3){grid-column:span 2}
+.stat{
+  background:var(--kartu);border:1px solid var(--garis);border-radius:var(--r-kartu);
+  padding:var(--s3) var(--s4) 14px;box-shadow:var(--sh-kartu);
+  display:flex;flex-direction:column;gap:6px;min-height:96px;
+  transition:box-shadow var(--dur) var(--ease),transform var(--dur) var(--ease);
+}
+.stat:hover{box-shadow:var(--sh-hover);transform:translateY(-1px)}
+.stat-ik{
+  width:32px;height:32px;border-radius:10px;display:grid;place-items:center;color:var(--teks);
+  background:rgba(255,255,255,.6);border:1px solid rgba(255,255,255,.8);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 1px 2px rgba(0,0,0,.05);
+  backdrop-filter:blur(12px) saturate(140%);-webkit-backdrop-filter:blur(12px) saturate(140%);
+  position:relative;overflow:hidden;flex:none;
+}
+.stat-ik::before{content:'';position:absolute;top:0;left:0;width:70%;height:50%;background:linear-gradient(135deg,rgba(255,255,255,.85),transparent 70%);pointer-events:none}
+.stat-ik svg{width:17px;height:17px}
+.stat .l{
+  font-size:12px;font-weight:500;color:var(--redup);letter-spacing:0;text-transform:none;
+  display:flex;align-items:center;gap:6px;
+}
+.stat .l .dot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--redup2)}
+.stat .l[data-status="diterima"] .dot{background:var(--hijau)}
+.stat .l[data-status="ditolak"] .dot{background:var(--merah)}
+.stat .l[data-status="menunggu"] .dot{background:var(--amber)}
+.stat .n{font-size:28px;font-weight:700;letter-spacing:-.02em;line-height:1.1;color:var(--teks);font-variant-numeric:tabular-nums}
+
+/* ── form ── */
+label{
+  display:block;font-size:12px;font-weight:500;color:var(--redup);
+  margin:var(--s3) 0 6px;letter-spacing:0;text-transform:none;
+}
+input,textarea,select{
+  width:100%;background:#fff;border:1px solid var(--garis-input);border-radius:var(--r-input);
+  color:var(--teks);padding:0 12px;font-size:14px;font-family:var(--font);
+  min-height:44px;transition:border-color var(--dur),box-shadow var(--dur);
+}
+input::placeholder,textarea::placeholder{color:#B4B4BC}
+input:focus,textarea:focus{outline:none;border-color:var(--aksen);box-shadow:0 0 0 2px rgba(10,10,10,.18)}
+textarea{min-height:96px;padding:11px 12px;resize:vertical;line-height:1.5}
+input[readonly]{font-family:var(--mono);font-size:12.5px;background:#FAFAFA}
+.helper{font-size:12px;color:var(--redup2);margin-top:5px}
+
+/* ── tombol ── */
+.tombol{
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  background:var(--aksen);color:var(--invers);border:none;border-radius:var(--r-input);
+  font-size:14px;font-weight:600;font-family:var(--font);cursor:pointer;
+  width:100%;height:48px;margin-top:var(--s4);
+  transition:transform var(--dur) var(--ease),box-shadow var(--dur) var(--ease),opacity var(--dur);
+}
+.tombol:hover{box-shadow:var(--sh-hover)}
+.tombol:active{transform:scale(.98)}
+.tombol svg{width:17px;height:17px;flex:none}
+.tombol.kecil{width:auto;height:44px;padding:0 16px;font-size:13px;margin-top:0;border-radius:10px;flex:none}
+.tombol.hijau{background:#fff;color:var(--teks);border:1px solid var(--garis-input);box-shadow:none}
+.tombol.hijau:hover{border-color:var(--hijau);color:var(--hijau);box-shadow:none}
+.tombol.merah{background:#fff;color:var(--teks);border:1px solid var(--garis-input);box-shadow:none}
+.tombol.merah:hover{border-color:var(--merah);color:var(--merah);box-shadow:none}
+.tombol.netral{background:#fff;color:var(--teks);border:1px solid var(--garis-input);box-shadow:none}
+.tombol.netral:hover{border-color:#A1A1AA}
+.baris{display:flex;gap:var(--s2);flex-wrap:wrap;align-items:center}
+.baris .tombol:not(.kecil){width:auto}
+
+/* ── pil / badge ── */
+.pil-tab{display:flex;gap:var(--s2);flex-wrap:wrap;margin-bottom:var(--s3)}
+.pil{
+  border:1px solid var(--garis-input);background:#fff;color:var(--redup);
+  border-radius:var(--r-badge);padding:0 14px;height:40px;font-size:13px;font-weight:600;
+  font-family:var(--font);cursor:pointer;transition:all var(--dur) var(--ease);text-transform:capitalize;
+}
+.pil:hover{border-color:#A1A1AA;color:var(--teks)}
+.pil.aktif{border-color:var(--aksen);color:#fff;background:var(--aksen)}
+.badge{
+  display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:4px 9px;
+  border-radius:var(--r-badge);border:1px solid var(--garis);color:var(--redup);background:#FAFAFA;
+  text-transform:none;letter-spacing:0;
+}
+.badge svg{width:12px;height:12px}
+.badge.menunggu{color:var(--amber);border-color:#F3E2C7;background:#FDF6EC}
+.badge.diterima{color:var(--hijau);border-color:#CDEBD9;background:#EFFAF3}
+.badge.ditolak{color:var(--merah);border-color:#F5D2D0;background:#FDF1F0}
+.info-kode{
+  display:flex;gap:10px;align-items:center;background:#FAFAFA;border:1px solid var(--garis);
+  border-radius:var(--r-input);padding:10px 12px;margin:10px 0;font-size:13.5px;flex-wrap:wrap;
+}
+.info-kode .kode-tanda{font-size:11px;font-weight:600;color:var(--redup);letter-spacing:.04em}
+.kode{font-weight:700;font-size:17px;letter-spacing:.14em;font-family:var(--mono)}
+
+/* ── pendaftar ── */
+.pendaftar{
+  border:1px solid var(--garis);border-radius:var(--r-kartu);padding:var(--s3);
+  margin-bottom:var(--s3);background:#fff;display:flex;gap:var(--s3);flex-wrap:wrap;
+  box-shadow:var(--sh-kartu);transition:box-shadow var(--dur) var(--ease),transform var(--dur) var(--ease);
+}
+.pendaftar:hover{box-shadow:var(--sh-hover);transform:translateY(-1px)}
+.pendaftar img.foto{width:88px;height:88px;object-fit:cover;border-radius:10px;border:1px solid var(--garis)}
+.pendaftar .data{flex:1;min-width:200px}
+.pendaftar .nama{font-weight:700;font-size:14.5px;letter-spacing:-.01em;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.pendaftar .kv{font-size:13px;color:var(--redup);margin-top:3px}
+.pendaftar .aksi{display:flex;gap:var(--s2);align-self:flex-start}
+.pendaftar .aksi .tombol{flex:1;min-width:118px}
+.icon-kosong{
+  width:88px;height:88px;border-radius:10px;background:#F4F4F5;border:1px solid var(--garis);
+  display:flex;align-items:center;justify-content:center;color:var(--redup2);
+}
+.icon-kosong svg{width:26px;height:26px}
+
+/* ── chat ── */
+.chat-box{height:320px;overflow-y:auto;display:flex;flex-direction:column;gap:var(--s2);padding:4px 0}
+.chat-pesan{
+  max-width:78%;padding:9px 13px;border-radius:14px 14px 14px 4px;font-size:14px;
+  background:#fff;border:1px solid var(--garis);align-self:flex-start;line-height:1.5;
+}
+.chat-pesan.saya{align-self:flex-end;background:var(--aksen);color:#fff;border-color:var(--aksen);border-radius:14px 14px 4px 14px}
+.chat-pesan .dari{font-size:11px;font-weight:600;opacity:.55;margin-bottom:2px;letter-spacing:.02em}
+.pesan-error{color:var(--merah);font-size:13px;margin-top:var(--s2)}
+.pesan-ok{color:var(--hijau);font-size:13px;margin-top:var(--s2)}
+
+/* ── bottom nav: 5 kolom sama lebar, aktif = tile abu tipis ── */
+.nav-bawah{
+  position:fixed;left:0;right:0;bottom:0;height:calc(64px + env(safe-area-inset-bottom));
+  padding-bottom:env(safe-area-inset-bottom);
+  background:rgba(255,255,255,.92);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-top:1px solid var(--garis);
+  display:grid;grid-auto-flow:column;grid-auto-columns:1fr;z-index:50;
+}
+.nav-bawah button{
+  background:none;border:none;color:var(--redup);font-size:11px;font-weight:600;font-family:var(--font);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  cursor:pointer;min-height:56px;letter-spacing:0;padding:6px 2px;transition:color var(--dur);
+}
+.nav-bawah button .i{width:22px;height:22px;display:grid;place-items:center}
+.nav-bawah button .i svg{width:21px;height:21px}
+.nav-bawah button.aktif{color:var(--teks);background:#F1F1F3}
+.nav-bawah button:hover{color:var(--teks)}
+
+/* ── log, misc ── */
+.tabel-log{font-size:12.5px;color:var(--redup);max-height:230px;overflow-y:auto}
+.tabel-log div{padding:7px 0;border-bottom:1px dashed var(--garis);font-family:var(--mono);font-size:11.5px}
+img.preview{max-width:160px;border-radius:10px;margin-top:10px;border:1px solid var(--garis)}
+.hapus-kolom{cursor:pointer;color:var(--merah);margin-left:8px;font-size:12px}
+footer.kecil{text-align:center;color:var(--redup2);font-size:11px;margin-top:var(--s5);letter-spacing:.03em}
+.ic{width:1.05em;height:1.05em;flex:none;vertical-align:-.18em;display:inline-block}
+h2 .ic{width:17px;height:17px;color:var(--teks)}
+a .ic{width:14px;height:14px;vertical-align:-2px}
+
+/* daftar pengaturan (Task193) */
+.daftar-set{display:flex;flex-direction:column;gap:6px;margin-top:var(--s2)}
+.baris-set{
+  display:flex;align-items:center;gap:var(--s2);border:1px solid var(--garis);
+  border-radius:10px;padding:8px 10px;background:#FAFAFA;
+}
+.baris-set .tumbuh{flex:1;min-width:0}
+.baris-set .t-nama{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.baris-set .t-sub{font-size:11.5px;color:var(--redup);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.baris-set input[type="checkbox"]{width:18px;height:18px;min-height:0;accent-color:#0A0A0A;flex:none}
+
+/* ── reveal halus ── */
+.reveal{opacity:0;transform:translateY(8px);transition:opacity .25s var(--ease),transform .25s var(--ease)}
+.reveal.tampil{opacity:1;transform:none}
+
+@media(min-width:720px){
+  .wrap{padding:var(--s5) var(--s5)}
+  header.top .logo{font-size:17px}
+  .kartu{padding:var(--s5)}
+  .owner-grid>.stat:nth-child(1),.owner-grid>.stat:nth-child(2){grid-column:span 3}
+}
+@media(max-width:719px){
+  .pendaftar .aksi{width:100%;align-self:auto;flex-wrap:wrap}
+  .pendaftar .aksi .tombol{flex:1 1 calc(50% - 4px);min-width:0}
+  .info-kode{flex-wrap:wrap}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}
+  .reveal{opacity:1;transform:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="logo"><span class="mono" aria-hidden="true">UA</span><span>Umi Alz Seleksi</span></div>
+    <div class="spacer"></div>
+    <span id="akun-pil" class="sub"></span>
+  </header>
+  <main id="app">Memuat…</main>
+  <footer class="kecil">Umi Alz Seleksi — bagian dari Umi Usanagi AI</footer>
+</div>
+<nav class="nav-bawah" id="nav"></nav>
+<script>
+'use strict'
+/* ── ikon SVG (Lucide-style, stroke 1.75, grid 24) — presentasi saja ── */
+const IK = {
+  home:'<path d="M3.5 10.6 12 3.5l8.5 7.1"/><path d="M5.5 9.4V20.5h13V9.4"/><path d="M9.5 20.5v-6h5v6"/>',
+  folder:'<path d="M3.5 7.2a2 2 0 0 1 2-2h3.6l2.1 2.6h7.3a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>',
+  chat:'<path d="M20.5 11.6a8.4 8.4 0 0 1-9.2 8.4 8.9 8.9 0 0 1-3.5-.8L3.5 20.5l1.4-4.1a8.3 8.3 0 0 1-1.4-4.8 8.4 8.4 0 0 1 8.5-8.3 8.4 8.4 0 0 1 8.5 8.3z"/>',
+  user:'<path d="M19.5 20.5v-2a4 4 0 0 0-4-4h-7a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7.5" r="4"/>',
+  users:'<path d="M16.5 20.5v-1.8a4 4 0 0 0-4-4h-5a4 4 0 0 0-4 4v1.8"/><circle cx="10" cy="7.5" r="3.6"/><path d="M20.5 20.5v-1.8a4 4 0 0 0-3-3.87"/><path d="M15.5 3.9a4 4 0 0 1 0 7.2"/>',
+  settings:'<circle cx="12" cy="12" r="3.1"/><path d="M19.1 14.6a1.6 1.6 0 0 0 .32 1.77l.06.06a2.4 2.4 0 1 1-3.4 3.4l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-.97 1.47V21a2.4 2.4 0 1 1-4.8 0v-.1a1.6 1.6 0 0 0-1.04-1.46 1.6 1.6 0 0 0-1.77.32l-.06.06a2.4 2.4 0 1 1-3.4-3.4l.06-.06a1.6 1.6 0 0 0 .32-1.77 1.6 1.6 0 0 0-1.47-.97H3a2.4 2.4 0 1 1 0-4.8h.1a1.6 1.6 0 0 0 1.46-1.04 1.6 1.6 0 0 0-.32-1.77l-.06-.06a2.4 2.4 0 1 1 3.4-3.4l.06.06a1.6 1.6 0 0 0 1.77.32H9.4a1.6 1.6 0 0 0 .97-1.47V3a2.4 2.4 0 1 1 4.8 0v.1a1.6 1.6 0 0 0 .97 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a2.4 2.4 0 1 1 3.4 3.4l-.06.06a1.6 1.6 0 0 0-.32 1.77v.08a1.6 1.6 0 0 0 1.47.97H21a2.4 2.4 0 1 1 0 4.8h-.1a1.6 1.6 0 0 0-1.47.97z"/>',
+  check:'<path d="M20 6.5 9.2 17.3 4 12.1"/>',
+  x:'<path d="M18 6 6 18M6 6l12 12"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  camera:'<path d="M21 19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2.4l1.6-2.6h6L15.2 7H19a2 2 0 0 1 2 2z"/><circle cx="12" cy="13.4" r="3.6"/>',
+  key:'<circle cx="7.8" cy="15.8" r="4.2"/><path d="M10.9 12.7 21 2.6"/><path d="M17.4 6.2l3 3M14.4 9.2l3 3"/>',
+  lock:'<rect x="4.5" y="10.8" width="15" height="9.7" rx="2"/><path d="M8.2 10.8V7.4a3.8 3.8 0 0 1 7.6 0v3.4"/>',
+  file:'<path d="M6.5 3.5h11a2 2 0 0 1 2 2v13a2 2 0 0 1-2 2h-11a2 2 0 0 1-2-2v-13a2 2 0 0 1 2-2z"/><path d="M8.5 8.5h7M8.5 12.5h7M8.5 16.5h4.5"/>',
+  target:'<circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="4.8"/><circle cx="12" cy="12" r="1.4"/>',
+  edit:'<path d="M12.5 20.5H21"/><path d="M16.7 3.8a2.1 2.1 0 0 1 3 3L7.6 18.9l-4 1 1-4z"/>',
+  wave:'<path d="M18 11.2V6.2a2 2 0 0 0-4 0v4.6"/><path d="M14 10.4V4.6a2 2 0 0 0-4 0v5.8"/><path d="M10 10.8V6.4a2 2 0 0 0-4 0v8"/><path d="M18 8.4a2 2 0 1 1 4 0v5.6a7.6 7.6 0 0 1-7.6 7.6H13a7.6 7.6 0 0 1-7.6-7.6V10.4a2 2 0 1 1 4 0"/>',
+  arrow:'<path d="M4.5 12h14"/><path d="M13 6.5 18.5 12 13 17.5"/>',
+  ext:'<path d="M7 17 17 7"/><path d="M8.5 7H17v8.5"/>',
+  clock:'<circle cx="12" cy="12" r="8.6"/><path d="M12 7.4V12l3.1 1.8"/>',
+  server:'<rect x="3.6" y="4.2" width="16.8" height="6.4" rx="1.6"/><rect x="3.6" y="13.4" width="16.8" height="6.4" rx="1.6"/><path d="M7.4 7.4h.01M7.4 16.6h.01"/>',
+  inbox:'<path d="M3.6 12.6h4.2l1.6 2.6h5.2l1.6-2.6h4.2"/><path d="M5.4 5.6h13.2l1.8 7v4.4a2 2 0 0 1-2 2H5.6a2 2 0 0 1-2-2v-4.4z"/>',
+};
+const ik = (nama) => '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (IK[nama] || '') + '</svg>';
+
+const $ = sel => document.querySelector(sel)
+const app = $('#app')
+let AKUN = null
+let PATH_GRUP = null  // {idAkun, slug} dari URL
+
+/* ── util ── */
+async function api(path, opt = {}) {
+  const res = await fetch(path, {
+    headers: opt.body instanceof FormData ? undefined : {'Content-Type':'application/json'},
+    ...opt,
+    body: opt.body instanceof FormData ? opt.body : (opt.body ? JSON.stringify(opt.body) : undefined),
+  })
+  const data = await res.json().catch(()=>({error:'Respons tidak valid'}))
+  if (!res.ok) throw new Error(data.error || ('HTTP '+res.status))
+  return data
+}
+const esc = t => String(t==null?'':t).replace(/[<>&"]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;','"':'&quot;'}[c]))
+const fmtWaktu = iso => { try { return new Date(iso).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) } catch { return iso } }
+function bacaPath() {
+  const bagian = location.pathname.split('/').filter(Boolean)
+  if (bagian.length >= 3 && bagian[2] === 'seleksi') return {hal:'panel', idAkun:bagian[0], slug:bagian[1]}
+  if (bagian.length === 2) return {hal:'form', idAkun:bagian[0], slug:bagian[1]}
+  return {hal:'utama'}
+}
+
+/* ── shell ── */
+const TAB_UTAMA = [
+  {id:'utama', ikon:'home', label:'Beranda'},
+  {id:'grup', ikon:'folder', label:'Grup'},
+  {id:'chat', ikon:'chat', label:'Chat'},
+  {id:'profil', ikon:'user', label:'Profil'},
+]
+function gambarNav(hal) {
+  const tabs = [...TAB_UTAMA]
+  if (AKUN?.role === 'owner') tabs.push({id:'owner', ikon:'settings', label:'Owner'})
+  $('#nav').innerHTML = tabs.map(t =>
+    `<button class="${t.id===hal?'aktif':''}" data-hal="${t.id}"><span class="i">${ik(t.ikon)}</span>${t.label}</button>`).join('')
+  $('#nav').querySelectorAll('button').forEach(b => b.onclick = () => { location.pathname = b.dataset.hal === 'utama' ? '/' : '/' + b.dataset.hal })
+  $('#akun-pil').textContent = AKUN ? (AKUN.nama || AKUN.username) + (AKUN.role==='owner' ? ' · owner' : '') : 'Belum masuk'
+}
+
+/* ── halaman ── */
+async function halUtama() {
+  gambarNav('utama')
+  const s = await api('/api/status')
+  /* Task194 — akun bisa punya akses banyak grup seleksi (pemilik / diundang). */
+  let grupSaya = []
+  if (AKUN) { try { grupSaya = (await api('/api/grup/saya')).grup || [] } catch { grupSaya = [] } }
+  const kartuGrup = grupSaya.map(g => `
+    <div class="kartu">
+      <div class="baris" style="justify-content:space-between;align-items:center">
+        <div>
+          <b>${esc(g.nama)}</b>
+          <div class="sub">${g.peran === 'pemilik' ? 'Pemilik grup' : g.peran === 'owner' ? 'Owner sistem' : 'Anggota seleksi'}${g.banned ? ' · dibatasi' : ''}${g.daftarAktif ? '' : ' · pendaftaran tutup'}</div>
+        </div>
+        <button class="tombol kecil" data-panel="${esc(g.panelUrl)}">Buka panel</button>
+      </div>
+    </div>`).join('')
+  app.innerHTML = `
+    <div class="kartu">
+      <h2>Selamat datang ${ik('wave')}</h2>
+      <p class="sub">${esc(s.pesanSambutan)}</p>
+    </div>
+    ${kartuGrup}
+    <div class="grid">
+      <div class="stat"><div class="stat-ik">${ik('folder')}</div><div class="l">Grup seleksi aktif</div><div class="n">${s.jumlahGrup}</div></div>
+      <div class="stat"><div class="stat-ik">${ik('inbox')}</div><div class="l" data-status="menunggu"><span class="dot"></span>Menunggu tinjauan</div><div class="n">${s.pendaftarMenunggu}</div></div>
+      <div class="stat"><div class="stat-ik">${ik('server')}</div><div class="l">Status server · ${s.server.ramMb} MB</div><div class="n">${Math.floor(s.server.uptime/60)} mnt</div></div>
+    </div>
+    ${AKUN ? (grupSaya.length ? '' : `<div class="kartu" style="margin-top:14px"><h3>Belum ada grup seleksi</h3><p class="sub">Akunmu belum punya akses grup. Minta pemilik menjalankan <b>/addseleksi @kamu</b> di grup seleksinya, atau buat sendiri dengan <b>/buatseleksi</b> dari bot.</p></div>`) : `<div class="kartu" style="margin-top:14px"><h3>Punya undangan seleksi?</h3><p class="sub">Buka link & kode dari bot, atau masuk untuk ikut chat. Pemilik grup bisa mengelola seleksi lewat sini.</p>
+      <div class="baris"><button class="tombol kecil" id="ke-masuk">Masuk</button><button class="tombol kecil netral" id="ke-daftar">Daftar akun</button></div></div>`}
+    <div class="kartu"><h3>${ik('lock')} Seleksi privat</h3>
+      <p class="sub">Halaman seleksi tidak lagi ditampilkan di sini. Kamu hanya bisa membuka seleksi lewat <b>link langsung</b> dari pemilik grup (atau daftar milikmu setelah masuk akun).</p>
+    </div>`
+  document.querySelectorAll('[data-panel]').forEach(b => { b.onclick = () => { const u = new URL(b.dataset.panel); halPanel(u.pathname.split('/')[1], u.pathname.split('/')[2]) } })
+  if (!AKUN) {
+    $('#ke-masuk').onclick = halMasuk
+    $('#ke-daftar').onclick = halDaftar
+  }
+}
+
+function formAkun(mode) {
+  app.innerHTML = `
+    <div class="kartu" style="max-width:420px">
+      <h2>${mode==='daftar'?'Daftar akun':'Masuk'}</h2>
+      <p class="sub">${mode==='daftar'?'Akun jadibot Umi bisa dipakai juga — daftarkan nomor WhatsApp kamu supaya pemilik seleksi mengenali.':'Gunakan username & password akun seleksi kamu.'}</p>
+      <label>Username</label><input id="u" autocomplete="username" placeholder="mis. riskyxd">
+      ${mode==='daftar'?'<label>Nomor WhatsApp (opsional, untuk link bot)</label><input id="n" inputmode="numeric" placeholder="628xxx">':''}
+      <label>Password</label><input id="p" type="password" autocomplete="${mode==='daftar'?'new-password':'current-password'}">
+      <button class="tombol" id="go">${mode==='daftar'?'Daftar':'Masuk'}</button>
+      <p class="pesan-error" id="err"></p>
+      <p class="sub" style="margin-top:12px">${mode==='daftar'?'Sudah punya akun? <a href="#" id="pindah">Masuk</a>':'Belum punya akun? <a href="#" id="pindah">Daftar</a>'}</p>
+    </div>`
+  $('#pindah').onclick = e => { e.preventDefault(); mode==='daftar'?halMasuk():halDaftar() }
+  $('#go').onclick = async () => {
+    try {
+      const body = { username: $('#u').value.trim(), password: $('#p').value }
+      if (mode==='daftar') body.nomor = $('#n').value.trim()
+      const r = await api('/api/akun/' + (mode==='daftar'?'daftar':'masuk'), {method:'POST', body})
+      AKUN = r.akun
+      halProfil()
+    } catch (e) { $('#err').textContent = e.message }
+  }
+}
+const halMasuk = () => { gambarNav(''); formAkun('masuk') }
+const halDaftar = () => { gambarNav(''); formAkun('daftar') }
+
+/* ── form publik seleksi ── */
+async function halForm(idAkun, slug) {
+  gambarNav('utama')
+  const info = await api(`/api/grup/form?idAkun=${encodeURIComponent(idAkun)}&slug=${encodeURIComponent(slug)}`)
+  app.innerHTML = `
+    <div class="kartu">
+      <h2>${ik('edit')} Pendaftaran — ${esc(info.grup.nama)}</h2>
+      <p class="sub">${esc(info.grup.deskripsi||'Isi data di bawah ini dengan benar.')}</p>
+      <div class="info-kode"><span class="kode-tanda">Kode dari bot</span> <input id="kode" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="12345678" style="max-width:170px;text-align:center;font-weight:800;letter-spacing:.3em;font-family:var(--mono)"></div>
+      ${info.grup.linkGrup ? `<div class="info-kode"><span class="kode-tanda">Grup seleksi</span> <a href="${esc(info.grup.linkGrup)}" target="_blank" rel="noopener">Buka grup seleksi ${ik('ext')}</a></div>` : ''}
+      ${info.grup.linkUtama ? `<div class="info-kode"><span class="kode-tanda">Setelah lolos masuk ke</span> <a href="${esc(info.grup.linkUtama)}" target="_blank" rel="noopener">Grup utama ${ik('ext')}</a></div>` : ''}
+      <div id="fields"></div>
+      <label>Foto (wajib)</label><input id="foto" type="file" accept="image/*">
+      <img class="preview" id="foto-prev" style="display:none">
+      <label>Nomor WhatsApp (kalau belum dapat kode dari bot)</label><input id="nomor" inputmode="numeric" placeholder="628xxx (opsional)">
+      <button class="tombol" id="kirim">Kirim pendaftaran</button>
+      <p class="pesan-error" id="err"></p><p class="pesan-ok" id="ok"></p>
+    </div>`
+  $('#fields').innerHTML = info.fields.map(f =>
+    `<label>${esc(f.label)}${f.wajib?' *':''}</label><input data-kunci="${esc(f.kunci)}" ${f.tipe==='angka'?'inputmode="numeric"':''}>`).join('')
+  let fotoBase64 = ''
+  $('#foto').onchange = e => {
+    const f = e.target.files[0]; if (!f) return
+    const r = new FileReader()
+    r.onload = () => { fotoBase64 = r.result; const p = $('#foto-prev'); p.src = r.result; p.style.display = 'block' }
+    r.readAsDataURL(f)
+  }
+  $('#kirim').onclick = async () => {
+    $('#err').textContent=''; $('#ok').textContent=''
+    try {
+      const data = {}
+      app.querySelectorAll('[data-kunci]').forEach(i => data[i.dataset.kunci] = i.value)
+      const r = await api('/api/pendaftaran', {method:'POST', body:{ idAkun, slug, kode: $('#kode').value.trim()||undefined, nomor: $('#nomor').value.trim(), data, fotoBase64 }})
+      $('#ok').textContent = r.pesan + ' (ID: ' + r.id + ')' + (r.linkUtama ? ' — setelah lolos masuk lewat link grup utama di atas.' : '')
+    } catch (e) { $('#err').textContent = e.message }
+  }
+}
+
+/* ── panel seleksi ── */
+async function halPanel(idAkun, slug, status = 'menunggu') {
+  gambarNav('')
+  let d
+  try { d = await api(`/api/seleksi/list?idAkun=${encodeURIComponent(idAkun)}&slug=${encodeURIComponent(slug)}&status=${status}`) }
+  catch (e) {
+    app.innerHTML = `<div class="kartu"><h2>Akses panel</h2><p class="sub">${esc(e.message)}</p>
+      ${AKUN?'':'<button class="tombol" id="masuk">Masuk dulu</button>'}</div>`
+    if (!AKUN) $('#masuk').onclick = halMasuk
+    return
+  }
+  PATH_GRUP = {idAkun, slug}
+  const g = d.grup
+  app.innerHTML = `
+    <div class="kartu">
+      <h2>${ik('target')} Panel Seleksi — ${esc(g.nama)}</h2>
+      <p class="sub">Akses: <b>${esc(d.akses)}</b> · ${esc(g.deskripsi||'')}<br>
+      Statistik: <span class="badge diterima">${g.statistik.acc} diterima</span> <span class="badge ditolak">${g.statistik.tolak} ditolak</span> <span class="badge menunggu">${Object.values(d.pendaftar).filter(x=>x.status==='menunggu').length} menunggu</span></p>
+      <a href="/${esc(idAkun)}/${esc(slug)}" target="_blank">Link pendaftaran publik ${ik('ext')}</a>
+      <div class="baris" style="margin-top:12px">
+        <button class="tombol kecil netral" id="buka-setting">${ik('settings')} Pengaturan grup</button>
+      </div>
+    </div>
+    <div class="pil-tab">
+      ${['menunggu','diterima','ditolak',''].map(s2 => `<button class="pil ${s2===status?'aktif':''}" data-s="${s2}">${s2||'Semua'}</button>`).join('')}
+    </div>
+    <div id="daftar">${d.pendaftar.map(p => kartuPendaftar(p, d)).join('') || '<div class="kartu"><p class="sub">Tidak ada pendaftar.</p></div>'}</div>`
+
+  app.querySelectorAll('.pil[data-s]').forEach(b => b.onclick = () => halPanel(idAkun, slug, b.dataset.s))
+  pasangAksi(d)
+  const tombolSet = document.getElementById('buka-setting')
+  if (tombolSet) tombolSet.onclick = () => halSetting(idAkun, slug)
+}
+
+/* ── Task193 — halaman pengaturan grup seleksi ── */
+async function halSetting(idAkun, slug) {
+  gambarNav('')
+  let d
+  try { d = await api(`/api/grup/setting?idAkun=${encodeURIComponent(idAkun)}&slug=${encodeURIComponent(slug)}`) }
+  catch (e) {
+    app.innerHTML = `<div class="kartu"><h2>${ik('settings')} Pengaturan</h2><p class="sub">${esc(e.message)}</p>
+      <button class="tombol" id="kembali">Kembali</button></div>`
+    $('#kembali').onclick = () => halPanel(idAkun, slug)
+    return
+  }
+  PATH_GRUP = { idAkun, slug }
+  app.innerHTML = `
+    <div class="kartu">
+      <h2>${ik('settings')} Pengaturan — ${esc(d.grup.nama)}</h2>
+      <p class="sub">Atur akses penuh, link grup, dan kolom isian seleksi. Perubahan berlaku langsung ke form dan bot.</p>
+    </div>
+
+    <div class="kartu">
+      <h3>${ik('ext')} Link grup</h3>
+      <label for="st-linkgrup">URL link group seleksi</label>
+      <input id="st-linkgrup" placeholder="https://chat.whatsapp.com/…" value="${esc(d.grup.linkGrup)}">
+      <div class="helper">Ditampilkan di halaman pendaftaran. Wajib https://</div>
+      <label for="st-linkutama">URL link group utama (jika lolos seleksi)</label>
+      <input id="st-linkutama" placeholder="https://chat.whatsapp.com/…" value="${esc(d.grup.linkUtama)}">
+      <div class="helper">Bot mengirim link ini ke pendaftar saat diterima.</div>
+
+      <label for="st-desk">Deskripsi grup seleksi</label>
+      <textarea id="st-desk" rows="2" style="min-height:72px">${esc(d.grup.deskripsi)}</textarea>
+
+      <label style="display:flex;align-items:center;gap:8px;font-size:13.5px;color:var(--teks);margin-top:14px">
+        <input type="checkbox" id="st-aktif" ${d.grup.daftarAktif ? 'checked' : ''} style="width:18px;height:18px;min-height:0;accent-color:#0A0A0A">
+        Pendaftaran dibuka
+      </label>
+      <button class="tombol" id="st-simpan">${ik('check')} Simpan pengaturan</button>
+      <p class="pesan-ok" id="st-ok"></p><p class="pesan-error" id="st-err"></p>
+    </div>
+
+    <div class="kartu">
+      <h3>${ik('users')} Akses penuh (nomor yang boleh menerima / menolak)</h3>
+      <div class="daftar-set" id="st-akses">
+        ${d.akses.length ? d.akses.map(a => `
+          <div class="baris-set">
+            <div class="tumbuh"><div class="t-nama">${esc(a.nama || '••••' + String(a.nomor).slice(-4))}</div>
+            <div class="t-sub">+${esc(a.nomor)}${a.username ? ' · @' + esc(a.username) : ''}</div></div>
+            <button class="tombol kecil merah" data-hapus-akses="${esc(a.nomor)}">${ik('x')} Hapus</button>
+          </div>`).join('') : '<div class="sub">Belum ada — tambahkan nomor di bawah.</div>'}
+      </div>
+      <label for="st-nomor">Nomor baru</label>
+      <div class="baris" style="align-items:stretch">
+        <input id="st-nomor" inputmode="numeric" placeholder="628xxx" style="flex:1;min-width:170px">
+        <button class="tombol kecil netral" id="st-tambah-akses">${ik('plus')} Tambah</button>
+      </div>
+      <div class="helper">Atau jalankan bot: /addanggotaseleksi @user</div>
+    </div>
+
+    <div class="kartu">
+      <h3>${ik('edit')} Kolom isian seleksi</h3>
+      <div class="daftar-set" id="st-field">
+        ${d.fields.map(f => `
+          <div class="baris-set">
+            <input type="checkbox" data-wajib-field="${esc(f.kunci)}" ${f.wajib ? 'checked' : ''} style="width:18px;height:18px;min-height:0;accent-color:#0A0A0A">
+            <div class="tumbuh"><div class="t-nama">${esc(f.label)}</div><div class="t-sub">${esc(f.kunci)}${f.tipe === 'angka' ? ' · angka' : ''} · ${f.wajib ? 'wajib' : 'opsional'}</div></div>
+            <button class="tombol kecil merah" data-hapus-field="${esc(f.kunci)}" ${d.fields.length <= 1 ? 'disabled style="opacity:.4"' : ''}>${ik('x')} Hapus</button>
+          </div>`).join('')}
+      </div>
+      <label for="st-fieldlabel">Kolom baru</label>
+      <div class="baris" style="align-items:stretch">
+        <input id="st-fieldlabel" placeholder="mis. Tinggi badan" style="flex:1;min-width:160px">
+        <button class="tombol kecil netral" id="st-tambah-field">${ik('plus')} Tambah</button>
+      </div>
+      <div class="helper">Status wajib/opsional diatur lewat centang di daftar.</div>
+    </div>
+
+    <div class="kartu">
+      <button class="tombol netral" id="st-kembali">${ik('arrow')} Kembali ke panel seleksi</button>
+    </div>`
+
+  $('#st-kembali').onclick = () => halPanel(idAkun, slug)
+
+  $('#st-simpan').onclick = async () => {
+    $('#st-ok').textContent = ''; $('#st-err').textContent = ''
+    try {
+      const wajib = [...app.querySelectorAll('[data-wajib-field]')].filter(c => c.checked).map(c => c.dataset.wajibField)
+      await api('/api/grup/setting', { method: 'POST', body: {
+        slug,
+        linkGrup: $('#st-linkgrup').value.trim(),
+        linkUtama: $('#st-linkutama').value.trim(),
+        deskripsi: $('#st-desk').value,
+        daftarAktif: $('#st-aktif').checked,
+        fieldWajib: wajib,
+      } })
+      $('#st-ok').textContent = 'Pengaturan tersimpan.'
+    } catch (e) { $('#st-err').textContent = e.message }
+  }
+
+  $('#st-tambah-akses').onclick = async () => {
+    const nomor = $('#st-nomor').value.trim()
+    if (!nomor) return
+    try {
+      await api('/api/grup/setting', { method: 'POST', body: { slug, tambahAkses: nomor } })
+      halSetting(idAkun, slug)
+    } catch (e) { alert(e.message) }
+  }
+  app.querySelectorAll('[data-hapus-akses]').forEach(b => b.onclick = async () => {
+    try {
+      await api('/api/grup/setting', { method: 'POST', body: { slug, hapusAkses: b.dataset.hapusAkses } })
+      halSetting(idAkun, slug)
+    } catch (e) { alert(e.message) }
+  })
+
+  $('#st-tambah-field').onclick = async () => {
+    const label = $('#st-fieldlabel').value.trim()
+    if (!label) return
+    try {
+      await api('/api/grup/setting', { method: 'POST', body: { slug, fieldBaru: { label, wajib: false } } })
+      halSetting(idAkun, slug)
+    } catch (e) { alert(e.message) }
+  }
+  app.querySelectorAll('[data-hapus-field]').forEach(b => b.onclick = async () => {
+    try {
+      await api('/api/grup/setting', { method: 'POST', body: { slug, fieldHapus: b.dataset.hapusField } })
+      halSetting(idAkun, slug)
+    } catch (e) { alert(e.message) }
+  })
+  app.querySelectorAll('[data-wajib-field]').forEach(c => c.onchange = async () => {
+    try {
+      const wajib = [...app.querySelectorAll('[data-wajib-field]')].filter(x => x.checked).map(x => x.dataset.wajibField)
+      await api('/api/grup/setting', { method: 'POST', body: { slug, fieldWajib: wajib } })
+    } catch (e) { alert(e.message) }
+  })
+}
+function kartuPendaftar(p, d) {
+  const kv = d.grup.fields.map(f => p.data?.[f.kunci] ? `<div class="kv"><b>${esc(f.label)}:</b> ${esc(p.data[f.kunci])}</div>` : '').join('')
+  return `<div class="pendaftar" data-id="${esc(p.id)}">
+    ${p.foto ? `<img class="foto" src="${esc(p.foto)}" loading="lazy">` : '<div class="foto icon-kosong" style="width:92px;height:92px">' + ik('camera') + '</div>'}
+    <div class="data">
+      <div class="nama">${esc(p.data?.nama || p.nomor || p.id)} <span class="badge ${esc(p.status)}">${esc(p.status)}</span></div>
+      <div class="kv">Kode ${esc(p.kode)} · ${fmtWaktu(p.waktu)}${p.nomor?' · WA ••••'+esc(p.nomor.slice(-4)):''}</div>
+      ${kv}
+    </div>
+    ${p.status==='menunggu' ? `<div class="aksi">
+      <button class="tombol kecil hijau" data-aksi="acc">${ik('check')} Terima</button>
+      <button class="tombol kecil merah" data-aksi="tolak">${ik('x')} Tolak</button>
+    </div>` : ''}
+  </div>`
+}
+function pasangAksi(d) {
+  app.querySelectorAll('.pendaftar [data-aksi]').forEach(b => b.onclick = async () => {
+    const id = b.closest('.pendaftar').dataset.id
+    b.disabled = true
+    try {
+      const r = await api('/api/seleksi/aksi', {method:'POST', body:{ idPendaftar: id, aksi: b.dataset.aksi }})
+      alert(r.pesan || r.perintah || 'Selesai')
+      halPanel(d ? Object.keys({}) || PATH_GRUP.idAkun : PATH_GRUP.idAkun, PATH_GRUP.slug, 'menunggu')
+    } catch (e) { alert(e.message); b.disabled = false }
+  })
+}
+
+/* ── chat ── */
+async function halChat() {
+  gambarNav('chat')
+  if (!AKUN) { app.innerHTML = `<div class="kartu"><h2>${ik('chat')} Chat</h2><p class="sub">Masuk dulu untuk mengobrol dengan sesama pengguna.</p><button class="tombol" id="m">Masuk</button></div>`; $('#m').onclick = halMasuk; return }
+  app.innerHTML = `
+    <div class="kartu"><h2>${ik('chat')} Chat umum</h2>
+      <div class="chat-box" id="box"></div>
+      <div class="baris" style="margin-top:8px"><input id="teks" placeholder="Tulis pesan…" style="flex:1"><button class="tombol kecil" id="kirim">Kirim</button></div>
+    </div>`
+  const muat = async () => {
+    try {
+      const r = await api('/api/chat')
+      const box = $('#box'); if (!box) return
+      const dekat = box.scrollHeight - box.scrollTop - box.clientHeight < 60
+      box.innerHTML = r.pesan.map(p => `<div class="chat-pesan ${p.dari===AKUN.id?'saya':''}"><div class="dari">${esc(p.nama)} · ${fmtWaktu(p.waktu)}</div>${esc(p.teks)}</div>`).join('')
+      if (dekat) box.scrollTop = box.scrollHeight
+    } catch { /* diam */ }
+  }
+  await muat()
+  setInterval(muat, 5000)
+  $('#kirim').onclick = async () => {
+    const teks = $('#teks').value.trim(); if (!teks) return
+    $('#teks').value = ''
+    try { await api('/api/chat', {method:'POST', body:{teks}}); muat() } catch (e) { alert(e.message) }
+  }
+  $('#teks').onkeydown = e => { if (e.key === 'Enter') $('#kirim').click() }
+}
+
+/* ── profil ── */
+async function halProfil() {
+  gambarNav('profil')
+  if (!AKUN) { halMasuk(); return }
+  let a
+  try { a = await api('/api/akun/profil') } catch { AKUN = null; halMasuk(); return }
+  app.innerHTML = `
+    <div class="kartu">
+      <h2>${ik('user')} Profil</h2>
+      <div class="baris" style="gap:14px">
+        ${a.akun.foto?`<img src="${esc(a.akun.foto)}" style="width:72px;height:72px;border-radius:50%;object-fit:cover;border:1px solid var(--garis)">`:'<div class="icon-kosong" style="width:72px;height:72px;border-radius:50%">' + ik('user') + '</div>'}
+        <div><b>${esc(a.akun.nama||a.akun.username)}</b><div class="sub">@${esc(a.akun.username)} · role ${esc(a.akun.role)}${a.akun.nomor?' · ••••'+esc(a.akun.nomor.slice(-4)):''}</div></div>
+      </div>
+      <label>Nama tampilan</label><input id="nama" value="${esc(a.akun.nama||'')}">
+      <label>Bio</label><textarea id="bio" rows="2">${esc(a.akun.bio||'')}</textarea>
+      <label>Foto profil</label><input id="foto" type="file" accept="image/*">
+      <button class="tombol" id="simpan">Simpan profil</button>
+      <p class="pesan-ok" id="ok"></p><p class="pesan-error" id="err"></p>
+    </div>
+    <div class="kartu">
+      <h3>${ik('key')} Token akun (untuk API/integrasi)</h3>
+      <input id="token" readonly value="${esc(a.akun.token)}" style="font-family:monospace;font-size:12px">
+      <div class="baris"><button class="tombol kecil netral" id="salin">Salin</button><button class="tombol kecil netral" id="putar">Putar token</button></div>
+    </div>
+    <div class="kartu">
+      <h3>${ik('lock')} Ganti password</h3>
+      <label>Password lama</label><input id="pl" type="password">
+      <label>Password baru</label><input id="pb" type="password">
+      <button class="tombol kecil netral" id="ganti">Ganti password</button>
+    </div>
+    <div class="kartu"><button class="tombol merah kecil" id="keluar">Keluar</button></div>`
+  let fotoBase64 = ''
+  $('#foto').onchange = e => { const f = e.target.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => fotoBase64 = r.result; r.readAsDataURL(f) }
+  $('#simpan').onclick = async () => {
+    try {
+      const r = await api('/api/akun/profil', {method:'POST', body:{ nama: $('#nama').value, bio: $('#bio').value, fotoBase64: fotoBase64||undefined }})
+      AKUN = r.akun; $('#ok').textContent = 'Profil tersimpan.'; $('#err').textContent=''
+    } catch (e) { $('#err').textContent = e.message }
+  }
+  $('#salin').onclick = () => { $('#token').select(); navigator.clipboard?.writeText($('#token').value); }
+  $('#putar').onclick = async () => {
+    if (!confirm('Putar token? Token lama langsung tidak berlaku.')) return
+    try { const r = await api('/api/akun/profil', {method:'POST', body:{ rolToken:'putar' }}); $('#token').value = r.token } catch (e) { alert(e.message) }
+  }
+  $('#ganti').onclick = async () => {
+    try {
+      await api('/api/akun/profil', {method:'POST', body:{ passwordLama: $('#pl').value, passwordBaru: $('#pb').value }})
+      alert('Password diganti.'); $('#pl').value=''; $('#pb').value=''
+    } catch (e) { alert(e.message) }
+  }
+  $('#keluar').onclick = async () => { await api('/api/akun/keluar', {method:'POST'}); AKUN = null; halUtama() }
+}
+
+/* ── owner ── */
+function barisAkun(a) {
+  const tujuan = a.role === 'owner' ? 'user' : 'owner'
+  const label = a.role === 'owner' ? 'Turunkan ke user' : 'Naikkan ke owner'
+  return '<div style="padding:6px 0;border-bottom:1px dashed rgba(96,145,220,.12)" class="baris">' +
+    '<span style="flex:1">@' + esc(a.username) + ' — ' + esc(a.nama || '') + ' <span class="badge">' + esc(a.role) + '</span></span>' +
+    '<button class="tombol kecil netral" data-role="' + esc(a.id) + '" data-r="' + tujuan + '">' + label + '</button>' +
+    '</div>'
+}
+async function halOwner() {
+  gambarNav('owner')
+  if (!AKUN) { halMasuk(); return }
+  let d
+  try { d = await api('/api/owner/ringkasan') }
+  catch (e) { app.innerHTML = `<div class="kartu"><h2>${ik('settings')} Owner panel</h2><p class="sub">${esc(e.message)}</p></div>`; return }
+  app.innerHTML = `
+    <div class="grid owner-grid">
+      <div class="stat"><div class="stat-ik">${ik('folder')}</div><div class="l">Grup seleksi</div><div class="n">${d.jumlahGrup}</div></div>
+      <div class="stat"><div class="stat-ik">${ik('users')}</div><div class="l">Akun web</div><div class="n">${d.jumlahAkun}</div></div>
+      <div class="stat"><div class="stat-ik">${ik('check')}</div><div class="l" data-status="diterima"><span class="dot"></span>Diterima</div><div class="n">${d.acc}</div></div>
+      <div class="stat"><div class="stat-ik">${ik('x')}</div><div class="l" data-status="ditolak"><span class="dot"></span>Ditolak</div><div class="n">${d.tolak}</div></div>
+      <div class="stat"><div class="stat-ik">${ik('clock')}</div><div class="l" data-status="menunggu"><span class="dot"></span>Menunggu</div><div class="n">${d.menunggu}</div></div>
+    </div>
+    <div class="kartu" style="margin-top:14px">
+      <h3>${ik('plus')} Tambah grup seleksi</h3>
+      <label>Nama grup</label><input id="g-nama" placeholder="mis. Seleksi Angkatan 7">
+      <label>JID grup WA tujuan (opsional)</label><input id="g-jid" placeholder="120363xxxxx@g.us">
+      <label>Deskripsi</label><input id="g-desc">
+      <label>Server key (044f34b0 / d1ebc84a)</label><input id="g-server" placeholder="044f34b0">
+      <button class="tombol" id="g-buat">Buat grup seleksi</button><p class="pesan-ok" id="g-ok"></p><p class="pesan-error" id="g-err"></p>
+    </div>
+    <div class="kartu"><h3>${ik('folder')} Grup seleksi</h3>
+      ${d.grup.map(g => `
+        <div style="padding:10px 0;border-bottom:1px dashed rgba(96,145,220,.14)">
+          <b>${esc(g.nama)}</b> <span class="badge">${esc(g.slug)}</span> ${g.banned?'<span class="badge ditolak">BANNED</span>':''} ${g.daftarAktif?'':'<span class="badge">tutup</span>'}
+          <div class="sub">${g.statistik.acc} acc · ${g.statistik.tolak} tolak · ${g.statistik.total} total · ${g.helper} helper · tujuan ${esc(g.tujuan||'-')}</div>
+          <div class="baris" style="margin-top:6px">
+            <button class="tombol kecil ${g.banned?'hijau':'merah'}" data-ban="${esc(g.slug)}" data-nyala="${g.banned}">${g.banned?'Unban':'Ban'}</button>
+            <button class="tombol kecil netral" data-tutup="${esc(g.slug)}" data-aktif="${g.daftarAktif}">${g.daftarAktif?'Tutup daftar':'Buka daftar'}</button>
+          </div>
+          <div class="baris" style="margin-top:8px;align-items:stretch">
+            <input data-link-grup="${esc(g.slug)}" placeholder="https://link grup seleksi" value="${esc(g.linkGrup||'')}" style="flex:2;min-width:170px;min-height:44px;font-size:13px">
+            <input data-link-utama="${esc(g.slug)}" placeholder="https://link grup utama (setelah lolos)" value="${esc(g.linkUtama||'')}" style="flex:2;min-width:170px;min-height:44px;font-size:13px">
+            <button class="tombol kecil netral" data-link-simpan="${esc(g.slug)}">Simpan link</button>
+          </div>
+        </div>`).join('') || '<p class="sub">Belum ada grup.</p>'}
+    </div>
+    <div class="kartu"><h3>${ik('users')} Akun & role</h3>
+      ${d.akun.map(barisAkun).join('')}
+    </div>
+    <div class="kartu"><h3>${ik('file')} Log</h3><div class="tabel-log">${d.log.map(l => `<div>[${fmtWaktu(l.waktu)}] ${esc(l.pesan)}</div>`).join('') || '<div>Belum ada log.</div>'}</div></div>
+    <div class="kartu"><h3>${ik('chat')} Pesan sambutan</h3><textarea id="sambutan" rows="2">${esc(d.pesanSambutan||'')}</textarea><button class="tombol kecil" id="sambutan-go">Simpan</button></div>`
+  $('#g-buat').onclick = async () => {
+    try {
+      const r = await api('/api/owner/grup', {method:'POST', body:{ nama: $('#g-nama').value, grupTujuanJid: $('#g-jid').value, deskripsi: $('#g-desc').value, serverKey: $('#g-server').value }})
+      $('#g-ok').textContent = 'Dibuat: ' + r.grup.url
+    } catch (e) { $('#g-err').textContent = e.message }
+  }
+  app.querySelectorAll('[data-ban]').forEach(b => b.onclick = async () => {
+    await api('/api/owner/grup', {method:'PATCH', body:{ slug: b.dataset.ban, banned: b.dataset.nyala !== 'true' }})
+    halOwner()
+  })
+  app.querySelectorAll('[data-tutup]').forEach(b => b.onclick = async () => {
+    await api('/api/owner/grup', {method:'PATCH', body:{ slug: b.dataset.tutup, daftarAktif: b.dataset.aktif !== 'true' }})
+    halOwner()
+  })
+  app.querySelectorAll('[data-role]').forEach(b => b.onclick = async () => {
+    await api('/api/owner/role', {method:'POST', body:{ akunId: b.dataset.role, role: b.dataset.r }})
+    halOwner()
+  })
+  app.querySelectorAll('[data-link-simpan]').forEach(b => b.onclick = async () => {
+    const slug = b.dataset.linkSimpan
+    const linkGrup = app.querySelector('[data-link-grup="' + slug + '"]').value
+    const linkUtama = app.querySelector('[data-link-utama="' + slug + '"]').value
+    try {
+      await api('/api/owner/grup', {method:'PATCH', body:{ slug, linkGrup, linkUtama }})
+      alert('Link tersimpan.')
+      halOwner()
+    } catch (e) { alert(e.message) }
+  })
+  $('#sambutan-go').onclick = async () => {
+    await api('/api/owner/grup', {method:'PATCH', body:{ pesanSambutan: $('#sambutan').value }})
+    alert('Pesan sambutan tersimpan.')
+  }
+}
+
+/* ── router ── */
+async function render() {
+  try {
+    try { const r = await api('/api/akun/profil'); AKUN = r.akun } catch { AKUN = null }
+    const p = bacaPath()
+    if (p.hal === 'form') return halForm(p.idAkun, p.slug)
+    if (p.hal === 'panel') return halPanel(p.idAkun, p.slug)
+    const hal = (location.pathname.replace(/^\//,'').split('/')[0]) || 'utama'
+    if (hal === 'grup') return gambarNav('grup'), halGrupPublik()
+    if (hal === 'chat') return halChat()
+    if (hal === 'profil') return halProfil()
+    if (hal === 'owner') return halOwner()
+    if (hal === 'masuk') return halMasuk()
+    if (hal === 'daftar') return halDaftar()
+    return halUtama()
+  } catch (e) {
+    app.innerHTML = `<div class="kartu"><h2>Terjadi kesalahan</h2><p class="sub">${esc(e.message)}</p></div>`
+  }
+}
+async function halGrupPublik() {
+  /* Task192 — privat: daftar hanya untuk akun yang masuk (grup miliknya sendiri). */
+  if (!AKUN) {
+    app.innerHTML = `<div class="kartu"><h2>${ik('lock')} Grup privat</h2>
+      <p class="sub">Seleksi tidak bisa dijelajahi tanpa link. Masuk akun untuk melihat grup milikmu, atau buka langsung link dari pemilik grup seleksi.</p>
+      <button class="tombol" id="m-grup">Masuk</button></div>`
+    $('#m-grup').onclick = halMasuk
+    return
+  }
+  const g = await api('/api/grup/publik?idAkun=' + encodeURIComponent(AKUN.id))
+  app.innerHTML = `<div class="kartu"><h2>${ik('folder')} Grup seleksiku</h2>
+    ${g.grup.map(x => `<div style="padding:10px 0;border-bottom:1px dashed rgba(96,145,220,.14)">
+      <b>${esc(x.nama)}</b> <span class="badge">${x.menunggu} menunggu</span>
+      <div class="sub">${esc(x.deskripsi||'')}</div>
+      <a href="/${esc(x.idAkun)}/${esc(x.slug)}">Halaman pendaftaran ${ik('arrow')}</a></div>`).join('') || '<p class="sub">Belum ada grup seleksi di akun ini.</p>'}
+  </div>`
+}
+render()
+
+/* ═══ Animasi UI (presentasi — tidak menyentuh logika di atas) ═══ */
+;(function () {
+  const kurangGerak = matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (kurangGerak) return
+
+  /* — Reveal saat scroll, dengan stagger — */
+  const io = new IntersectionObserver((entri) => {
+    entri.forEach((e) => {
+      if (!e.isIntersecting) return
+      const el = e.target
+      const tunda = Number(el.dataset.revealDelay || 0)
+      setTimeout(() => el.classList.add('tampil'), tunda)
+      io.unobserve(el)
+      /* count-up untuk angka statistik */
+      el.querySelectorAll?.('.n').forEach(kartuAngka)
+      if (el.classList.contains('n')) kartuAngka(el)
+      /* judul per kata (hanya h2 murni teks tanpa tag) */
+
+    })
+  }, { threshold: 0.12, rootMargin: '0px 0px -6% 0px' })
+
+  function amati(node) {
+    if (node.nodeType !== 1) return
+    if (node.matches?.('.kartu, .stat, .pendaftar, .pil-tab')) {
+      node.classList.add('reveal')
+      const ibu = node.parentElement
+      if (ibu) {
+        const saudara = [...ibu.children].filter(c => c.classList?.contains('reveal'))
+        const i = saudara.indexOf(node)
+        if (i > 0) node.dataset.revealDelay = String(Math.min(i * 40, 200))
+      }
+      io.observe(node)
+    }
+    node.querySelectorAll?.('.kartu, .stat, .pendaftar, .pil-tab').forEach((c, i) => {
+      c.classList.add('reveal')
+      if (i) c.dataset.revealDelay = String(Math.min(i * 40, 200))
+      io.observe(c)
+    })
+  }
+  const mo = new MutationObserver((mutasi) => {
+    mutasi.forEach((m) => m.addedNodes.forEach(amati))
+  })
+  mo.observe(document.getElementById('app'), { childList: true, subtree: true })
+  document.getElementById('app').querySelectorAll('.kartu, .stat, .pendaftar, .pil-tab').forEach((c, i) => {
+    c.classList.add('reveal'); if (i) c.dataset.revealDelay = String(Math.min(i * 40, 200)); io.observe(c)
+  })
+
+  /* — Count-up (hanya angka murni di awal teks) — */
+  function kartuAngka(el) {
+    if (!el || el.dataset.counted) return
+    const teks = el.textContent || ''
+    const m = teks.match(/^([\d.,]+)(.*)$/)
+    if (!m) return
+    el.dataset.counted = '1'
+    const akhir = m[1]
+    const sufiks = m[2]
+    const polos = akhir.replace(/\./g, '').replace(',', '.')
+    const target = parseFloat(polos)
+    if (!isFinite(target)) return
+    const desimal = akhir.includes(',') ? (akhir.split(',')[1] || '').length : 0
+    const titik = akhir.includes('.') && !akhir.includes(',')   /* format 1.234 */
+    const mulai = performance.now()
+    const durasi = 1100
+    function langkah(t) {
+      const k = Math.min((t - mulai) / durasi, 1)
+      const e = 1 - Math.pow(1 - k, 3)
+      let nilai = (target * e).toFixed(desimal)
+      if (titik) nilai = Number(nilai).toLocaleString('id-ID', { minimumFractionDigits: desimal })
+      el.textContent = nilai + sufiks
+      if (k < 1) requestAnimationFrame(langkah)
+      else el.textContent = akhir + sufiks
+    }
+    requestAnimationFrame(langkah)
+  }
+
+
+})()
+</script>
+</body>
+</html>

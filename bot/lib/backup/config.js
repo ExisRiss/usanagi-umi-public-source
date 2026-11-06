@@ -1,152 +1,98 @@
 /* By AlzRiss - Usanagi Umi AI
  *
- * Konfigurasi sistem backup 10-menitan.
+ * Task171 — konfigurasi sistem backup otomatis.
  *
- * Semua nilai dibaca dari environment. Berkas `.backup-system.env` di root bot
- * dimuat otomatis bila ada (pola yang sama dengan `.env.groq`), supaya tidak
- * bergantung pada startup command panel.
+ * Sumber setelan: `.backup-system.env` di akar server (mode 600). Kunci yang
+ * sudah ada (BACKUP_AUTOSTART, BACKUP_INTERVAL_MINUTES, …) tetap dipakai;
+ * kunci baru untuk Task171:
+ *   BACKUP_UPLOAD=1              → unggah arsip ke upload.gwenna.my.id
+ *   BACKUP_OWNER_NUMBER=6287…    → nomor yang dikirimi link
+ *   BACKUP_ENC_KEY=<rahasia>     → kunci enkripsi arsip (WAJIB, arsip publik)
+ *   BACKUP_LOCAL_KEEP=6          → arsip lokal yang disimpan
  *
- * Tidak pernah mencetak nilai secret ke log.
+ * Tidak memakai dotenv: parser kecil di bawah supaya tidak menambah dependensi.
  */
-import fs from 'node:fs'
-import path from 'node:path'
 
-const DEFAULT_INTERVAL_MINUTES = 10
+import fs from 'fs'
+import path from 'path'
 
-let envLoaded = false
+export const BAWAAN = {
+  intervalMenit: 60,
+  retensi: 48,
+  minFreeByte: 384 * 1024 * 1024,
+  maksArsipByte: 60 * 1024 * 1024,
+  owner: '6287813709432',
+  autostart: true,
+  unggah: true,
+  lokalSimpan: 6,
+  retensiHari: 14,
+}
 
-/** Muat `.backup-system.env` sekali, tanpa menimpa environment yang sudah ada. */
-export function loadBackupEnv(cwd = process.cwd()) {
-  if (envLoaded) return
-  envLoaded = true
-  const file = path.join(cwd, '.backup-system.env')
-  if (!fs.existsSync(file)) return
+export function bacaEnvBerkas(berkas) {
+  const hasil = {}
+  let isi = ''
   try {
-    const text = fs.readFileSync(file, 'utf8')
-    for (const raw of text.split('\n')) {
-      const line = raw.trim()
-      if (!line || line.startsWith('#')) continue
-      const index = line.indexOf('=')
-      if (index < 1) continue
-      const key = line.slice(0, index).trim()
-      let value = line.slice(index + 1).trim()
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-        value = value.slice(1, -1)
-      }
-      if (!Object.prototype.hasOwnProperty.call(process.env, key)) process.env[key] = value
-    }
+    isi = fs.readFileSync(berkas, 'utf8')
   } catch (error) {
-    console.error('[BACKUP] Gagal membaca .backup-system.env:', error.message)
+    return hasil
   }
+  for (const baris of isi.split(/\r?\n/)) {
+    const bersih = baris.trim()
+    if (!bersih || bersih.startsWith('#')) continue
+    const posisi = bersih.indexOf('=')
+    if (posisi <= 0) continue
+    const kunci = bersih.slice(0, posisi).trim()
+    let nilai = bersih.slice(posisi + 1).trim()
+    if ((nilai.startsWith('"') && nilai.endsWith('"')) || (nilai.startsWith("'") && nilai.endsWith("'"))) {
+      nilai = nilai.slice(1, -1)
+    }
+    hasil[kunci] = nilai
+  }
+  return hasil
 }
 
-function intValue(raw, fallback, min, max) {
-  const value = Number.parseInt(String(raw === undefined ? '' : raw), 10)
-  if (!Number.isFinite(value)) return fallback
-  if (value < min || value > max) return fallback
-  return value
+function angka(nilai, cadangan) {
+  const teks = String(nilai === undefined || nilai === null ? '' : nilai).trim()
+  if (!teks) return cadangan
+  const n = Number(teks)
+  return Number.isFinite(n) && n >= 0 ? n : cadangan
 }
 
-function numberValue(raw, fallback, min, max) {
-  const value = Number(raw)
-  if (!Number.isFinite(value)) return fallback
-  if (value < min || value > max) return fallback
-  return Math.round(value)
+function benar(nilai, cadangan) {
+  if (nilai === undefined || nilai === null || nilai === '') return cadangan
+  return !['0', 'false', 'no', 'off', 'tidak', 'mati'].includes(String(nilai).trim().toLowerCase())
 }
 
-export function isEnabled(raw, fallback = false) {
-  const value = String(raw === undefined ? '' : raw).trim().toLowerCase()
-  if (!value) return fallback
-  return ['1', 'true', 'on', 'yes', 'aktif'].includes(value)
-}
-
-function listValue(raw) {
-  return String(raw || '')
-    .split(/[,\s]+/)
-    .map(item => item.trim())
-    .filter(Boolean)
-}
-
-/**
- * Konfigurasi lengkap. Dipanggil setiap kali dibutuhkan supaya perubahan
- * environment (mis. setelah restart panel) langsung terbaca.
- */
-export function backupConfig(cwd = process.cwd()) {
-  loadBackupEnv(cwd)
-  const root = path.resolve(cwd, process.env.BACKUP_STORAGE_PATH || path.join('data', 'backup-system'))
-  const intervalMinutes = intValue(process.env.BACKUP_INTERVAL_MINUTES, DEFAULT_INTERVAL_MINUTES, 1, 1440)
-  const encryptionKey = String(process.env.BACKUP_ENCRYPTION_KEY || '').trim()
-  const externalBackend = String(process.env.BACKUP_EXTERNAL_BACKEND || 'none').trim().toLowerCase()
+/** Konfigurasi lengkap. `root` default = folder kerja bot (sama seperti boot.js). */
+export function backupConfig(root = process.cwd()) {
+  const env = { ...bacaEnvBerkas(path.join(root, '.backup-system.env')), ...process.env }
+  const dir = path.join(root, 'data', 'backup-system')
+  const arsipDir = path.join(dir, 'archives')
+  const logDir = path.join(dir, 'logs')
+  const intervalMenit = Math.max(5, angka(env.BACKUP_INTERVAL_MINUTES, BAWAAN.intervalMenit))
   return {
-    cwd,
     root,
-    appVersion: String(process.env.BACKUP_APP_VERSION || '10.1.0'),
-    host: String(process.env.BACKUP_HOST_LABEL || 'bot-jadibot'),
-    intervalMinutes,
-    defaultIntervalMinutes: DEFAULT_INTERVAL_MINUTES,
-    lockTimeoutMs: intValue(process.env.BACKUP_LOCK_TIMEOUT_MINUTES, 25, 3, 180) * 60 * 1000,
-    databaseJson: path.resolve(cwd, process.env.BACKUP_DATABASE_JSON || 'database.json'),
-    sqlitePath: path.resolve(cwd, process.env.BACKUP_SQLITE_PATH || path.join('data', 'database', 'usanagi.sqlite')),
-    sessionsDir: path.resolve(cwd, process.env.BACKUP_SESSIONS_DIR || path.join('sessions', 'jadibot')),
-    platformState: path.resolve(cwd, process.env.BACKUP_PLATFORM_STATE || path.join('data', 'jadibot-platform.json')),
-    dataDir: path.resolve(cwd, process.env.BACKUP_DATA_DIR || 'data'),
-    retention: {
-      recent: intValue(process.env.BACKUP_RETENTION_COUNT, 144, 6, 5000),
-      daily: intValue(process.env.BACKUP_RETENTION_DAILY, 7, 0, 365),
-      weekly: intValue(process.env.BACKUP_RETENTION_WEEKLY, 4, 0, 104),
-      monthly: intValue(process.env.BACKUP_RETENTION_MONTHLY, 3, 0, 60),
-    },
-    storageLimitBytes: numberValue(process.env.BACKUP_STORAGE_LIMIT_BYTES, 2 * 1024 * 1024 * 1024, 64 * 1024 * 1024, 500 * 1024 * 1024 * 1024),
-    minFreeBytes: numberValue(process.env.BACKUP_MIN_FREE_BYTES, 256 * 1024 * 1024, 16 * 1024 * 1024, 50 * 1024 * 1024 * 1024),
-    encryption: {
-      enabled: Boolean(encryptionKey) || isEnabled(process.env.BACKUP_ENCRYPTION, false),
-      key: encryptionKey,
-      algorithm: 'aes-256-gcm',
-    },
-    external: {
-      backend: ['vercel-blob', 's3', 'none'].includes(externalBackend) ? externalBackend : 'none',
-      // all = setiap snapshot, hourly = sekali per jam UTC, promoted = hanya arsip harian
-      mode: ['all', 'hourly', 'promoted'].includes(String(process.env.BACKUP_EXTERNAL_MODE || '').toLowerCase())
-        ? String(process.env.BACKUP_EXTERNAL_MODE || '').toLowerCase()
-        : 'hourly',
-      s3: {
-        endpoint: String(process.env.S3_ENDPOINT || '').replace(/\/+$/, ''),
-        bucket: String(process.env.S3_BUCKET || ''),
-        region: String(process.env.S3_REGION || 'auto'),
-        accessKeyId: String(process.env.S3_ACCESS_KEY_ID || ''),
-        secretAccessKey: String(process.env.S3_SECRET_ACCESS_KEY || ''),
-        prefix: String(process.env.S3_PREFIX || 'usanagi-backups').replace(/^\/+|\/+$/g, ''),
-      },
-      blob: {
-        token: String(process.env.BLOB_READ_WRITE_TOKEN || ''),
-        prefix: String(process.env.BLOB_BACKUP_PREFIX || 'backup-system').replace(/^\/+|\/+$/g, ''),
-      },
-    },
-    telegram: {
-      token: String(process.env.TELEGRAM_BOT_TOKEN || '').trim(),
-      adminIds: listValue(process.env.TELEGRAM_ADMIN_IDS).map(v => v.replace(/[^\d-]/g, '')).filter(Boolean),
-      // Task83: group tujuan arsip auto-backup (id supergroup, mis. -100...).
-      chatId: String(process.env.TELEGRAM_BACKUP_CHAT_ID || '').trim(),
-      notifyOnSuccess: isEnabled(process.env.TELEGRAM_NOTIFY_SUCCESS, false),
-      pollTimeoutSeconds: 30,
-    },
-    adminSecret: String(process.env.BACKUP_ADMIN_SECRET || '').trim(),
-    autoStart: isEnabled(process.env.BACKUP_AUTOSTART, true),
+    dir,
+    arsipDir,
+    logDir,
+    indexFile: path.join(dir, 'index.json'),
+    stateFile: path.join(dir, 'state.json'),
+    otomatisFile: path.join(dir, 'otomatis.json'),
+    antreNotif: path.join(dir, 'antre-notif.json'),
+    kunciFile: path.join(dir, 'scheduler.lock'),
+    pendingRestore: path.join(dir, 'restore-pending.json'),
+    intervalMenit,
+    intervalMs: intervalMenit * 60 * 1000,
+    retensi: Math.max(1, angka(env.BACKUP_RETENTION_COUNT, BAWAAN.retensi)),
+    lokalSimpan: Math.max(1, angka(env.BACKUP_LOCAL_KEEP, BAWAAN.lokalSimpan)),
+    minFreeByte: angka(env.BACKUP_MIN_FREE_BYTES, BAWAAN.minFreeByte),
+    maksArsipByte: angka(env.BACKUP_MAKS_ARSIP_BYTES, BAWAAN.maksArsipByte),
+    owner: String(env.BACKUP_OWNER_NUMBER || BAWAAN.owner).replace(/\D/g, '') || BAWAAN.owner,
+    autostart: benar(env.BACKUP_AUTOSTART, BAWAAN.autostart),
+    unggah: benar(env.BACKUP_UPLOAD, BAWAAN.unggah),
+    retensiHari: Math.max(1, angka(env.BACKUP_RETENTION_DAYS, BAWAAN.retensiHari)),
+    enkripsiKey: String(env.BACKUP_ENC_KEY || env.BACKUP_ADMIN_SECRET || '').trim(),
   }
 }
 
-/** Backend eksternal aktif atau null bila belum dikonfigurasi. */
-export function externalBackendStatus(cfg = backupConfig()) {
-  const { backend } = cfg.external
-  if (backend === 'vercel-blob') {
-    return cfg.external.blob.token ? { backend, ready: true } : { backend, ready: false, reason: 'BLOB_READ_WRITE_TOKEN belum diisi' }
-  }
-  if (backend === 's3') {
-    const s3 = cfg.external.s3
-    const missing = ['endpoint', 'bucket', 'accessKeyId', 'secretAccessKey'].filter(key => !s3[key])
-    return missing.length
-      ? { backend, ready: false, reason: `variabel belum lengkap: ${missing.join(', ')}` }
-      : { backend, ready: true }
-  }
-  return { backend: 'none', ready: false, reason: 'storage eksternal belum diaktifkan' }
-}
+export default backupConfig

@@ -37,7 +37,7 @@ let handler = async (m, { conn, usedPrefix }) => {
         `Alasan: ${reason}`,
         '',
         `Cadangan: ketik ${usedPrefix || '.'}tradingoffline untuk mengirim versi berkas HTML,`,
-        'atau buka versi web di game.gwenna.my.id/trading-offline.html',
+        'atau buka versi web di game.example.com/trading-offline.html',
       ].join('\n')
     )
   }

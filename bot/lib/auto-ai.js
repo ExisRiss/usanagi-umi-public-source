@@ -1,9 +1,11 @@
 import { limitsEnabled } from './limit-mode.js'
+import { canUseOwnerPlugin } from './owner-policy.js'
 import { isOwnOutboundEcho } from './command-response.js'
 import { chatGroq, getGroqSettings, groqBudget } from './groq-client.js'
 import { chatGemini, getGeminiSettings, geminiBudget } from './gemini-client.js'
 import { conversationKey, conversationMemory, conversationOnly, conversationText, forgetConversation } from './auto-ai-conversation.js'
 import { AUTO_AI_SYSTEM_PROMPT, AUTO_AI_CONVERSATION_PROMPT } from './auto-ai-prompt.js'
+import { botMessageVerdict } from './bot-filter.js'
 
 /**
  * Urutan penyedia Auto-AI: Gemini dulu (kalau kuncinya ada), Groq sebagai
@@ -80,6 +82,12 @@ export function shouldAutoAITrigger(m, conn, botConfig = {}, bot = {}) {
   if (/broadcast|newsletter/.test(String(m.chat || ''))) return false
   if (global.umiAutoAI?.enabled === false || botConfig.autoAIEnabled === false || botConfig.values?.autoAI?.enabled === false) return false
   if (m.fromMe || m.key?.fromMe) return isSelfAIRequest(m, botConfig)
+  // Task114: jangan pernah membalas sesama bot. Satu proses ini menjalankan
+  // bot utama + semua sesi jadibot, jadi dua bot di grup yang sama bisa saling
+  // balas tanpa henti kalau pesan bot lolos ke model. Keputusan (nomor bot
+  // sendiri, daftar pantau owner, pesan buatan library/API, gema balasan kita)
+  // dihitung di lib/bot-filter.js SEBELUM model dipanggil.
+  if (botMessageVerdict(m, conn, botConfig).skip) return false
   const identities = botIdentities(conn, bot)
   const mentioned = (m.mentionedJid || []).some(jid => identities.includes(jidId(jid)))
   const replied = Boolean(m.quoted && (m.quoted.fromMe === true || m.quoted.key?.fromMe === true || identities.includes(jidId(m.quoted.sender))))
@@ -106,7 +114,11 @@ export function commandAliases(plugin) {
 export function permissionReason(plugin, context) {
   const { m, botConfig = {}, isROwner, isOwner, isMods, isAdmin, isBotAdmin, isPrems, userData = {} } = context
   if (plugin.disabled || plugin.tags?.includes('admin')) return 'Fitur nonaktif.'
-  if (plugin.rowner && !isROwner && !(plugin.jadibotOwner && botConfig.type === 'jadibot' && isOwner)) return 'Hanya developer/owner utama.'
+  // Task124: aturannya sama dengan handler — owner bot (nomor yang diisi di
+  // setelan bot) boleh memakai perintah rowner, kecuali fitur platform.
+  if (plugin.rowner && !canUseOwnerPlugin(plugin.filePath || plugin.name || '', { isROwner, isOwner, botUtama: botConfig?.type !== 'jadibot' })) {
+    return isOwner ? 'Fitur platform, hanya untuk developer.' : 'Hanya developer/owner utama.'
+  }
   if ((plugin.owner || plugin.ownerOnly) && !isOwner) return 'Hanya owner bot.'
   if (plugin.mods && !isMods) return 'Hanya moderator.'
   if ((plugin.premium || plugin.premiumOnly) && !isPrems) return 'Memerlukan premium.'
@@ -187,8 +199,10 @@ function resolveCommand(catalog, command, pluginName) {
   const matches = catalog.filter(e => e.aliases.includes(command) && (!pluginName || e.name === pluginName))
   if (!matches.length) return null
   if (matches.length > 1) {
-    const preferred = matches.find(e => command === 'allmenu' && e.name.endsWith('/_allmenu.js'))
-      || matches.find(e => command === 'menu' && e.name.endsWith('/usanagi-menu.js'))
+    // `.menu` = kartu HTML (umi-menu.js). `.allmenu` tetap milik allmenu teks
+    // lama; dipilih yang klasik supaya perilakunya sama seperti sebelumnya.
+    const preferred = matches.find(e => command === 'menu' && e.name.endsWith('/umi-menu.js'))
+      || matches.find(e => command === 'allmenu' && e.name.endsWith('/_allmenu.js'))
     if (preferred) return preferred
     return null
   }

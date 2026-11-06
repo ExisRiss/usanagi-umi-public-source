@@ -1,11 +1,24 @@
-/* By AlzRiss - Usanagi Umi AI */
+/* By AlzRiss - Usanagi Umi AI
+ *
+ * .ytmp4 / .ytv — unduh video YouTube jadi MP4.
+ *
+ * Perbaikan Task110:
+ *  1. Dulu batas 80 MB dipakai dengan kualitas tetap 720p, jadi video panjang
+ *     gagal TOTAL: "yt-dlp: Sign in to confirm…", "api-faa: 622.5 MB melebihi
+ *     batas 80 MB", "savetube: 403.1 MB…" — pengguna tidak dapat apa pun.
+ *     Sekarang kualitas diturunkan bertingkat (720 → 480 → 360 → 240) sampai
+ *     videonya muat di bawah batas.
+ *  2. Kalau memang tidak ada yang muat, jawabannya jelas: sarankan audio saja
+ *     (.ytmp3) atau video yang lebih pendek — bukan stack panjang.
+ *  3. Kegagalan unduhan tidak lagi dilempar ke pelapor error.
+ */
 
 import fs from 'fs-extra'
-import { fetchBuffer } from '../../lib/awang-http.js'
-import { ytDlpDownloadVideo } from '../../lib/awang-ytdlp.js'
+import { downloadYoutube, isYoutubeUrl } from '../../lib/youtube-media.js'
 
-const MAX_VIDEO = 200 * 1024 * 1024
-const API_URL = 'https://api-faa.my.id/faa/ytmp4'
+// Dibatasi 80 MB: WhatsApp menolak media besar dan disk container pernah penuh
+// (ENOSPC) saat unduhan 200 MB menumpuk di /tmp.
+const MAX_VIDEO = 80 * 1024 * 1024
 
 async function react(conn, m, emoji) {
   try {
@@ -13,27 +26,9 @@ async function react(conn, m, emoji) {
   } catch {}
 }
 
-function isYoutubeUrl(url) {
-  try {
-    const parsed = new URL(url)
-    const host = parsed.hostname.toLowerCase().replace(/^www\./, '')
-    return host === 'youtube.com' || host === 'youtu.be' || host === 'm.youtube.com'
-  } catch {
-    return false
-  }
-}
-
-async function downloadVideo(url) {
-  const media = await fetchBuffer(url, {
-    timeout: 180000,
-    maxBytes: MAX_VIDEO,
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 Chrome/140.0.0.0 Mobile Safari/537.36',
-      Accept: 'video/mp4,video/*,*/*'
-    }
-  })
-
-  return media.buffer
+function labelKualitas(provider) {
+  const match = /^yt-dlp-(\d+)p$/.exec(String(provider || ''))
+  return match ? `${match[1]}p` : ''
 }
 
 const handler = async (m, { conn, usedPrefix }) => {
@@ -53,80 +48,59 @@ const handler = async (m, { conn, usedPrefix }) => {
 
   void react(conn, m, '⏳')
 
-  let ytDlpFile = null
+  let media = null
   try {
-    ytDlpFile = await ytDlpDownloadVideo(input, MAX_VIDEO, { prefix: 'usanagi-ytmp4' })
-  } catch (ytDlpError) {
-    console.log(`  \x1b[33m⚠\x1b[0m  yt-dlp tidak dapat digunakan untuk ytmp4: ${ytDlpError.message}`)
-  }
+    const hasil = await downloadYoutube(input, { type: 'video', maxBytes: MAX_VIDEO, prefix: 'usanagi-ytmp4' })
+    media = hasil.file
+    const kualitas = labelKualitas(hasil.provider)
 
-  if (ytDlpFile) {
-    try {
+    if (hasil.audioOnly) {
+      /* Task133 — sumber video memang tidak ada untuk IP server ini, tetapi
+       * audionya bisa diunduh. Kirim audionya, jangan gagal total. */
+      const pakaiMp4 = /\.m4a$/i.test(hasil.file)
       await conn.sendMessage(m.chat, {
-        video: { url: ytDlpFile },
-        mimetype: 'video/mp4',
-        fileName: 'youtube.mp4'
+        audio: { url: media },
+        mimetype: pakaiMp4 ? 'audio/mp4' : 'audio/mpeg',
+        fileName: pakaiMp4 ? 'youtube.m4a' : 'youtube.mp3',
+        caption:
+          `🎧 YouTube (audio) · ${(hasil.bytes / 1048576).toFixed(1)} MB · via ${hasil.provider}\n\n` +
+          `Video tidak tersedia dari server ini (YouTube menolak IP server).`,
       }, { quoted: m.raw })
-      await react(conn, m, '✅')
-      m.limit?.success()
-      return
-    } catch (sendError) {
-      console.error('[USANAGI YTMP4 YTDLP SEND]', sendError)
-    } finally {
-      await fs.remove(ytDlpFile).catch(() => {})
+    } else {
+      await conn.sendMessage(m.chat, {
+        video: { url: media },
+        mimetype: 'video/mp4',
+        fileName: 'youtube.mp4',
+        ...(kualitas ? { caption: `🎬 YouTube ${kualitas} · ${(hasil.bytes / 1048576).toFixed(1)} MB` } : {})
+      }, { quoted: m.raw })
     }
-  }
-
-  try {
-    const apiUrl = `${API_URL}?url=${encodeURIComponent(input)}`
-    const response = await fetch(apiUrl, {
-      method: 'GET',
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'Mozilla/5.0'
-      }
-    })
-
-    if (!response.ok) {
-      let errorText = ''
-      try { errorText = await response.text() } catch {}
-      throw new Error(`API HTTP ${response.status}${errorText ? ` - ${errorText.slice(0, 300)}` : ''}`)
-    }
-
-    const data = await response.json()
-    console.log('[USANAGI YTMP4 API]', JSON.stringify(data, null, 2))
-
-    if (data?.status !== true) {
-      throw new Error(data?.message || data?.error || 'API gagal mengambil video.')
-    }
-
-    const downloadUrl = data?.result?.download_url
-    if (!downloadUrl || typeof downloadUrl !== 'string') {
-      throw new Error('Download URL tidak ditemukan pada response API.')
-    }
-
-    const video = await downloadVideo(downloadUrl)
-    if (!video.length) {
-      throw new Error('File video kosong.')
-    }
-
-    await conn.sendMessage(m.chat, {
-      video,
-      mimetype: 'video/mp4',
-      fileName: 'youtube.mp4'
-    }, { quoted: m.raw })
 
     await react(conn, m, '✅')
     m.limit?.success()
-
   } catch (error) {
     m.limit?.fail()
-    console.error('[USANAGI YTMP4 ERROR]', error)
     await react(conn, m, '❌')
+
+    const kode = String(error?.code || '')
+    const ukuran = /melebihi batas/i.test(String(error?.message || ''))
+    const alasan = kode === 'UMI_DISK_FULL'
+      ? String(error.message)
+      : ukuran
+        ? `Videonya terlalu besar untuk WhatsApp (batas ${(MAX_VIDEO / 1048576).toFixed(0)} MB), bahkan setelah diturunkan sampai 240p.`
+        : 'Semua sumber video sedang tidak bisa dipakai (yt-dlp ditolak YouTube, sumber cadangan ikut gagal).'
+
     await conn.sendMessage(m.chat, {
-      text: `❌ Gagal mendownload YouTube.\n\nError: ${error.message}`
+      text:
+        `❌ Gagal mengunduh video YouTube.\n\n${alasan}\n\n` +
+        `Pilihan lain:\n` +
+        `• ${usedPrefix}ytmp3 <link> — ambil audionya saja (jauh lebih kecil)\n` +
+        `• pakai video yang lebih pendek\n\n` +
+        `_Owner bisa memasang data/cookies.txt di server supaya yt-dlp tidak diblokir YouTube._`
     }, { quoted: m.raw })
-    throw error
+    // Jangan throw: bukan bug bot, jadi tidak perlu masuk laporan error.
+    console.warn('[USANAGI YTMP4]', error?.message || error)
+  } finally {
+    if (media) await fs.remove(media).catch(() => {})
   }
 }
 

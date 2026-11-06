@@ -1,5 +1,10 @@
 import { platformSessions } from './jadibot-platform-state.js'
-import { handleBackupApi } from './backup/api.js'
+/* Task132: autoread per sesi jadibot (dipisah agar bisa diuji). */
+import { bacaAutoread, tulisAutoread } from './jadibot-session-autoread.js'
+import { layaniSitus } from './situs-lokal.js'
+import { layaniWebGame } from './webgame-server.js'
+import { layaniUpload, layaniTerimaUpload } from './upload-publik.js'
+import { layaniSeleksi } from './seleksi/api.js'
 import { handlePlatformApi } from './platform/api.js'
 import { createRealmHttp } from './realms/http.js'
 import { realmService } from './realms/runtime.js'
@@ -15,6 +20,8 @@ const realmHttp = createRealmHttp(realmService)
 /* By AlzRiss - Usanagi Umi AI */
 
 import http from 'node:http'
+import { handleMediaProxy } from './media-proxy.js'
+import { apiKey, saveApiKey, removeApiKey } from '../config/api-keys.js'
 import https from 'node:https'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -50,7 +57,6 @@ import {
   saveMainPremiumConfig,
   searchFeatures,
 } from './premium-mode.js'
-import { cleanupBackupExport, getBackupExportFile, prepareBackupExport } from './vercel-backup-export.js'
 import { agentChat, agentProviderKeyMask, agentStatus, agentTest, ownerAgentShell, startUmiAgentWorker, updateAgentSettings } from './umi-agent.js'
 import { buyPanelPackage, buyProduct, createWalletTopup, handleTripayCallback, manualTopupRequests, panelAutoOrderStatus, reviewManualTopup, shopCatalog, startPanelAutoOrder, testPanelConnection, updatePanelPackages, updatePanelSettings, adjustWallet, creditWalletForGame, debitWalletForGame, walletOrders, walletStatus } from './panel-autoorder.js'
 
@@ -238,6 +244,31 @@ function apiKeyState() {
       file: 'AI Agent (terenkripsi)',
       role: 'AI Agent / AI Owner bila provider OpenRouter dipilih',
     },
+    // Kunci pihak ketiga dipusatkan di config/settings.js (lihat config/api-keys.js).
+    tenor: {
+      provider: 'tenor',
+      configured: Boolean(apiKey('tenor')),
+      model: '',
+      masked: maskApiKey(apiKey('tenor')),
+      file: '.env.apikeys',
+      role: 'Pencarian GIF (Tenor)',
+    },
+    pastebin: {
+      provider: 'pastebin',
+      configured: Boolean(apiKey('pastebin')),
+      model: '',
+      masked: maskApiKey(apiKey('pastebin')),
+      file: '.env.apikeys',
+      role: 'Upload teks ke Pastebin',
+    },
+    neuralframes: {
+      provider: 'neuralframes',
+      configured: Boolean(apiKey('neuralFrames')),
+      model: '',
+      masked: maskApiKey(apiKey('neuralFrames')),
+      file: '.env.apikeys',
+      role: 'Image to Prompt (NeuralFrames)',
+    },
   }
 }
 
@@ -287,20 +318,6 @@ async function routeOwnerConsole(req, res, pathname) {
     const store = unifiedRpg()
     if (store) { const status = store.status(); return send(res, 200, { ...status, stage: 'live-unified', currencyConversionApplied: true, legacySpendAdapterEnabled: true, verifiedProgressUnified: true, progressUnificationComplete: status.heldRecords === 0 && status.pendingPetReviews === 0 }) }
     return send(res, 200, summarizeLegacyCurrency(getDb(), users))
-  }
-  // Task83: status + jalankan manual auto-backup harian (tujuan group Telegram).
-  // POST langsung balas 202 karena mengunggah arsip bisa beberapa menit.
-  if (pathname === '/api/owner-console/auto-backup') {
-    const { autoBackupSnapshot, runFullBackup } = await import('./auto-backup.js')
-    if (req.method === 'GET') return send(res, 200, { ok: true, ...(await autoBackupSnapshot()) })
-    if (req.method === 'POST') {
-      if (limited('owner-auto-backup', 1, 5 * 60 * 1000)) throw Object.assign(new Error('Tunggu 5 menit sebelum menjalankan backup lagi.'), { status: 429 })
-      const snapshot = await autoBackupSnapshot()
-      if (snapshot.running) return send(res, 409, { ok: false, reason: 'already-running', snapshot })
-      runFullBackup({ force: true, reason: 'owner-console' })
-        .catch(error => console.error('[AUTO-BACKUP] gagal dijalankan dari console:', error.message))
-      return send(res, 202, { ok: true, started: true })
-    }
   }
   if (pathname === '/api/owner-console/status' && req.method === 'GET') return send(res, 200, mainBotStatus())
   if (pathname === '/api/owner-console/logs' && req.method === 'GET') return send(res, 200, ownerConsoleOutput(url.searchParams.get('cursor')))
@@ -436,7 +453,7 @@ async function routeOwnerConsole(req, res, pathname) {
   if (pathname === '/api/owner-console/apikey' && req.method === 'POST') {
     const input = await bodyJson(req)
     const provider = String(input.provider || '').toLowerCase()
-    if (!['gemini', 'groq', 'openrouter'].includes(provider)) {
+    if (!['gemini', 'groq', 'openrouter', 'tenor', 'pastebin', 'neuralframes'].includes(provider)) {
       throw Object.assign(new Error('Provider API key tidak dikenal.'), { status: 400 })
     }
     const remove = input.delete === true
@@ -460,6 +477,11 @@ async function routeOwnerConsole(req, res, pathname) {
         }
         persistGroqRuntimeConfig({ apiKey: key, model: getGroqSettings().model })
       }
+    } else if (['tenor', 'pastebin', 'neuralframes'].includes(provider)) {
+      // Kunci pihak ketiga: semua fitur membacanya lewat config/settings.js.
+      const name = provider === 'neuralframes' ? 'neuralFrames' : provider
+      if (remove) removeApiKey(name)
+      else saveApiKey(name, String(input.api_key || ''))
     } else if (remove) {
       throw Object.assign(new Error('Key OpenRouter belum bisa dihapus dari sini. Isi key baru untuk menggantinya, atau kelola lewat AI Owner.'), { status: 400 })
     } else {
@@ -704,6 +726,50 @@ async function routeTripayCallback(req, res) {
 
 function config() {
   return global.jadibotPlatform || {}
+}
+
+/* ── Alight Motion Premium: satu pintu ke server AM ──────────────────── */
+export function amBaseUrl() {
+  return String(process.env.AM_API_BASE || config().amApiBase || 'https://am.neonode.my.id/api').replace(/\/+$/, '')
+}
+
+function amEmail(value) {
+  const email = safeText(value, 120).toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw Object.assign(new Error('Email tidak valid.'), { status: 400 })
+  return email
+}
+
+/** Teruskan permintaan ke server AM; kegagalan jaringan jadi jawaban 424. */
+async function amRequest(path, { method = 'GET', body, timeoutMs = 30000 } = {}) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const response = await fetch(`${amBaseUrl()}${path}`, {
+      method,
+      headers: body ? { 'content-type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    })
+    let data = null
+    try { data = await response.json() } catch { data = null }
+    if (!response.ok) {
+      return {
+        success: false,
+        http: response.status,
+        message: String(data?.message || data?.error || `Server AM menjawab HTTP ${response.status}.`).slice(0, 300),
+      }
+    }
+    return data || { success: false, message: 'Server AM tidak mengirim isi jawaban.' }
+  } catch (error) {
+    return {
+      success: false,
+      message: error?.name === 'AbortError'
+        ? 'Server AM tidak menjawab (timeout). Coba lagi sebentar.'
+        : `Tidak bisa menghubungi server AM: ${error?.message || error}`,
+    }
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 const loadDb = () => platformSessions.load()
@@ -1056,6 +1122,7 @@ function profileSettings(profile) {
     session_id: profile.number,
     bot_name: v.namebot,
     prefix: profile.defaultPrefix,
+    prefix_mode: profile.prefixMode === 'loose' ? 'loose' : 'strict',
     mode: profile.public ? 'public' : 'self',
     only_group: profile.onlyGroup === true,
     registration_required: profile.registrationRequired !== false,
@@ -1065,6 +1132,7 @@ function profileSettings(profile) {
     owner_numbers: normalizeJadibotOwners(profile.ownerNumbers || []),
     locked_owner_number: lockedJadibotOwnerNumber(),
     auto_ai: v.autoAI?.enabled !== false,
+    autoread: bacaAutoread(profile.number),
     auto_typing: v.autoTyping?.enabled !== false,
     auto_typing_config: v.autoTyping,
     auto_translate: v.autoTranslate?.enabled !== false,
@@ -1099,7 +1167,15 @@ function applySettings(profile, input) {
     const prefix = safeText(input.prefix, 3)
     if (!prefix || /\s/.test(prefix)) throw Object.assign(new Error('Prefix harus 1-3 karakter tanpa spasi.'), { status: 400 })
     profile.defaultPrefix = prefix
+    // Task112: prefix baru harus menggantikan prefix lama di semua chat sesi ini,
+    // supaya tidak ada chat yang masih menjalankan prefix sebelumnya.
     clearScopedPrefixes(profile.scope)
+  }
+  if (input.prefix_mode !== undefined) {
+    const mode = String(input.prefix_mode || '').toLowerCase()
+    if (!['strict', 'loose'].includes(mode)) throw Object.assign(new Error('Mode prefix harus strict atau loose.'), { status: 400 })
+    profile.prefixMode = mode
+    if (profile.values) profile.values.prefixMode = mode
   }
   if (input.mode !== undefined) {
     const mode = String(input.mode).toLowerCase()
@@ -1214,6 +1290,12 @@ function applySettings(profile, input) {
     }
     v.scriptUrl = v.links.websiteUrl
     v.backupGroupLink = v.links.groupUrl
+  }
+  if (input.autoread !== undefined) {
+    if (typeof input.autoread !== 'boolean') {
+      throw Object.assign(new Error('Auto read harus true atau false.'), { status: 400 })
+    }
+    tulisAutoread(profile.number, input.autoread)
   }
   if (input.auto_ai !== undefined) v.autoAI = { enabled: input.auto_ai }
   saveJadibotConfig(profile)
@@ -1369,65 +1451,32 @@ function statsAuthorized(req) {
   })
 }
 
-function backupExporterAuthorized(req) {
-  const expected = String(process.env.UMI_BACKUP_EXPORT_SECRET || '').trim()
-  const supplied = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim()
-  if (!expected) throw Object.assign(new Error('Layanan ekspor backup belum dikonfigurasi.'), { status: 503 })
-  const expectedBuffer = Buffer.from(expected)
-  const suppliedBuffer = Buffer.from(supplied)
-  if (!supplied || expectedBuffer.length !== suppliedBuffer.length || !crypto.timingSafeEqual(expectedBuffer, suppliedBuffer)) {
-    throw Object.assign(new Error('Autentikasi ekspor backup ditolak.'), { status: 401 })
-  }
-}
-
-function streamBackupArchive(res, record) {
-  res.writeHead(200, {
-    'Content-Type': 'application/gzip',
-    'Content-Length': String(record.bytes),
-    'Content-Disposition': `attachment; filename="${path.basename(record.file)}"`,
-    'Cache-Control': 'no-store',
-    'X-Content-Type-Options': 'nosniff',
-  })
-  const input = fs.createReadStream(record.file)
-  input.on('error', error => {
-    console.error('[VERCEL-BACKUP] Gagal mengirim arsip:', error.message)
-    if (!res.headersSent) send(res, 500, { error: 'Arsip backup gagal dibaca.' })
-    else res.destroy(error)
-  })
-  input.pipe(res)
-}
-
-async function routeInternalBackup(req, res, pathname) {
-  backupExporterAuthorized(req)
-  if (pathname === '/api/internal/backup/export' && req.method === 'POST') {
-    const input = await bodyJson(req)
-    const result = await prepareBackupExport(input.generation)
-    return send(res, 200, { ok: true, ...result })
-  }
-  if (pathname === '/api/internal/backup/export/cleanup' && req.method === 'POST') {
-    const input = await bodyJson(req)
-    return send(res, 200, { ok: true, ...(await cleanupBackupExport(input.generation)) })
-  }
-  const match = pathname.match(/^\/api\/internal\/backup\/export\/([A-Za-z0-9_-]{16,96})\/(bot|jadibot)$/)
-  if (match && req.method === 'GET') {
-    return streamBackupArchive(res, await getBackupExportFile(match[1], match[2]))
-  }
-  return send(res, 404, { error: 'Endpoint ekspor backup tidak ditemukan.' })
-}
-
 async function route(req, res) {
+  /* Task155 — host upload publik (upload.gwenna.my.id) punya penyaji sendiri. */
+  if (layaniUpload(req, res)) return
+  /* Task196-fix — penerima dorongan berkas dari instansi lain (secret Bearer). */
+  if (layaniTerimaUpload(req, res)) return
+  /* Task190 — website Umi Alz Seleksi (umi-alz-seleksi.gwenna.my.id). */
+  if (await layaniSeleksi(req, res)) return
+  /* Task213 — API meja game multiplayer (/api/rooms*, /api/health) dilayani
+   * server bot sendiri. WAJIB sebelum layaniSitus: host game (game.gwenna.my.id
+   * dsb.) menyajikan situs statis, sehingga /api/* akan dibalas 404 halaman. */
+  try {
+    const urlGame = new URL(req.url || '/', 'http://localhost')
+    if (await layaniWebGame(req, res, urlGame)) return
+  } catch (error) {
+    console.warn('[WEBGAME] gagal menangani permintaan:', error?.message || error)
+  }
+  /* Task152 — subdomain situs disajikan dari server bot sendiri.
+   * Host `<nama>-alzriss.gwenna.my.id` / `<nama>.alzriss.gwenna.my.id`
+   * tidak boleh masuk ke router API. */
+  if (layaniSitus(req, res)) return
   if (/^\/realms(?:\/|\?|$)/.test(req.url || '')) return realmHttp(req, res)
   setCors(req, res)
   if (req.method === 'OPTIONS') return send(res, 204)
   const url = new URL(req.url, 'http://localhost')
   const pathname = url.pathname.replace(/\/+$/, '') || '/'
 
-  // Sistem backup 10 menit. Prefiks dipisah dari /api/backup/* lama
-  // (backup/list, backup/create, backup/restore) agar fitur lama tetap jalan.
-  // Autentikasi memakai BACKUP_ADMIN_SECRET, bukan sesi Supabase.
-  if (pathname === '/api/backup-system' || pathname.startsWith('/api/backup-system/')) {
-    return handleBackupApi(req, res, pathname, url.searchParams)
-  }
 
   // Ekosistem multi-aplikasi (WhatsApp + Telegram). Prefiks terpisah dari
   // /api/platform/* yang sudah dipakai wallet game. Autentikasi memakai
@@ -1474,7 +1523,12 @@ async function route(req, res) {
   // Task64: tukar koin RPG -> $AS UMI TRADE (tanpa DANA).
   if (pathname === '/api/platform/rpg-koin' && req.method === 'POST') return routeGameKoinTopup(req, res)
 
-  if (pathname.startsWith('/api/internal/backup/')) return routeInternalBackup(req, res, pathname)
+
+  // Proxy media YouTube (pengganti wss://stream.kanara.my.id yang sudah mati).
+  // Dipakai kartu .ytplay supaya video bisa diputar di HP walau tautan
+  // googlevideo terikat ke IP server. Publik, tetapi URL wajib bertanda
+  // tangan HMAC dan host dibatasi (lihat lib/media-proxy.js).
+  if (pathname === '/media/yt') return handleMediaProxy(req, res, url)
 
   const user = await authenticate(req)
   if (limited(`${user.id}:${pathname}`, pathname.includes('pairing') ? 4 : 60)) throw Object.assign(new Error('Terlalu banyak permintaan.'), { status: 429 })
@@ -1628,7 +1682,18 @@ async function route(req, res) {
 
   if (pathname === '/api/session/restart' && req.method === 'POST') {
     const input = await bodyJson(req); const number = normalizeBotNumber(input.session_id || input.phone)
-    ownedSession(user, number); await restartSubBot(number, global.conn)
+    ownedSession(user, number)
+    try {
+      await restartSubBot(number, global.conn)
+    } catch (error) {
+      const message = String(error?.message || error)
+      // Kredensial hilang / WhatsApp menolak = salah input pengguna, bukan
+      // gangguan layanan. Tanpa ini website menampilkan 500 "Layanan platform
+      // sedang bermasalah." untuk kegagalan yang sebenarnya bisa dijelaskan.
+      const status = /kredensial|credential|belum memiliki/i.test(message) ? 409 : 502
+      appendSessionLog(number, 'warn', `Restart gagal untuk ${user.email}: ${message}`)
+      throw Object.assign(new Error(`Restart bot gagal: ${message}`), { status, code: 'BOT_RESTART_FAILED' })
+    }
     appendSessionLog(number, 'info', `Restart diminta oleh ${user.email}.`)
     return send(res, 200, { ok: true, session_id: number, ...statusFor(number) })
   }
@@ -1674,6 +1739,40 @@ async function route(req, res) {
     return send(res, 200, { ok: true, query, total: features.length, features })
   }
 
+  /* ── Alight Motion Premium (Task134) ─────────────────────────────────
+   * Website `amprem-by-alzriss.gwenna.my.id` memakai backend AM yang SAMA
+   * dengan perintah `.amprem` / `.ampremverify` di bot. Logikanya tidak
+   * diduplikasi: endpoint ini hanya meneruskan permintaan ke server AM dan
+   * mengembalikan jawabannya apa adanya, jadi bot dan website selalu
+   * konsisten. Kunci/secret tidak pernah dikirim ke browser.
+   */
+  if (pathname === '/api/amprem/status' && req.method === 'GET') {
+    const status = await amRequest('/status', { timeoutMs: 9000 })
+    return send(res, 200, { ok: true, backend: amBaseUrl(), result: status })
+  }
+
+  if (pathname === '/api/amprem/send-link' && req.method === 'POST') {
+    const input = await bodyJson(req)
+    const email = amEmail(input.email)
+    if (limited(`amprem:send:${user.id}`, 6, 60 * 60 * 1000)) {
+      throw Object.assign(new Error('Batas permintaan magic link tercapai (6 per jam). Coba lagi nanti.'), { status: 429 })
+    }
+    const result = await amRequest('/send-link', { method: 'POST', body: { email } })
+    return send(res, result?.success === false ? 424 : 200, { ok: result?.success !== false, email, result })
+  }
+
+  if (pathname === '/api/amprem/verify-link' && req.method === 'POST') {
+    const input = await bodyJson(req)
+    const email = amEmail(input.email)
+    const magicLink = safeText(input.magicLink || input.link, 4000)
+    if (!magicLink || magicLink.length < 10) throw Object.assign(new Error('Tautan verifikasi kosong atau terlalu pendek.'), { status: 400 })
+    if (limited(`amprem:verify:${user.id}`, 10, 60 * 60 * 1000)) {
+      throw Object.assign(new Error('Batas verifikasi tercapai (10 per jam). Coba lagi nanti.'), { status: 429 })
+    }
+    const result = await amRequest('/verify-link', { method: 'POST', body: { email, magicLink } })
+    return send(res, result?.success === false ? 424 : 200, { ok: result?.success !== false, email, result })
+  }
+
   if (pathname === '/api/settings/get' && req.method === 'GET') {
     const number = normalizeBotNumber(url.searchParams.get('session_id')); ownedSession(user, number)
     return send(res, 200, { ok: true, settings: profileSettings(loadJadibotConfig(number, path.join(SESSION_DIR, number))) })
@@ -1700,26 +1799,43 @@ async function route(req, res) {
       ? await resolveJadibotUploadChannel(active, uploadChannelValue)
       : undefined
     let settings = applySettings(target, input)
-    if (hasUploadChannelInput) {
-      setJadibotUploadChannel(target, uploadChannel)
-      saveJadibotConfig(target)
-      settings = profileSettings(target)
-    }
+    /*
+     * Simpan SELALU, bukan hanya saat kanal upload ikut diubah.
+     * Bug 24-10-2026: applySettings() hanya mengubah objek di memori, berkas
+     * bot-config.json tidak pernah ditulis. Restart yang dijalankan beberapa
+     * baris di bawah lalu memuat ulang berkas lama, sehingga prefix (dan
+     * setting lain yang tidak lewat cabang kanal) kembali seperti semula —
+     * gejalanya "set prefix dari panel tidak bisa".
+     */
+    if (hasUploadChannelInput) setJadibotUploadChannel(target, uploadChannel)
+    saveJadibotConfig(target)
+    if (hasUploadChannelInput) settings = profileSettings(target)
 
-    // Socket/runtime tertentu membaca konfigurasi saat koneksi dibuat. Restart
-    // otomatis memastikan semua perubahan website langsung dipakai oleh bot,
-    // bukan hanya tersimpan di bot-config.json.
-    let restarted = false
+    // Socket/runtime tertentu membaca konfigurasi saat koneksi dibuat, jadi bot
+    // perlu direstart supaya perubahan langsung dipakai.
+    //
+    // PENTING (perbaikan 24-10-2026): restart dulu di-`await` di dalam request.
+    // Kalau WhatsApp menolak sesi / kredensial sesi sudah tidak ada / koneksi
+    // putus, restartSubBot melempar error tanpa `status` → handler catch
+    // menganggapnya 500 → website menampilkan "Layanan platform sedang
+    // bermasalah." padahal pengaturan SUDAH tersimpan. Sekarang restart jalan
+    // di latar belakang: simpan dulu, balas 200, restart menyusul.
     const credsFile = path.join(sessionPath, 'creds.json')
     let registered = false
     try { registered = Boolean(JSON.parse(fs.readFileSync(credsFile, 'utf8'))?.registered) } catch {}
-    const autoAIOnly = Object.keys(input).every(key => ['session_id', 'auto_ai'].includes(key)) && typeof input.auto_ai === 'boolean'
+    const autoAIOnly = Object.keys(input).every(key => ['session_id', 'auto_ai', 'autoread'].includes(key))
+      && (typeof input.auto_ai === 'boolean' || typeof input.autoread === 'boolean')
+    let restartScheduled = false
+    let restartSkipped = registered && !autoAIOnly ? '' : (autoAIOnly ? 'auto-ai-saja' : 'sesi-belum-terdaftar')
     if (registered && !autoAIOnly) {
-      await restartSubBot(number, global.conn)
-      restarted = true
+      restartScheduled = true
+      Promise.resolve()
+        .then(() => restartSubBot(number, global.conn))
+        .then(() => appendSessionLog(number, 'info', `Bot direstart setelah pengaturan disimpan oleh ${user.email}.`))
+        .catch(error => appendSessionLog(number, 'warn', `Restart setelah simpan gagal: ${error?.message || error}`))
     }
-    appendSessionLog(number, 'info', `Pengaturan diperbarui oleh ${user.email}${restarted ? ' dan bot direstart' : ''}.`)
-    return send(res, 200, { ok: true, settings, restarted, pending_pairing: !registered })
+    appendSessionLog(number, 'info', `Pengaturan diperbarui oleh ${user.email}${restartScheduled ? ' (restart dijadwalkan)' : ''}.`)
+    return send(res, 200, { ok: true, settings, restarted: false, restart_scheduled: restartScheduled, restart_skipped: restartSkipped, pending_pairing: !registered })
   }
 
   if (pathname === '/api/settings/reset' && req.method === 'POST') {

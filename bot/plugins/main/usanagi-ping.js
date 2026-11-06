@@ -2,7 +2,7 @@
 
 import os from 'os'
 import { createCanvas } from '@napi-rs/canvas'
-import { prepareWAMessageMedia } from '@rexxhayanasi/elaina-baileys'
+import { prepareWAMessageMedia } from '@whiskeysockets/baileys'
 import { settings } from '../../config/settings.js'
 import { ButtonV2 } from '../../lib/awang-tombol.js'
 
@@ -232,6 +232,27 @@ const buildPing = s => [
   '> ╰──────────\n'
 ].join('\n')
 
+/*
+ * Task117 — prefix GANDA (`$$ping`, `//ping`) minta tampilan RICH.
+ * Prefix tunggal tetap memakai tampilan lama (canvas + tombol) di bawah.
+ */
+const sendRichPing = async (conn, m, stats) => {
+  try {
+    const { sendHtmlCard } = await import('../../lib/umi-menu/router.js')
+    const { buildPingCard, perkiraanTinggiPing } = await import('../../lib/umi-menu/ping-card.js')
+    const html = buildPingCard(stats, { botName: stats.bot })
+    const result = await sendHtmlCard(conn, m.chat, html, {
+      title: 'Ping',
+      quoted: m.raw,
+      tinggi: perkiraanTinggiPing(),
+    })
+    return result && result.ok === true
+  } catch (error) {
+    console.warn(`[PING] kartu rich gagal (${error?.message || error}); pakai tampilan biasa.`)
+    return false
+  }
+}
+
 const buildImageMessage = async (conn, image) => {
   const media = await prepareWAMessageMedia(
     { image },
@@ -252,6 +273,21 @@ const handler = async (m, { conn, usedPrefix }) => {
       )
     )
   )
+
+  /* Task121 — `..ping` = kartu rich REALTIME, sama seperti `.ping3`
+   * (angka CPU/RAM/disk & uptime berjalan sendiri di dalam kartu).
+   * Kalau kartu gagal dikirim, jatuh ke tampilan ping biasa di bawah. */
+  if (m.__richMenu === true) {
+    try {
+      const { default: ping3 } = await import('./usanagi-ping3.js')
+      await ping3(m, { conn, usedPrefix })
+      return
+    } catch (error) {
+      console.error('[PING] kartu rich gagal:', error?.message || error)
+      const terkirim = await sendRichPing(conn, m, stats)
+      if (terkirim) return
+    }
+  }
 
   const image = makeCanvas(stats)
 
