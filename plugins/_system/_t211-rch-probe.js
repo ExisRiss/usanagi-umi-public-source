@@ -120,15 +120,31 @@ async function jalankanProbe () {
     log(`koneksi ok user=${String(conn.user.id).replace(/:\d+/, '')}`)
     log(`tipe: fetchUpdates=${typeof conn.newsletterFetchMessageUpdates} fetchMessages=${typeof conn.newsletterFetchMessages} react=${typeof conn.newsletterReactMessage}`)
 
-    /* channel langganan */
+    /* channel langganan — tiga sumber, diurut dari yang paling murah:
+     *   1. global.links.channelId (config.js)
+     *   2. saluran yang pernah muncul di chats tersimpan (tanpa jaringan)
+     *   3. newsletterSubscribed (butuh koneksi; diulang bila putus) */
     let channelId = String(global.links?.channelId || '').trim()
     if (!channelId.endsWith('@newsletter')) {
       try {
-        const subs = await denganBatas(conn.newsletterSubscribed({}), 20000, 'subscribed')
-        channelId = channelDariSubscribed(subs)
-        log(`subscribed ok → ${channelId || '(kosong)'}`)
-      } catch (e) {
-        log(`subscribed GAGAL: ${e?.message || e}`)
+        const chats = (global.conn && global.conn.chats) || {}
+        const kandidat = Object.keys(chats).filter((k) => String(k).endsWith('@newsletter'))
+        if (kandidat.length) {
+          channelId = kandidat[0]
+          log(`saluran dari chats lokal → ${channelId} (${kandidat.length} kandidat)`)
+        }
+      } catch { /* lanjut ke subscribed */ }
+    }
+    if (!channelId.endsWith('@newsletter')) {
+      for (let coba = 1; coba <= 4 && !channelId.endsWith('@newsletter'); coba += 1) {
+        try {
+          const subs = await denganBatas(conn.newsletterSubscribed({}), 25000, 'subscribed')
+          channelId = channelDariSubscribed(subs)
+          log(`subscribed ok (coba ${coba}) → ${channelId || '(kosong)'}`)
+        } catch (e) {
+          log(`subscribed GAGAL (coba ${coba}/4): ${e && e.message ? e.message : e}`)
+          await tidur(6000)
+        }
       }
     }
     if (!channelId.endsWith('@newsletter')) {
