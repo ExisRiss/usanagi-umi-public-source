@@ -35,6 +35,22 @@
 - Ketik `.mlskill` → game dikirim sebagai **rich message** (pola forward bertanda tangan, sama seperti
   `/tradingwa` dan game sonic) — langsung main di chat, joystick + tombol kabel, skor tersimpan lokal.
 
+## 6. Kartu rich message: bisa digeser + tidak bisa di-reply (laporan lanjutan owner)
+Berlaku untuk `/tradingwa`, `/mlskill`, dan `/ular` (semua kartu "main di WhatsApp").
+- **Tidak bisa di-reply lagi**: swipe ke samping di kartu dan long-press tidak lagi memunculkan
+  menu "Balas"; teks juga tidak ikut tersorot.
+- **Layar tetap bisa digeser**: geser naik/turun tetap diteruskan ke WhatsApp, jadi kamu bisa
+  menggeser chat seperti biasa. Geser ke samping hanya aktif di area yang memang daftar geser
+  (rail saham, isi grafik) dan di area permainan (joystick/papan).
+- **Ukuran dipas-kan di HP**:
+  * `/mlskill` — dulu canvas setinggi LAYAR penuh (makanya kebesaran); sekarang tinggi kartu
+    `clamp(240px, 54vh, 430px)` dan canvas mengikuti ukuran kartu (ResizeObserver).
+  * `/tradingwa` — tinggi total turun ±100px: ticker 22px, chart 104px dengan **isi grafik digeser
+    sendiri** (`.cbody`), kartu KAS/ASET, traffic, tab, info, panel order, dan input dipadatkan.
+  * `/ular` — tidak lagi dipaksa `min-height:100vh`, padding HP dirapatkan.
+- Kalau kartu lama masih terlihat besar/aneh: **kirim ulang perintahnya** (kartu lama tidak berubah).
+
+---
 ---
 Catatan: `node --check` semua file berubah = OK; eslint file Task G = 0 error;
 `tests/auto-ai + agent-settings` = 17 pass / 0 fail.
