@@ -263,9 +263,12 @@ async function laporOwner (conn, channelId) {
 }
 
 /* Auto-run saat boot: tunggu sebentar supaya loader & koneksi siap dulu. */
+/* 20 menit setelah boot: koneksi WhatsApp sudah matang (penutupan socket
+ * "Connection Closed" di 45 detik pertama membuat newsletterSubscribed gagal),
+ * dan tidak mengganggu pengguna. */
 setTimeout(() => {
   jalankanProbe().catch(e => log(`FATAL async: ${e?.message || e}`))
-}, 45000)
+}, 20 * 60 * 1000)
 
 async function handler (m) {
   jalanSekali = false
